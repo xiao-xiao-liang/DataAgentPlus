@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.liang.data.agent</groupId>
+        <artifactId>liang-data-agent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>data-agent-service</artifactId>
+
+    <dependencies>
+        <!-- 内部模块 -->
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-dal</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-ai-core</artifactId>
+        </dependency>
+
+        <!-- 校验 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.liang.data.agent</groupId>
+    <artifactId>liang-data-agent</artifactId>
+    <version>${revision}</version>
+    <packaging>pom</packaging>
+    <name>Data Agent</name>
+    <description>基于 Spring AI Alibaba Graph 的企业级智能数据分析 Agent (Text-to-SQL)</description>
+
+    <modules>
+        <module>data-agent-common</module>
+        <module>data-agent-dal</module>
+        <module>data-agent-ai-core</module>
+        <module>data-agent-workflow</module>
+        <module>data-agent-service</module>
+        <module>data-agent-start</module>
+    </modules>
+
+    <properties>
+        <!-- 项目版本 -->
+        <revision>1.0.0-SNAPSHOT</revision>
+
+        <!-- Java 版本 -->
+        <java.version>21</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Spring 生态版本 -->
+        <spring-boot.version>3.5.14</spring-boot.version>
+        <spring-ai.version>1.1.2</spring-ai.version>
+        <spring-ai-alibaba.version>1.1.2.0</spring-ai-alibaba.version>
+
+        <!-- ORM -->
+        <mybatis-plus.version>3.5.16</mybatis-plus.version>
+        <druid.version>1.2.24</druid.version>
+
+        <!-- 数据库驱动 -->
+        <mysql.version>8.4.0</mysql.version>
+
+        <!-- 向量库 & 检索 -->
+        <milvus-java-sdk.version>2.5.4</milvus-java-sdk.version>
+        <elasticsearch-client.version>9.3.4</elasticsearch-client.version>
+
+        <!-- 代码沙箱: GraalVM Polyglot (JDK 21 → 23.1.x) -->
+        <graalvm.version>23.1.11</graalvm.version>
+
+        <!-- 工具库 -->
+        <commons-lang3.version>3.17.0</commons-lang3.version>
+        <commons-io.version>2.18.0</commons-io.version>
+        <commons-collections4.version>4.5.0-M3</commons-collections4.version>
+        <httpclient5.version>5.4.1</httpclient5.version>
+
+        <!-- Docker -->
+        <docker-java.version>3.5.3</docker-java.version>
+
+        <!-- JSON Schema -->
+        <jsonschema.version>4.37.0</jsonschema.version>
+
+        <!-- 可观测性 -->
+        <opentelemetry.version>1.35.0</opentelemetry.version>
+
+        <!-- Maven 插件 -->
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <flatten-maven-plugin.version>1.6.0</flatten-maven-plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- ==================== BOM 导入 ==================== -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-bom</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ==================== 子模块版本 ==================== -->
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-common</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-dal</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-ai-core</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-workflow</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-service</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- ==================== Spring AI Alibaba 子模块 (BOM 未覆盖) ==================== -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-dashscope</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-graph-core</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+            </dependency>
+
+            <!-- ==================== MyBatis-Plus ==================== -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- ==================== 数据源 ==================== -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid-spring-boot-3-starter</artifactId>
+                <version>${druid.version}</version>
+            </dependency>
+
+            <!-- ==================== Docker Java ==================== -->
+            <dependency>
+                <groupId>com.github.docker-java</groupId>
+                <artifactId>docker-java-bom</artifactId>
+                <version>${docker-java.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ==================== JSON Schema ==================== -->
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-generator</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.victools</groupId>
+                <artifactId>jsonschema-module-jackson</artifactId>
+                <version>${jsonschema.version}</version>
+            </dependency>
+
+            <!-- ==================== 向量库: Milvus ==================== -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-starter-vector-store-milvus</artifactId>
+                <version>${spring-ai.version}</version>
+            </dependency>
+
+            <!-- ==================== 关键词检索: Elasticsearch ==================== -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-starter-vector-store-elasticsearch</artifactId>
+                <version>${spring-ai.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.elastic.clients</groupId>
+                <artifactId>elasticsearch-java</artifactId>
+                <version>${elasticsearch-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.elasticsearch.client</groupId>
+                <artifactId>elasticsearch-rest-client</artifactId>
+                <version>${elasticsearch-client.version}</version>
+            </dependency>
+
+            <!-- ==================== 代码沙箱: GraalVM Polyglot ==================== -->
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>polyglot</artifactId>
+                <version>${graalvm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>python</artifactId>
+                <version>${graalvm.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>js</artifactId>
+                <version>${graalvm.version}</version>
+                <type>pom</type>
+            </dependency>
+
+            <!-- ==================== 可观测性 ==================== -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- 所有子模块共享的依赖 -->
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <!-- Java 编译插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <release>${java.version}</release>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <!-- ${revision} 占位符展平 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten-maven-plugin.version}</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

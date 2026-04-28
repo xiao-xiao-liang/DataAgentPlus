@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.liang.data.agent</groupId>
+        <artifactId>liang-data-agent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>data-agent-workflow</artifactId>
+
+    <dependencies>
+        <!-- 内部模块 -->
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-dal</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-ai-core</artifactId>
+        </dependency>
+
+        <!-- Reactor (Flux/Mono for SSE 流式输出, Spring MVC 支持响应式返回值) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
