@@ -1,6 +1,7 @@
-package com.liang.data.agent.dal.connector.ddl;
+package com.liang.data.agent.dal.connector.dialect;
 
 import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
+import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.ForeignKeyInfoBO;
 import com.liang.data.agent.dal.connector.bo.TableInfoBO;
 
@@ -9,32 +10,28 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * DDL 执行器
+ * 数据库方言接口
+ * 整合了数据源连接属性配置与 DDL 元数据查询能力
  */
-public interface DdlExecutor {
+public interface DatabaseDialect {
 
-    /**
-     * 查询数据库中的所有表
-     */
+    /** 数据库类型标识，如 "mysql" */
+    String type();
+
+    /** JDBC 驱动类名 */
+    String driver();
+
+    /** 根据配置构建完整 JDBC URL */
+    String buildJdbcUrl(DbConfigBO config);
+
+    /** 连接验证 SQL */
+    String validationQuery();
+
     List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException;
 
-    /**
-     * 查询某张表所有字段信息
-     */
     List<ColumnInfoBO> showColumns(Connection conn, String schema, String table) throws SQLException;
 
-    /**
-     * 查询多张表的外键关系 (物理外键)
-     */
     List<ForeignKeyInfoBO> showForeignKeys(Connection conn, String schema, List<String> tables) throws SQLException;
 
-    /**
-     * 采样某个字段的值 (帮助 LLM 理解字段内容)
-     */
     List<String> sampleColumn(Connection conn, String schema, String table, String column) throws SQLException;
-
-    /**
-     * 是否支持该数据库类型
-     */
-    boolean supports(String type);
 }

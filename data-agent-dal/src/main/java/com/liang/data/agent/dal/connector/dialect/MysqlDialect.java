@@ -1,9 +1,10 @@
-package com.liang.data.agent.dal.connector.ddl;
+package com.liang.data.agent.dal.connector.dialect;
 
+import com.liang.data.agent.dal.connector.DatabaseTypeEnum;
 import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
+import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.ForeignKeyInfoBO;
 import com.liang.data.agent.dal.connector.bo.TableInfoBO;
-import com.liang.data.agent.dal.connector.DatabaseTypeEnum;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
@@ -14,10 +15,36 @@ import java.util.List;
 import java.util.Set;
 
 @Component
-public class MysqlJdbcDdl implements DdlExecutor {
+public class MysqlDialect implements DatabaseDialect {
 
     private static final DatabaseTypeEnum DB_TYPE = DatabaseTypeEnum.MYSQL;
     private static final int SAMPLE_LIMIT = 10;
+
+    @Override
+    public String type() {
+        return DB_TYPE.getCode();
+    }
+
+    @Override
+    public String driver() {
+        return DB_TYPE.getDriver();
+    }
+
+    @Override
+    public String buildJdbcUrl(DbConfigBO config) {
+        // 如果外部传了完整的 url，直接使用；否则根据配置拼接
+        if (StringUtils.isNotBlank(config.url())) {
+            return config.url();
+        }
+        return String.format("jdbc:mysql://%s/%s?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true",
+                "localhost:3306", // 暂时由于 DbConfigBO 没有 host/port 参数，如果 URL 为空则给个默认值。实际上 config 里的 url 是完整的。
+                config.schema());
+    }
+
+    @Override
+    public String validationQuery() {
+        return DB_TYPE.getValidationQuery();
+    }
 
     @Override
     public List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException {
@@ -25,7 +52,7 @@ public class MysqlJdbcDdl implements DdlExecutor {
 
         // 如果外部没传 pattern 或者传了空字符串，统一转换为 "%" 以查询所有表
         pattern = StringUtils.defaultIfBlank(pattern, "%");
-        
+
         DatabaseMetaData metaData = conn.getMetaData();
         try (ResultSet rs = metaData.getTables(schema, null, pattern, new String[]{"TABLE"})) {
             while (rs.next()) {
@@ -112,10 +139,5 @@ public class MysqlJdbcDdl implements DdlExecutor {
         }
 
         return samples;
-    }
-
-    @Override
-    public boolean supports(String type) {
-        return DB_TYPE.getCode().equalsIgnoreCase(type);
     }
 }

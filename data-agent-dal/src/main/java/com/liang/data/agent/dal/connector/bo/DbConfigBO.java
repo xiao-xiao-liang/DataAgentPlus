@@ -13,6 +13,7 @@ import org.apache.commons.lang3.StringUtils;
  * @param schema   库名/Schema名, MySQL 里等同于 database_name
  */
 public record DbConfigBO(
+        Integer datasourceId,
         String url,
         String username,
         String password,
@@ -30,6 +31,7 @@ public record DbConfigBO(
             url = String.format("jdbc:%s://%s:%d/%s?useSSL=false&characterEncoding=utf8",
                     entity.getType(), entity.getHost(), entity.getPort(), entity.getDatabaseName());
         return new DbConfigBO(
+                entity.getId(),
                 url,
                 entity.getUsername(),
                 entity.getPassword(),
