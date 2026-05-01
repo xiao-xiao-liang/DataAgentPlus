@@ -23,6 +23,9 @@ public class MysqlJdbcDdl implements DdlExecutor {
     public List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException {
         List<TableInfoBO> tables = new ArrayList<>();
 
+        // 如果外部没传 pattern 或者传了空字符串，统一转换为 "%" 以查询所有表
+        pattern = StringUtils.defaultIfBlank(pattern, "%");
+        
         DatabaseMetaData metaData = conn.getMetaData();
         try (ResultSet rs = metaData.getTables(schema, null, pattern, new String[]{"TABLE"})) {
             while (rs.next()) {
