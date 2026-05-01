@@ -32,3 +32,6 @@ dependency-reduced-pom.xml
 # ==================== 环境 ====================
 .env
 *.env.local
+
+### AI Agent ###
+.agent/
