@@ -1,4 +1,4 @@
-package com.liang.data.agent.common.handler;
+package com.liang.data.agent.handler;
 
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.AbstractException;
@@ -14,18 +14,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
-/**
- * 全局异常处理器
- *
- * <p>
- * 拦截指定异常并通过优雅构建方式返回前端信息。
- * 项目使用 Spring MVC (Servlet)，SSE 流式输出通过 Controller 返回 {@code Flux<ServerSentEvent>} 实现，
- * 不影响常规 REST 接口的 Servlet 异常处理。
- * </p>
- */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
