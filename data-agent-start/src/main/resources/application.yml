@@ -41,9 +41,10 @@ spring.ai.vectorstore.milvus:
   client:
     host: ${MILVUS_HOST:localhost}
     port: ${MILVUS_PORT:19530}
-  database-name: ${MILVUS_DATABASE:default}
+  database-name: ${MILVUS_DATABASE:data_agent}
   collection-name: ${MILVUS_COLLECTION:data_agent_vectors}
-  embedding-dimension: 1536
+  embedding-dimension: 1024
+  initialize-schema: true
 
 # ==================== Elasticsearch 关键词检索 ====================
 spring.elasticsearch:
@@ -53,10 +54,10 @@ spring.elasticsearch:
 
 # ==================== DataAgent 自定义配置 ====================
 data-agent:
-  llm-service-type: STREAM
+  llm-service-mode: STREAM
   vector-store:
-    similarity-threshold: 0.5
-    top-k: 5
+    default-similarity-threshold: 0.5
+    default-topk-limit: 5
     enable-hybrid-search: false
   code-executor:
     type: AI_SIM
