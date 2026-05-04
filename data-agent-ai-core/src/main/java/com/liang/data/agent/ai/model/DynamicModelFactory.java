@@ -1,5 +1,7 @@
 package com.liang.data.agent.ai.model;
 
+import com.liang.data.agent.common.errorcode.BaseErrorCode;
+import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.entity.ModelConfigEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +15,6 @@ import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.retry.RetryUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -92,11 +93,15 @@ public class DynamicModelFactory {
     }
 
     private void validateConfig(ModelConfigEntity config) {
-        Assert.hasText(config.getBaseUrl(), "baseUrl 不能为空");
-        Assert.hasText(config.getModelName(), "modelName 不能为空");
+        if (!StringUtils.hasText(config.getBaseUrl())) {
+            throw new ServiceException("baseUrl 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
+        if (!StringUtils.hasText(config.getModelName())) {
+            throw new ServiceException("modelName 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
         // custom 厂商可能不需要 apiKey
-        if (!"custom".equalsIgnoreCase(config.getProvider())) {
-            Assert.hasText(config.getApiKey(), "apiKey 不能为空");
+        if (!"custom".equalsIgnoreCase(config.getProvider()) && !StringUtils.hasText(config.getApiKey())) {
+            throw new ServiceException("apiKey 不能为空", BaseErrorCode.CLIENT_ERROR);
         }
     }
 }

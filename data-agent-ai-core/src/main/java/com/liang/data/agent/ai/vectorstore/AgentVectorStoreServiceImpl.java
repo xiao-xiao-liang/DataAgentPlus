@@ -1,13 +1,15 @@
 package com.liang.data.agent.ai.vectorstore;
 
 import com.liang.data.agent.common.config.DataAgentProperties;
+import com.liang.data.agent.common.errorcode.BaseErrorCode;
+import com.liang.data.agent.common.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
-import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -31,8 +33,12 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
     
     @Override
     public List<Document> search(String agentId, String query, String vectorType, int topK, double threshold) {
-        Assert.hasText(agentId, "agentId 不能为空");
-        Assert.hasText(vectorType, "vectorType 不能为空");
+        if (!StringUtils.hasText(agentId)) {
+            throw new ServiceException("agentId 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
+        if (!StringUtils.hasText(vectorType)) {
+            throw new ServiceException("vectorType 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
 
         // 构建过滤表达式: agent_id == 'xxx' AND vector_type == 'yyy'
         String filterExpr = String.format("%s == '%s' && %s == '%s'", AGENT_ID_KEY, agentId, VECTOR_TYPE_KEY, vectorType);
@@ -57,15 +63,21 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
 
     @Override
     public void addDocuments(String agentId, List<Document> documents) {
-        Assert.hasText(agentId, "agentId 不能为空");
-        Assert.notEmpty(documents, "documents 不能为空");
+        if (!StringUtils.hasText(agentId)) {
+            throw new ServiceException("agentId 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
+        if (documents == null || documents.isEmpty()) {
+            throw new ServiceException("documents 不能为空", BaseErrorCode.CLIENT_ERROR);
+        }
         vectorStore.add(documents);
         log.info("添加 {} 条文档到向量存储: agentId={}", documents.size(), agentId);
     }
 
     @Override
     public boolean deleteDocumentsByMetadata(Map<String, Object> metadata) {
-        Assert.notNull(metadata, "metadata 不能为 null");
+        if (metadata == null) {
+            throw new ServiceException("metadata 不能为 null", BaseErrorCode.CLIENT_ERROR);
+        }
         
         StringBuilder sb = new StringBuilder();
         metadata.forEach((key, value) -> {
