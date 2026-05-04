@@ -18,6 +18,11 @@
             <artifactId>data-agent-common</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-dal</artifactId>
+        </dependency>
+
         <!-- Spring AI - OpenAI 兼容接口 (支持多厂商) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
