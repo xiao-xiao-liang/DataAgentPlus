@@ -1,6 +1,7 @@
 package com.liang.data.agent.ai.vectorstore;
 
 import com.liang.data.agent.common.config.DataAgentProperties;
+import com.liang.data.agent.common.enums.VectorType;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
@@ -27,21 +28,20 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
     private static final String AGENT_ID_KEY = "agent_id";
     private static final String VECTOR_TYPE_KEY = "vector_type";
     private static final String DEFAULT_QUERY = "default";
-    
+
     private final VectorStore vectorStore;
     private final DataAgentProperties properties;
-    
+
     @Override
-    public List<Document> search(String agentId, String query, String vectorType, int topK, double threshold) {
+    public List<Document> search(String agentId, String query, VectorType vectorType, int topK, double threshold) {
         if (!StringUtils.hasText(agentId)) {
             throw new ServiceException("agentId 不能为空", BaseErrorCode.CLIENT_ERROR);
         }
-        if (!StringUtils.hasText(vectorType)) {
+        if (vectorType == null) {
             throw new ServiceException("vectorType 不能为空", BaseErrorCode.CLIENT_ERROR);
         }
 
-        // 构建过滤表达式: agent_id == 'xxx' AND vector_type == 'yyy'
-        String filterExpr = String.format("%s == '%s' && %s == '%s'", AGENT_ID_KEY, agentId, VECTOR_TYPE_KEY, vectorType);
+        String filterExpr = String.format("%s == '%s' && %s == '%s'", AGENT_ID_KEY, agentId, VECTOR_TYPE_KEY, vectorType.getCode());
 
         SearchRequest searchRequest = SearchRequest.builder()
                 .query(query)
@@ -51,12 +51,12 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
                 .build();
 
         List<Document> results = vectorStore.similaritySearch(searchRequest);
-        log.debug("向量检索完成: agentId={}, vectorType={}, 命中 {} 条", agentId, vectorType, results.size());
+        log.debug("向量检索完成: agentId={}, vectorType={}, 命中 {} 条", agentId, vectorType.getCode(), results.size());
         return results;
     }
 
     @Override
-    public List<Document> search(String agentId, String query, String vectorType) {
+    public List<Document> search(String agentId, String query, VectorType vectorType) {
         var vs = properties.getVectorStore();
         return search(agentId, query, vectorType, vs.getDefaultTopkLimit(), vs.getDefaultSimilarityThreshold());
     }

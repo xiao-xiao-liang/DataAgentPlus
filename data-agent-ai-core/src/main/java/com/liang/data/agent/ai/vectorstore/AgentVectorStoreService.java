@@ -1,5 +1,6 @@
 package com.liang.data.agent.ai.vectorstore;
 
+import com.liang.data.agent.common.enums.VectorType;
 import org.springframework.ai.document.Document;
 
 import java.util.List;
@@ -17,18 +18,18 @@ public interface AgentVectorStoreService {
      *
      * @param agentId    智能体 ID
      * @param query      查询文本
-     * @param vectorType 文档类型 (如 "TABLE", "COLUMN", "KNOWLEDGE", "BUSINESS_TERM")
+     * @param vectorType 文档类型
      * @param topK       返回数量
      * @param threshold  相似度阈值
      * @return 匹配的文档列表
      */
-    List<Document> search(String agentId, String query, String vectorType,
+    List<Document> search(String agentId, String query, VectorType vectorType,
                           int topK, double threshold);
 
     /**
      * 使用默认 topK 和 threshold 的检索
      */
-    List<Document> search(String agentId, String query, String vectorType);
+    List<Document> search(String agentId, String query, VectorType vectorType);
 
     /**
      * 添加文档到向量存储
