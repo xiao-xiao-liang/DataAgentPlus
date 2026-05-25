@@ -9,9 +9,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.converter.BeanOutputConverter;
 
 import com.liang.data.agent.workflow.dto.node.*;
-import com.liang.data.agent.workflow.dto.schema.ColumnDTO;
-import com.liang.data.agent.workflow.dto.schema.SchemaDTO;
-import com.liang.data.agent.workflow.dto.schema.TableDTO;
+import com.liang.data.agent.common.schema.ColumnDTO;
+import com.liang.data.agent.common.schema.SchemaDTO;
+import com.liang.data.agent.common.schema.TableDTO;
+import com.liang.data.agent.dal.entity.SemanticModelEntity;
 
 import lombok.NoArgsConstructor;
 
@@ -145,13 +146,18 @@ public final class PromptHelper {
     /**
      * 构建混合选择器 Prompt (Schema 召回)
      */
-    public static String buildMixSelectorPrompt(String evidence, String question, SchemaDTO schemaDTO) {
+    public static String buildMixSelectorPrompt(String evidence, String question, SchemaDTO schemaDTO, String advice) {
         String schemaInfo = buildMixMacSqlDbPrompt(schemaDTO, true);
         Map<String, Object> params = new HashMap<>();
         params.put("schema_info", schemaInfo); // 数据库 schema 描述
         params.put("question", question);
         params.put("evidence", StringUtils.isBlank(evidence) ? "无" : evidence);
+        params.put("advice", StringUtils.isBlank(advice) ? "无" : advice);
         return PromptConstant.getMixSelectorPromptTemplate().render(params);
+    }
+
+    public static String buildMixSelectorPrompt(String evidence, String question, SchemaDTO schemaDTO) {
+        return buildMixSelectorPrompt(evidence, question, schemaDTO, null);
     }
 
     /**
@@ -228,5 +234,23 @@ public final class PromptHelper {
         params.put("json_example", ""); // TODO: Phase 5+ 添加图表 JSON 示例
         params.put("optimization_section", "");
         return PromptConstant.getReportGeneratorPlainPromptTemplate().render(params);
+    }
+
+    /**
+     * 构建语义模型 Prompt
+     */
+    public static String buildSemanticModelPrompt(List<SemanticModelEntity> semanticModels) {
+        Map<String, Object> params = new HashMap<>();
+        String semanticModel = (semanticModels == null || semanticModels.isEmpty()) ? ""
+                : semanticModels.stream().map(sm -> String.format(
+                        "对话字段名称: %s; 数据库字段名: %s; 字段同义词: %s; 字段描述: %s; 字段类型: %s",
+                        sm.getBusinessName(),
+                        sm.getTableName() + "." + sm.getColumnName(),
+                        Objects.toString(sm.getSynonyms(), ""),
+                        Objects.toString(sm.getBusinessDescription(), ""),
+                        Objects.toString(sm.getDataType(), "")
+                )).collect(Collectors.joining(";\n"));
+        params.put("semanticModel", semanticModel);
+        return PromptConstant.getSemanticModelPromptTemplate().render(params);
     }
 }
