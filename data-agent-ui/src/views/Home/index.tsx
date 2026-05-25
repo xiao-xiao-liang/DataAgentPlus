@@ -109,7 +109,7 @@ const WorkflowPlan: React.FC<{ planJson: string; currentBlockCount: number }> = 
     // 捕获正在流式拼接 JSON 时的解析失败
   }
 
-  if (!plan) {
+  if (!plan || !Array.isArray(plan.execution_plan)) {
     return (
       <div className="bg-gray-50/50 border border-gray-150 rounded-xl p-4 animate-pulse text-xs text-gray-400 font-semibold w-full max-w-[620px]">
         正在构建工作流执行计划...
@@ -124,7 +124,7 @@ const WorkflowPlan: React.FC<{ planJson: string; currentBlockCount: number }> = 
       </p>
       
       <div className="space-y-4">
-        {plan.execution_plan.map((step, idx) => {
+        {plan.execution_plan?.map((step, idx) => {
           let status: 'pending' | 'running' | 'success' = 'pending';
           if (currentBlockCount > 1) {
             if (idx === 0) {
@@ -250,6 +250,250 @@ const ResultSetTable: React.FC<{ dataJson: string }> = ({ dataJson }) => {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+};
+
+// ================= 辅助函数：从流式拼接的增量 JSON 中提取 reply 字段 =================
+function extractReplyFromIncrementalJson(jsonStr: string): string {
+  try {
+    const clean = jsonStr.replace('$$$json', '').trim();
+    if (clean.startsWith('{') && clean.endsWith('}')) {
+      const parsed = JSON.parse(clean);
+      return parsed.reply || '';
+    }
+  } catch (e) {
+    // 捕获流式拼接期间 JSON 不完整导致的解析失败
+  }
+  
+  // 使用正则提取，确保流式文字在未接收完时也能实时回显
+  const match = jsonStr.match(/"reply"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"?/);
+  if (match && match[1]) {
+    return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  }
+  return '';
+}
+
+// ================= 子组件：闲聊/无关指令友好引导及数据添加面板 =================
+interface SmalltalkDataPanelProps {
+  reply: string;
+  latestQuery: string;
+  onConfirmData: (file: { id: string; name: string; size: string }) => void;
+}
+
+const SmalltalkDataPanel: React.FC<SmalltalkDataPanelProps> = ({ reply, latestQuery, onConfirmData }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const [addType, setAddType] = useState<'upload' | 'existing'>('upload');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dbName, setDbName] = useState('内置_游戏数据');
+  const [tableName, setTableName] = useState('内置_游戏数据.csv');
+  const localFileRef = useRef<HTMLInputElement>(null);
+
+  const isGreeting = /你好|您好|嗨|hello|hi/i.test(latestQuery);
+  const guideText = isGreeting
+    ? "请上传您的CSV或Excel文件，或者提供数据库连接信息，以便我开始为您进行智能分析。"
+    : "为了能够为您提供精准的数据分析服务，请您上传CSV/Excel等格式的数据集，或者提供安全的数据库连接信息。";
+
+  const handleLocalFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (addType === 'upload' && selectedFile) {
+      const sizeStr = selectedFile.size > 1024 * 1024
+        ? `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${(selectedFile.size / 1024).toFixed(1)} KB`;
+      onConfirmData({
+        id: `upload-${Date.now()}`,
+        name: selectedFile.name,
+        size: sizeStr
+      });
+    } else if (addType === 'existing') {
+      onConfirmData({
+        id: `existing-${Date.now()}`,
+        name: tableName,
+        size: '15.4 KB'
+      });
+    }
+  };
+
+  return (
+    <div className="w-full flex flex-col items-start select-none">
+      {/* 了解用户需求折叠面板 (官网风格) */}
+      <div className="bg-white border border-gray-200/80 rounded-xl shadow-3xs my-2 overflow-hidden transition-all duration-200 w-full max-w-[620px]">
+        <button 
+          onClick={() => setIsOpen(!isOpen)}
+          type="button"
+          className="w-full flex items-center justify-between px-4 py-3 bg-[#FAFAFC] cursor-pointer hover:bg-gray-150/40 transition-colors border-none outline-none"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="shrink-0 flex items-center justify-center size-5 rounded-md bg-indigo-50 border border-indigo-100">
+              <Check className="size-3 text-indigo-600 stroke-[3.5]" />
+            </span>
+            <span className="text-xs font-bold text-gray-800">了解用户需求</span>
+          </div>
+          <ChevronRight className={clsx("w-4 h-4 text-gray-400 transition-transform duration-200", isOpen && "rotate-90")} />
+        </button>
+        {isOpen && (
+          <div className="px-4 pb-4 pt-2.5 bg-white border-t border-gray-100 text-[13px] text-gray-700 leading-relaxed font-normal whitespace-pre-wrap animate-in fade-in duration-150 select-text">
+            {reply || "正在思考..."}
+          </div>
+        )}
+      </div>
+
+      {/* 引导上传提示 */}
+      {reply && (
+        <div className="text-[13px] text-gray-700 font-normal leading-relaxed my-2.5 animate-in fade-in duration-300">
+          {guideText}
+        </div>
+      )}
+
+      {/* 添加数据表单 */}
+      {reply && (
+        <div className="bg-[#FAFAFC] border border-gray-200/60 rounded-xl p-5 shadow-3xs w-full max-w-[620px] my-1 flex flex-col gap-4 text-xs animate-in fade-in duration-400">
+          {/* 添加方式 Radio */}
+          <div className="flex flex-col gap-2">
+            <span className="text-gray-600 font-bold flex items-center">
+              <span className="text-red-500 mr-1">*</span> 添加方式
+            </span>
+            <div className="flex items-center gap-6 mt-0.5">
+              {/* 本地上传 */}
+              <button 
+                type="button"
+                onClick={() => setAddType('upload')}
+                className="flex items-center gap-2 text-gray-700 hover:text-indigo-600 transition-all outline-none border-none bg-transparent cursor-pointer font-semibold text-[12px]"
+              >
+                <span className={clsx(
+                  "size-4 rounded-full border flex items-center justify-center transition-all bg-white",
+                  addType === 'upload' ? "border-indigo-600 ring-1 ring-indigo-600" : "border-gray-300"
+                )}>
+                  {addType === 'upload' && <span className="size-2 rounded-full bg-indigo-600 animate-in zoom-in-50 duration-150"></span>}
+                </span>
+                <span>本地上传</span>
+              </button>
+
+              {/* 选择已有数据 */}
+              <button 
+                type="button"
+                onClick={() => setAddType('existing')}
+                className="flex items-center gap-2 text-gray-700 hover:text-indigo-600 transition-all outline-none border-none bg-transparent cursor-pointer font-semibold text-[12px]"
+              >
+                <span className={clsx(
+                  "size-4 rounded-full border flex items-center justify-center transition-all bg-white",
+                  addType === 'existing' ? "border-indigo-600 ring-1 ring-indigo-600" : "border-gray-300"
+                )}>
+                  {addType === 'existing' && <span className="size-2 rounded-full bg-indigo-600 animate-in zoom-in-50 duration-150"></span>}
+                </span>
+                <span>选择已有数据</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 表单主体 */}
+          {addType === 'upload' ? (
+            <div className="flex flex-col gap-2 animate-in fade-in duration-200">
+              <span className="text-gray-600 font-bold">
+                <span className="text-red-500 mr-1">*</span> 上传文件
+              </span>
+              <input 
+                type="file" 
+                ref={localFileRef} 
+                onChange={handleLocalFileChange} 
+                className="hidden" 
+                accept=".csv,.xlsx,.xls"
+              />
+              <div 
+                onClick={() => localFileRef.current?.click()}
+                className="border border-dashed border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/5 rounded-xl py-6 px-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-white"
+              >
+                <Upload className="size-5.5 text-gray-400 shrink-0" />
+                {selectedFile ? (
+                  <span className="text-indigo-600 font-bold truncate max-w-[280px]">
+                    已选择：{selectedFile.name}
+                  </span>
+                ) : (
+                  <div className="text-center space-y-1">
+                    <span className="text-gray-600 font-bold block">点击或将文件拖拽至此上传</span>
+                    <span className="text-gray-400 text-[10px] block font-medium">支持xlsx、xls、csv格式，文件最大200MB</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+              <div className="flex flex-col gap-2">
+                <span className="text-gray-600 font-bold">
+                  <span className="text-red-500 mr-1">*</span> 数据库/文件
+                </span>
+                <div className="relative w-full">
+                  <select 
+                    value={dbName} 
+                    onChange={(e) => {
+                      setDbName(e.target.value);
+                      if (e.target.value === '内置_游戏数据') {
+                        setTableName('内置_游戏数据.csv');
+                      } else {
+                        setTableName('内置_餐厅数据.csv');
+                      }
+                    }}
+                    className="w-full appearance-none border border-gray-200 bg-white rounded-lg h-9 px-3.5 pr-10 outline-none font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700 text-[12px] transition-all cursor-pointer shadow-3xs"
+                  >
+                    <option value="内置_游戏数据">内置_游戏数据</option>
+                    <option value="内置_餐厅数据">内置_餐厅数据</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-2.5 size-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-gray-600 font-bold">
+                  <span className="text-red-500 mr-1">*</span> 表/文件
+                </span>
+                <div className="relative w-full">
+                  <select 
+                    value={tableName} 
+                    onChange={(e) => setTableName(e.target.value)}
+                    className="w-full appearance-none border border-gray-200 bg-white rounded-lg h-9 px-3.5 pr-10 outline-none font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700 text-[12px] transition-all cursor-pointer shadow-3xs"
+                  >
+                    {dbName === '内置_游戏数据' ? (
+                      <option value="内置_游戏数据.csv">内置_游戏数据.csv</option>
+                    ) : (
+                      <option value="内置_餐厅数据.csv">内置_餐厅数据.csv</option>
+                    )}
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-2.5 size-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 确认按钮 */}
+          <div className="flex justify-end mt-1">
+            <button
+              onClick={handleConfirm}
+              disabled={addType === 'upload' && !selectedFile}
+              className={clsx(
+                "h-8 px-4 font-bold rounded-lg transition-all active:scale-[0.98] cursor-pointer border-none text-[12px]",
+                (addType === 'upload' && !selectedFile)
+                  ? "bg-gray-250 text-gray-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs"
+              )}
+            >
+              确认并添加数据
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 小黄提示条 (官网样式) */}
+      {reply && (
+        <div className="flex w-fit items-center rounded-2xl bg-[#FFF9E6] px-3.5 py-1.5 text-xs text-[#8A6D1C] font-semibold mt-3.5 shadow-3xs select-none animate-in fade-in duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 size-3.5"><path d="M12 3v17a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1H3"></path><path d="M16 19h6"></path><path d="M19 22v-6"></path></svg>
+          我将在你反馈后继续
+        </div>
+      )}
     </div>
   );
 };
@@ -673,146 +917,186 @@ const Home: React.FC = () => {
           {/* 🚀 消息流渲染 */}
           {isChatState ? (
             <div className="w-[680px] min-w-[680px] flex flex-col gap-6 pt-10 pb-16 px-1 flex-1">
-              {messages.map((msg, idx) => (
-                <div 
-                  key={idx} 
-                  className={clsx(
-                    "flex gap-4 w-full animate-in fade-in slide-in-from-bottom-2 duration-300", 
-                    msg.role === 'user' ? "justify-end" : "justify-start"
-                  )}
-                >
-                  {msg.role === 'assistant' && (
-                    <div className="flex-none size-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm">
-                      <img className="h-5 w-5" alt="data-agent" src="https://g.alicdn.com/apsaradb-fe/dms-theia-app/0.3.5/data-agent/static/svg/logo-black.svg" />
+              {messages.map((msg, idx) => {
+                if (msg.role === 'user') {
+                  return (
+                    <div 
+                      key={idx} 
+                      className="flex w-full justify-end animate-in fade-in slide-in-from-bottom-2 duration-300 select-text"
+                    >
+                      <div className="bg-[#F1F1FE] max-w-[80%] rounded-lg px-3 py-2 text-[#0A0A0B] break-words text-sm font-normal leading-6 shadow-3xs">
+                        <p className="whitespace-pre-line m-0">{msg.content}</p>
+                      </div>
                     </div>
-                  )}
-                  
-                  <div 
-                    className={clsx(
-                      "max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed shadow-sm flex flex-col items-start",
-                      msg.role === 'user' 
-                        ? "bg-[#2D336B] text-white rounded-tr-none" 
-                        : "bg-white text-gray-800 border border-gray-100 rounded-tl-none w-full"
-                    )}
-                  >
-                    {/* 普通消息内容 */}
-                    {msg.content && <div className="font-normal whitespace-pre-wrap">{msg.content}</div>}
+                  );
+                }
 
-                    {/* 流式 Blocks 精细化可折叠卡片渲染 */}
-                    {msg.blocks && msg.blocks.map((block, bIdx) => {
-                      if (block.type === 'text') {
-                        return <ProcessedTextBlock key={bIdx} text={block.content} />;
-                      }
-                      if (block.type === 'json') {
-                        // 使用通用折叠卡片包装执行计划
-                        return (
-                          <CollapsibleCard 
-                            key={bIdx}
-                            title="工作流执行计划" 
-                            icon={<BookOpen className="text-indigo-600 size-4 shrink-0" />}
-                            status={msg.blocks && msg.blocks.length > 6 ? 'success' : 'running'}
-                            defaultOpen={true}
-                          >
-                            <WorkflowPlan planJson={block.content} currentBlockCount={msg.blocks?.length || 0} />
-                          </CollapsibleCard>
-                        );
-                      }
-                      if (block.type === 'sql') {
-                        return (
-                          <CollapsibleCard
-                            key={bIdx}
-                            title="生成 SQL 数据查询"
-                            icon={<Database className="text-blue-500 size-4 shrink-0" />}
-                            status="success"
-                            defaultOpen={false}
-                          >
-                            <CodeBlock language="sql" code={block.content} />
-                          </CollapsibleCard>
-                        );
-                      }
-                      if (block.type === 'python') {
-                        return (
-                          <CollapsibleCard
-                            key={bIdx}
-                            title="建立 Python 回归分析模型"
-                            icon={<Atom className="text-purple-500 size-4 shrink-0 animate-spin-slow" />}
-                            status="success"
-                            defaultOpen={false}
-                          >
-                            <CodeBlock language="python" code={block.content} />
-                          </CollapsibleCard>
-                        );
-                      }
-                      if (block.type === 'result_set') {
-                        return (
-                          <CollapsibleCard
-                            key={bIdx}
-                            title="数据查询结果集"
-                            icon={<Sheet className="text-indigo-500 size-4 shrink-0" />}
-                            status="success"
-                            defaultOpen={true}
-                          >
-                            <ResultSetTable dataJson={block.content} />
-                          </CollapsibleCard>
-                        );
-                      }
-                      if (block.type === 'markdown-report') {
-                        const reportText = block.content.replace('$$$/markdown-report', '');
-                        return (
-                          <div key={bIdx} className="my-2 select-text w-full leading-relaxed border-l-2 border-indigo-500 pl-4 py-1 bg-gray-50/40 rounded-r-xl border border-gray-100 pr-3">
-                            <h3 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200/50 pb-1">报告生成</h3>
-                            <div className="prose text-xs text-gray-600 space-y-2 whitespace-pre-wrap">
-                              {reportText}
+                // msg.role === 'assistant' 渲染（官网三行无气泡排版样式）
+                return (
+                  <div 
+                    key={idx} 
+                    className="group relative flex flex-col w-full py-4 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  >
+                    {/* 第一行：头像与名称 */}
+                    <div className="flex h-[26px] items-center mb-2 select-none">
+                      <span className="relative shrink-0 rounded-full flex h-[26px] w-[26px] items-center overflow-hidden">
+                        <img className="h-full w-full aspect-auto" alt="data-agent" src="https://g.alicdn.com/apsaradb-fe/dms-theia-app/0.3.5/data-agent/static/svg/logo-black.svg" />
+                      </span>
+                      <span className="font-dm-sans text-[14px] font-semibold text-gray-800 ml-3">Data Agent</span>
+                    </div>
+
+                    {/* 第二行：消息内容主体（去掉白底卡片气泡，普通文字直接平铺，Blocks 自身带卡片） */}
+                    <div className="pl-[38px] w-full flex flex-col items-start gap-2 break-words leading-7 text-gray-800 text-[14px]">
+                      {/* 普通消息内容 */}
+                      {msg.content && <div className="font-normal whitespace-pre-wrap">{msg.content}</div>}
+
+                      {/* 流式 Blocks 精细化可折叠卡片渲染 */}
+                      {msg.blocks && msg.blocks.map((block, bIdx) => {
+                        if (block.type === 'text') {
+                          return <ProcessedTextBlock key={bIdx} text={block.content} />;
+                        }
+                        if (block.type === 'json') {
+                          // 判断是否为闲聊意图 JSON (匹配 "classification" 或 "reply")
+                          const isSmalltalk = block.content.includes('"classification"') || block.content.includes('"reply"');
+                          if (isSmalltalk) {
+                            const replyText = extractReplyFromIncrementalJson(block.content);
+                            return (
+                              <SmalltalkDataPanel 
+                                key={bIdx}
+                                reply={replyText} 
+                                latestQuery={messages[idx - 1]?.content || ""} 
+                                onConfirmData={(file) => {
+                                  setAttachedFiles(prev => [...prev, file]);
+                                  setInputValue(prev => prev || `请帮我结合这份数据，进行智能数据分析`);
+                                }}
+                              />
+                            );
+                          }
+
+                          // 否则作为执行计划卡片渲染
+                          return (
+                            <CollapsibleCard 
+                              key={bIdx}
+                              title="工作流执行计划" 
+                              icon={<BookOpen className="text-indigo-600 size-4 shrink-0" />}
+                              status={msg.blocks && msg.blocks.length > 6 ? 'success' : 'running'}
+                              defaultOpen={true}
+                            >
+                              <WorkflowPlan planJson={block.content} currentBlockCount={msg.blocks?.length || 0} />
+                            </CollapsibleCard>
+                          );
+                        }
+                        if (block.type === 'sql') {
+                          return (
+                            <CollapsibleCard
+                              key={bIdx}
+                              title="生成 SQL 数据查询"
+                              icon={<Database className="text-blue-500 size-4 shrink-0" />}
+                              status="success"
+                              defaultOpen={false}
+                            >
+                              <CodeBlock language="sql" code={block.content} />
+                            </CollapsibleCard>
+                          );
+                        }
+                        if (block.type === 'python') {
+                          return (
+                            <CollapsibleCard
+                              key={bIdx}
+                              title="建立 Python 回归分析模型"
+                              icon={<Atom className="text-purple-500 size-4 shrink-0 animate-spin-slow" />}
+                              status="success"
+                              defaultOpen={false}
+                            >
+                              <CodeBlock language="python" code={block.content} />
+                            </CollapsibleCard>
+                          );
+                        }
+                        if (block.type === 'result_set') {
+                          return (
+                            <CollapsibleCard
+                              key={bIdx}
+                              title="数据查询结果集"
+                              icon={<Sheet className="text-indigo-500 size-4 shrink-0" />}
+                              status="success"
+                              defaultOpen={true}
+                            >
+                              <ResultSetTable dataJson={block.content} />
+                            </CollapsibleCard>
+                          );
+                        }
+                        if (block.type === 'markdown-report') {
+                          const reportText = block.content.replace('$$$/markdown-report', '');
+                          return (
+                            <div key={bIdx} className="my-2 select-text w-full leading-relaxed border-l-2 border-indigo-500 pl-4 py-1 bg-gray-50/40 rounded-r-xl border border-gray-100 pr-3">
+                              <h3 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200/50 pb-1">报告生成</h3>
+                              <div className="prose text-xs text-gray-600 space-y-2 whitespace-pre-wrap">
+                                {reportText}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+
+                      {/* 流式完成且包含报告，渲染“绘制网页报告分享卡片” */}
+                      {msg.isComplete && msg.blocks?.some(b => b.type === 'markdown-report') && (
+                        <div className="my-4 border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 flex items-center justify-between shadow-2xs w-full max-w-[620px] select-none animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="flex items-center gap-2.5">
+                            <Trophy className="w-5 h-5 text-indigo-600 flex-none" />
+                            <div className="space-y-0.5">
+                              <span className="text-[13px] font-bold text-gray-800 block">以交互式网页报告分享 Data Agent 的分析</span>
+                              <span className="text-[11px] text-gray-400 block font-medium">包含销量、口碑建模、平台生态的完整大图景报告</span>
                             </div>
                           </div>
-                        );
-                      }
-                      return null;
-                    })}
-
-                    {/* 流式完成且包含报告，渲染“绘制网页报告分享卡片” */}
-                    {msg.role === 'assistant' && msg.isComplete && msg.blocks?.some(b => b.type === 'markdown-report') && (
-                      <div className="my-4 border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 flex items-center justify-between shadow-2xs w-full max-w-[620px] select-none animate-in fade-in slide-in-from-top-1 duration-200">
-                        <div className="flex items-center gap-2.5">
-                          <Trophy className="w-5 h-5 text-indigo-600 flex-none" />
-                          <div className="space-y-0.5">
-                            <span className="text-[13px] font-bold text-gray-800 block">以交互式网页报告分享 Data Agent 的分析</span>
-                            <span className="text-[11px] text-gray-400 block font-medium">包含销量、口碑建模、平台生态的完整大图景报告</span>
+                          <div className="flex items-center gap-2 flex-none">
+                            <button 
+                              onClick={() => alert('已取消')}
+                              className="inline-flex items-center justify-center border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 text-xs font-semibold rounded-lg text-gray-600 transition-colors cursor-pointer active:scale-95"
+                            >
+                              取消
+                            </button>
+                            <button 
+                              onClick={() => setIsReportOpen(true)}
+                              className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 px-4.5 py-1.5 text-xs font-bold rounded-lg text-white shadow-sm transition-colors cursor-pointer active:scale-95"
+                            >
+                              绘制网页
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-none">
-                          <button 
-                            onClick={() => alert('已取消')}
-                            className="inline-flex items-center justify-center border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 text-xs font-semibold rounded-lg text-gray-600 transition-colors cursor-pointer active:scale-95"
-                          >
-                            取消
-                          </button>
-                          <button 
-                            onClick={() => setIsReportOpen(true)}
-                            className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 px-4.5 py-1.5 text-xs font-bold rounded-lg text-white shadow-sm transition-colors cursor-pointer active:scale-95"
-                          >
-                            绘制网页
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {msg.role === 'user' && (
-                    <div className="flex-none size-8 rounded-full bg-[#E5E9F8] flex items-center justify-center text-[#2D336B] font-bold text-sm shadow-sm border border-blue-100">
-                      A
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* 第三行：工具栏与时间 (赞、踩) */}
+                    <div className="pl-[38px] flex items-center gap-2 mt-2 select-none">
+                      <div className="flex items-center gap-1 transition-opacity duration-200">
+                        <button className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded cursor-pointer size-6 transition-all border-none bg-transparent">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-up"><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/><path d="M7 10v12"/></svg>
+                        </button>
+                        <button className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded cursor-pointer size-6 transition-all border-none bg-transparent">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-down"><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/><path d="M17 14V2"/></svg>
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-gray-400 font-medium">
+                        {new Date().toLocaleDateString('zh-CN')} {new Date().toLocaleTimeString('zh-CN', { hour12: false })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
 
               {isTyping && (
-                <div className="flex gap-4 w-full justify-start animate-pulse">
-                  <div className="flex-none size-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm">
-                    <img className="h-5 w-5 animate-spin" alt="data-agent" src="https://g.alicdn.com/apsaradb-fe/dms-theia-app/0.3.5/data-agent/static/svg/logo-black.svg" />
+                <div className="group relative flex flex-col w-full py-4 animate-pulse">
+                  {/* 第一行：头像与名称 */}
+                  <div className="flex h-[26px] items-center mb-2 select-none">
+                    <span className="relative shrink-0 rounded-full flex h-[26px] w-[26px] items-center overflow-hidden">
+                      <img className="h-full w-full aspect-auto animate-spin" alt="data-agent" src="https://g.alicdn.com/apsaradb-fe/dms-theia-app/0.3.5/data-agent/static/svg/logo-black.svg" />
+                    </span>
+                    <span className="font-dm-sans text-[14px] font-semibold text-gray-800 ml-3">Data Agent</span>
                   </div>
-                  <div className="bg-white text-gray-500 border border-gray-100 rounded-2xl rounded-tl-none px-4 py-3 text-sm shadow-sm flex items-center gap-1">
-                    <span className="font-medium text-[13px]">正在深度分析数据</span>
+                  {/* 第二行：消息体内容 */}
+                  <div className="pl-[38px] w-full flex items-center gap-1.5 text-gray-500 text-[13px] font-medium">
+                    <span>正在深度分析数据</span>
                     <span className="animate-bounce">.</span>
                     <span className="animate-bounce delay-100">.</span>
                     <span className="animate-bounce delay-200">.</span>
