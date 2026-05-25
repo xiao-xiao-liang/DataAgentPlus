@@ -15,6 +15,8 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Map;
 
+import static com.liang.data.agent.common.constant.VectorMetadataKey.*;
+
 /**
  * 智能体向量存储服务实现
  *
@@ -25,9 +27,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
 
-    private static final String AGENT_ID_KEY = "agent_id";
-    private static final String VECTOR_TYPE_KEY = "vector_type";
-    private static final String DEFAULT_QUERY = "default";
 
     private final VectorStore vectorStore;
     private final DataAgentProperties properties;
@@ -41,7 +40,7 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
             throw new ServiceException("vectorType 不能为空", BaseErrorCode.CLIENT_ERROR);
         }
 
-        String filterExpr = String.format("%s == '%s' && %s == '%s'", AGENT_ID_KEY, agentId, VECTOR_TYPE_KEY, vectorType.getCode());
+        String filterExpr = String.format("%s == '%s' && %s == '%s'", AGENT_ID, agentId, VECTOR_TYPE, vectorType.getCode());
 
         SearchRequest searchRequest = SearchRequest.builder()
                 .query(query)
@@ -92,7 +91,7 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
 
     @Override
     public boolean hasDocuments(String agentId) {
-        String filterExpr = String.format("%s == '%s'", AGENT_ID_KEY, agentId);
+        String filterExpr = String.format("%s == '%s'", AGENT_ID, agentId);
         List<Document> docs = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(DEFAULT_QUERY)
