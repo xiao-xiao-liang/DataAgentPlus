@@ -1,0 +1,11 @@
+Store_ID,Product_Category,Sales_Amount,Rating,Order_Date
+S001,Fast Food,1250.5,4.2,2025-01-01
+S002,Dessert,450.2,4.8,2025-01-01
+S003,Beverage,890.0,4.5,2025-01-02
+S004,Main Course,3200.0,4.7,2025-01-02
+S005,Appetizer,650.8,4.1,2025-01-03
+S006,Fast Food,1580.0,4.3,2025-01-03
+S007,Dessert,510.5,4.6,2025-01-04
+S008,Beverage,920.0,4.4,2025-01-04
+S009,Main Course,2850.0,4.9,2025-01-05
+S010,Appetizer,720.2,4.0,2025-01-05
