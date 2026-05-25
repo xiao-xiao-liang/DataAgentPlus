@@ -3,10 +3,15 @@ package com.liang.data.agent.dal.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.liang.data.agent.dal.entity.AgentDatasourceEntity;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 /**
  * 智能体数据源关联表 Mapper
  */
 @Mapper
 public interface AgentDatasourceMapper extends BaseMapper<AgentDatasourceEntity> {
+
+    @Select("SELECT datasource_id FROM agent_datasource WHERE agent_id = #{agentId} AND is_active = 1")
+    Integer getActiveDatasource(@Param("agentId") Integer agentId);
 }
