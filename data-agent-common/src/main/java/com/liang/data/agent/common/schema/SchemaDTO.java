@@ -1,4 +1,4 @@
-package com.liang.data.agent.workflow.dto.schema;
+package com.liang.data.agent.common.schema;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
