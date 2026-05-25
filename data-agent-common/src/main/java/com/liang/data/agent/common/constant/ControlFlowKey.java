@@ -67,4 +67,14 @@ public final class ControlFlowKey {
      * Python 降级模式标记 (超过最大重试后触发)
      */
     public static final String PYTHON_FALLBACK_MODE = "PYTHON_FALLBACK_MODE";
+
+    /**
+     * 人工反馈后下一个执行节点
+     */
+    public static final String HUMAN_NEXT_NODE = "human_next_node";
+
+    /**
+     * 等待人工反馈状态标识
+     */
+    public static final String WAIT_FOR_FEEDBACK = "WAIT_FOR_FEEDBACK";
 }
