@@ -9,6 +9,7 @@ import org.springframework.ai.document.Document;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -50,6 +51,15 @@ public final class StateUtil {
         return state.value(key)
                 .map(v -> (List<T>) v)
                 .orElseThrow(() -> new ServiceException("State 中缺失列表数据。Key" + key));
+    }
+
+    /**
+     * 获取 Map 类型的 state 值 (不存在则返回默认的空 HashMap)
+     */
+    @SuppressWarnings("unchecked")
+    public static <K, V> Map<K, V> getMapValue(OverAllState state, String key) {
+        return (Map<K, V>) state.value(key)
+                .orElseGet(HashMap::new);
     }
 
     /**
