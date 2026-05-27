@@ -31,7 +31,7 @@ public class PythonAnalyzeNode implements NodeAction {
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
         String pythonOutput = StateUtil.getStringValue(state, PYTHON_EXECUTE_NODE_OUTPUT, "{}");
-        int stepNumber = PlanProcessUtil.getCurrentStepNumber(state);
+        int stepNumber = PlanProcessUtil.getExecutingStepNumber(state);
 
         log.info("Python 分析 - 步骤: {}, 输出长度: {}", stepNumber, pythonOutput.length());
 

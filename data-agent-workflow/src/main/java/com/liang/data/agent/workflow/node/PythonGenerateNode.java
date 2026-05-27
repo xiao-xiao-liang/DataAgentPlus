@@ -73,7 +73,7 @@ public class PythonGenerateNode implements NodeAction {
                     """, lastCode, lastError);
         }
 
-        ExecutionStep step = PlanProcessUtil.getCurrentExecutionStep(state);
+        ExecutionStep step = PlanProcessUtil.getExecutingStep(state);
 
         // TODO: 从配置获取 python_memory 和 python_timeout
         String systemPrompt = PromptConstant.getPythonGeneratorPromptTemplate().render(Map.of(

@@ -4,6 +4,7 @@ import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.liang.data.agent.common.schema.SchemaDTO;
 import com.liang.data.agent.common.constant.StateKey;
 import com.liang.data.agent.workflow.dto.SqlRetryDTO;
 import com.liang.data.agent.workflow.dto.node.SemanticConsistencyDTO;
@@ -22,7 +23,7 @@ import java.util.Map;
 import static com.liang.data.agent.common.constant.ControlFlowKey.DB_DIALECT_TYPE;
 import static com.liang.data.agent.common.constant.ControlFlowKey.SQL_REGENERATE_REASON;
 import static com.liang.data.agent.common.constant.NodeOutputKey.*;
-import static com.liang.data.agent.workflow.util.PlanProcessUtil.getCurrentExecutionStepInstruction;
+import static com.liang.data.agent.workflow.util.PlanProcessUtil.getExecutingStepInstruction;
 
 /**
  * 语义一致性检查节点
@@ -44,7 +45,11 @@ public class SemanticConsistencyNode implements NodeAction {
         String evidence = StateUtil.getStringValue(state, EVIDENCE_OUTPUT);
         String dialect = StateUtil.getStringValue(state, DB_DIALECT_TYPE, "MySQL");
 
-        String schemaInfo = StateUtil.getStringValue(state, TABLE_RELATION_OUTPUT, "");
+        SchemaDTO schemaDTO = StateUtil.getObjectValueOrNull(state, TABLE_RELATION_OUTPUT, SchemaDTO.class);
+        String schemaInfo = "";
+        if (schemaDTO != null && schemaDTO.getTables() != null) {
+            schemaInfo = PromptHelper.buildMixMacSqlDbPrompt(schemaDTO, true);
+        }
 
         SemanticConsistencyDTO dto = SemanticConsistencyDTO.builder()
                 .sql(sql)
@@ -52,7 +57,7 @@ public class SemanticConsistencyNode implements NodeAction {
                 .evidence(evidence)
                 .dialect(dialect)
                 .schemaInfo(schemaInfo)
-                .executionDescription(getCurrentExecutionStepInstruction(state))
+                .executionDescription(getExecutingStepInstruction(state))
                 .build();
 
         Flux<ChatResponse> responseFlux = nl2SqlService.checkSemanticConsistency(dto);

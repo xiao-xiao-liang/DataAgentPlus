@@ -53,9 +53,42 @@ public final class PlanProcessUtil {
 
     /**
      * 获取当前步骤编号 (默认为 1)
+     *
+     * <p>注意：PlanExecutorNode 在分发到工具节点前会先自增 PLAN_CURRENT_STEP，
+     * 因此工具节点内应使用 {@link #getExecutingStepNumber(OverAllState)} 获取实际正在执行的步骤号。</p>
      */
     public static int getCurrentStepNumber(OverAllState state) {
         return state.value(PLAN_CURRENT_STEP, 1);
+    }
+
+    /**
+     * 获取实际正在执行的步骤编号
+     *
+     * <p>由于 PlanExecutorNode 在分发前已将 PLAN_CURRENT_STEP 自增 1，
+     * 此方法返回 currentStep - 1 以得到实际正在执行的步骤编号。</p>
+     */
+    public static int getExecutingStepNumber(OverAllState state) {
+        return Math.max(getCurrentStepNumber(state) - 1, 1);
+    }
+
+    /**
+     * 从 state 中获取实际正在执行的 ExecutionStep（工具节点专用）
+     *
+     * <p>与 {@link #getCurrentExecutionStep(OverAllState)} 不同，此方法考虑了
+     * PlanExecutorNode 预自增的情况，返回正确的当前执行步骤。</p>
+     */
+    public static ExecutionStep getExecutingStep(OverAllState state) {
+        Plan plan = getPlan(state);
+        int executingStep = getExecutingStepNumber(state);
+        return getCurrentExecutionStep(plan, executingStep);
+    }
+
+    /**
+     * 获取实际正在执行步骤的 instruction 描述（工具节点专用）
+     */
+    public static String getExecutingStepInstruction(OverAllState state) {
+        ExecutionStep.ToolParameters params = getExecutingStep(state).getToolParameters();
+        return params != null ? params.getInstruction() : "无";
     }
 
     /**

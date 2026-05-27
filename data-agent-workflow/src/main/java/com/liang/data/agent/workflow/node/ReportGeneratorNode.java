@@ -8,7 +8,6 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.workflow.dto.planner.ExecutionStep;
-import com.liang.data.agent.workflow.dto.planner.Plan;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
@@ -22,7 +21,6 @@ import reactor.core.publisher.Flux;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.liang.data.agent.common.constant.ControlFlowKey.PLAN_CURRENT_STEP;
 import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_EXECUTE_NODE_OUTPUT;
 import static com.liang.data.agent.common.constant.StateKey.RESULT;
 
@@ -36,9 +34,7 @@ public class ReportGeneratorNode implements NodeAction {
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
         String userInput = StateUtil.getCanonicalQuery(state);
-        int currentStep = StateUtil.getObjectValue(state, PLAN_CURRENT_STEP, Integer.class, 1);
-        Plan plan = PlanProcessUtil.getPlan(state);
-        ExecutionStep step = PlanProcessUtil.getCurrentExecutionStep(plan, currentStep);
+        ExecutionStep step = PlanProcessUtil.getExecutingStep(state);
         String summary = step.getToolParameters() != null ? step.getToolParameters().getSummaryAndRecommendations() : "";
         
         Map<String, String> results = StateUtil.getMapValue(state, SQL_EXECUTE_NODE_OUTPUT);

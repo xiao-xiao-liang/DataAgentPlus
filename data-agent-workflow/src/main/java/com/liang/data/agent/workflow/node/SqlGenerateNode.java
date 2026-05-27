@@ -74,7 +74,7 @@ public class SqlGenerateNode implements NodeAction {
         // 获取当前步骤的执行描述 (Plan 模式下)
         String executionDescription;
         try {
-            executionDescription = PlanProcessUtil.getCurrentExecutionStepInstruction(state);
+            executionDescription = PlanProcessUtil.getExecutingStepInstruction(state);
         } catch (Exception e) {
             executionDescription = canonicalQuery;
         }

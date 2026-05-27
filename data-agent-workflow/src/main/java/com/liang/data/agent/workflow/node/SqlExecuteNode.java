@@ -86,12 +86,12 @@ public class SqlExecuteNode implements NodeAction {
 
             // 5. 累加明文结果至 memory (跨步骤累积)
             Map<String, String> existingResults = StateUtil.getMapValue(state, SQL_EXECUTE_NODE_OUTPUT);
-            int stepNumber = PlanProcessUtil.getCurrentStepNumber(state);
+            int stepNumber = PlanProcessUtil.getExecutingStepNumber(state);
             Map<String, String> updatedResults = PlanProcessUtil.addStepResult(existingResults, stepNumber, resultText);
 
             // 6. 回写当前步骤生成的 SQL 语句 (供 Planner/报告生成等分析环节做追溯)
             try {
-                var step = PlanProcessUtil.getCurrentExecutionStep(state);
+                var step = PlanProcessUtil.getExecutingStep(state);
                 if (step.getToolParameters() != null) {
                     step.getToolParameters().setSqlQuery(sql);
                 }
