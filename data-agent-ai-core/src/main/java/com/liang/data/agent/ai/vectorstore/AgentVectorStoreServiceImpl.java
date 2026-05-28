@@ -80,7 +80,7 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
         
         StringBuilder sb = new StringBuilder();
         metadata.forEach((key, value) -> {
-            if (!sb.isEmpty()) sb.append("&");
+            if (!sb.isEmpty()) sb.append(" && ");
             sb.append(key).append(" == '").append(value).append("'");
         });
         

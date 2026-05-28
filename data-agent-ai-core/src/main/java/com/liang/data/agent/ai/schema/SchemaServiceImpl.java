@@ -20,6 +20,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static com.liang.data.agent.common.constant.VectorMetadataKey.*;
@@ -54,7 +55,7 @@ public class SchemaServiceImpl implements SchemaService {
 
         SearchRequest searchRequest = SearchRequest.builder()
                 .query(query)
-                .topK(vs.getDefaultTopkLimit())
+                .topK(Math.max(vs.getDefaultTopkLimit(), 15))
                 .similarityThreshold(vs.getDefaultSimilarityThreshold())
                 .filterExpression(filterExpr)
                 .build();
@@ -300,16 +301,34 @@ public class SchemaServiceImpl implements SchemaService {
     }
 
     /**
-     * 批量写入表文档和列文档到向量库
+     * 批量写入表文档和列文档到向量库，使用 CompletableFuture 并行处理每批（最多10条）的异步写入
      */
     private void storeDocuments(Integer agentId, List<Document> tableDocs, List<Document> columnDocs) {
+        final int batchSize = 10;
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        
         if (!tableDocs.isEmpty()) {
-            vectorStoreService.addDocuments(agentId.toString(), tableDocs);
-            log.info("写入 {} 条表文档", tableDocs.size());
+            for (int i = 0; i < tableDocs.size(); i += batchSize) {
+                List<Document> batch = tableDocs.subList(i, Math.min(i + batchSize, tableDocs.size()));
+                futures.add(CompletableFuture.runAsync(() -> 
+                    vectorStoreService.addDocuments(agentId.toString(), batch)
+                ));
+            }
         }
         if (!columnDocs.isEmpty()) {
-            vectorStoreService.addDocuments(agentId.toString(), columnDocs);
-            log.info("写入 {} 条列文档", columnDocs.size());
+            for (int i = 0; i < columnDocs.size(); i += batchSize) {
+                List<Document> batch = columnDocs.subList(i, Math.min(i + batchSize, columnDocs.size()));
+                futures.add(CompletableFuture.runAsync(() -> 
+                    vectorStoreService.addDocuments(agentId.toString(), batch)
+                ));
+            }
+        }
+        
+        if (!futures.isEmpty()) {
+            log.info("开始并行异步写入向量文档, 总分批任务数: {}", futures.size());
+            // 阻塞等待所有并发的分批写入任务全部成功执行完毕
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            log.info("并行写入向量文档全部完成! 表文档: {} 条, 列文档: {} 条", tableDocs.size(), columnDocs.size());
         }
     }
 }

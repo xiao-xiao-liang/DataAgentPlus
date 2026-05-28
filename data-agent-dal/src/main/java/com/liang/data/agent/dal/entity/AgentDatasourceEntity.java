@@ -24,6 +24,15 @@ public class AgentDatasourceEntity {
     /** 是否启用：0-禁用, 1-启用 */
     private Integer isActive;
 
+    /** Schema 同步状态：pending / syncing / success / failed */
+    private String schemaStatus;
+
+    /** 向量化状态：pending / vectorizing / success / failed */
+    private String embeddingStatus;
+
+    /** 最后同步时间 */
+    private LocalDateTime lastSyncTime;
+
     @TableLogic
     private Integer delFlag;
 
