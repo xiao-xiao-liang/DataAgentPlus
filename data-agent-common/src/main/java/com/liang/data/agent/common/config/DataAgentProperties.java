@@ -56,6 +56,16 @@ public class DataAgentProperties {
     private int maxColumnsPerTable = 50;
 
     /**
+     * Python 沙箱执行内存限制 (MB)
+     */
+    private String pythonMemoryLimit = "256";
+
+    /**
+     * Python 沙箱执行超时时间 (秒)
+     */
+    private String pythonTimeout = "30";
+
+    /**
      * 是否启用SQL执行结果图表判断，默认启用
      */
     private boolean enableSqlResultChart = true;
