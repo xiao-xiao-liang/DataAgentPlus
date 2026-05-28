@@ -4,10 +4,17 @@ server:
 spring:
   application:
     name: liang-data-agent
+  autoconfigure:
+    exclude:
+#      - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
 
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://118.195.146.161:3306/data_agent?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+#    username: root
+#    password: yuanshenniubi
     url: jdbc:mysql://localhost:3306/data_agent?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: root
@@ -61,8 +68,9 @@ data-agent:
     enable-hybrid-search: false
   code-executor:
     type: AI_SIM
+  enrich-sql-result-timeout: 30000
 
 logging:
   level:
-    com.liang.data.agent: DEBUG
+    com.liang.data.agent: INFO
     org.springframework.ai: INFO
