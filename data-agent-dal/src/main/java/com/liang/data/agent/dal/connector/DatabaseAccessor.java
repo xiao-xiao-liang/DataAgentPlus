@@ -63,6 +63,9 @@ public class DatabaseAccessor {
         } catch (SQLException e) {
             log.error("执行 SQL 失败: sql={}, error={}", sql, e.getMessage());
             throw new ServiceException("执行 SQL 失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);
+        } catch (Throwable t) {
+            log.error("执行 SQL 发生未知异常: sql={}, error={}", sql, t.getMessage(), t);
+            throw new ServiceException("执行 SQL 发生未知错误: " + t.getMessage(), t, BaseErrorCode.SERVICE_ERROR);
         }
     }
 

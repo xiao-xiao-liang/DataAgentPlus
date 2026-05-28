@@ -1,15 +1,22 @@
 package com.liang.data.agent.controller;
 
+import java.util.List;
+
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.liang.data.agent.common.result.Result;
 import com.liang.data.agent.common.result.Results;
 import com.liang.data.agent.dal.connector.DatabaseAccessor;
-import com.liang.data.agent.dal.connector.bo.*;
+import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
+import com.liang.data.agent.dal.connector.bo.DbConfigBO;
+import com.liang.data.agent.dal.connector.bo.ResultSetBO;
+import com.liang.data.agent.dal.connector.bo.TableInfoBO;
+
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Profile;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * MVP 阶段临时验证接口

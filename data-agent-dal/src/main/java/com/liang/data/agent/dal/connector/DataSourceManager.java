@@ -79,7 +79,7 @@ public class DataSourceManager implements DisposableBean {
                     return createDataSource(config, dialect);
                 });
 
-                log.debug("获取连接池连接: {}", dataSource);
+                log.debug("获取连接池连接: datasourceId={}, active={}, pooling={}", cacheKey, dataSource.getActiveCount(), dataSource.getPoolingCount());
                 return dataSource.getConnection();
             } catch (SQLException e) {
                 log.warn("第 {} 次获取连接失败, url={}", attempt, config.url());
