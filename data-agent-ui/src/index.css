@@ -15,6 +15,14 @@
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: #1f2937;
   background-color: #ffffff;
+  
+  /* 阿里云 DMS 原生 CSS 配色及宽度变量 */
+  --thread-max-width: 720px;
+  --color-border: #e4e4e7;
+  --color-background: #fafafc;
+  --color-foreground: #09090b;
+  --color-foreground-secondary: #71717a;
+  --color-secondary-hoverstrong: #f4f4f5;
 }
 
 body {
