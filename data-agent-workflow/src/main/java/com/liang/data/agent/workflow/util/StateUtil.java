@@ -83,6 +83,15 @@ public final class StateUtil {
     }
 
     /**
+     * 获取对象类型的 state 值 (不存在则返回 null)
+     */
+    public static <T> T getObjectValueOrNull(OverAllState state, String key, Class<T> type) {
+        return state.value(key)
+                .map(value -> deserializeIfNeeded(value, type))
+                .orElse(null);
+    }
+
+    /**
      * 获取对象类型的 state 值 (不存在则用 Supplier 提供默认值)
      */
     public static <T> T getObjectValue(OverAllState state, String key, Class<T> type, Supplier<T> defaultSupplier) {

@@ -100,8 +100,8 @@ public class PlannerNode implements NodeAction {
         String userQuestionPrompt = buildUserPrompt(canonicalQuery, validationError, state);
 
         String prompt = PromptConstant.getPlannerPromptTemplate().render(Map.of(
-                "question", userQuestionPrompt,
-                "schema_info", schemaInfo,
+                "user_question", userQuestionPrompt,
+                "schema", schemaInfo,
                 "evidence", evidence,
                 "semantic_model", semanticModelPrompt,
                 "plan_validation_error", formatValidationError(validationError),

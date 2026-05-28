@@ -128,7 +128,7 @@ public class PlanExecutorNode implements NodeAction {
             Flux<ChatResponse> displayFlux = Flux.just(
                     ChatResponseUtil.createResponse(String.format("即将执行步骤 %d/%d: [%s] -> %s",
                             currentStep, executionPlan.size(), toolToUse,
-                            curStep.getToolParameters() != null ? curStep.getToolParameters().getInstruction() : ""))
+                            getStepDisplayDescription(curStep)))
             );
 
             Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
@@ -202,6 +202,20 @@ public class PlanExecutorNode implements NodeAction {
     /**
      * 决定下一步执行的节点
      */
+    private String getStepDisplayDescription(ExecutionStep step) {
+        if (step == null || step.getToolParameters() == null) {
+            return "";
+        }
+
+        String instruction = step.getToolParameters().getInstruction();
+        if (StringUtils.hasText(instruction)) {
+            return instruction;
+        }
+
+        String summaryAndRecommendations = step.getToolParameters().getSummaryAndRecommendations();
+        return StringUtils.hasText(summaryAndRecommendations) ? summaryAndRecommendations : "";
+    }
+
     private Map<String, Object> determineNextNode(String toolToUse) {
         Map<String, Object> results = new HashMap<>();
         if (SUPPORTED_NODES.contains(toolToUse) || HUMAN_FEEDBACK_NODE.equals(toolToUse)) {
