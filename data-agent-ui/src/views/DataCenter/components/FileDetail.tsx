@@ -22,13 +22,15 @@ interface FileDetailProps {
   onSelectSubTable: (tableName: string) => void;
   onDelete: (id: string) => void;
   setToastMessage: (msg: string | null) => void;
+  onBackToCenter?: () => void;
 }
 
 export const FileDetail: React.FC<FileDetailProps> = ({ 
   file, 
   onSelectSubTable, 
   onDelete, 
-  setToastMessage 
+  setToastMessage,
+  onBackToCenter
 }) => {
   const navigate = useNavigate();
   const baseName = useMemo(() => file.name.replace(/\.[^/.]+$/, ""), [file.name]);
@@ -82,18 +84,23 @@ export const FileDetail: React.FC<FileDetailProps> = ({
   return (
     <div className="h-full w-full flex flex-col overflow-hidden text-gray-850 animate-in fade-in duration-300">
       {/* 顶部面包屑导航 */}
-      <div className="flex h-12 w-full items-center px-4 py-2 text-sm flex-none border-b border-gray-100 select-none">
+      <div className="flex h-9 w-full items-center px-4 text-xs flex-none border-b border-gray-100 select-none">
         <nav aria-label="breadcrumb">
-          <ol className="flex flex-wrap items-center gap-1.5 wrap-break-word text-sm text-gray-400 sm:gap-2.5">
+          <ol className="flex flex-wrap items-center gap-1.5 wrap-break-word text-xs text-gray-400 sm:gap-2.5">
             <li className="inline-flex items-center gap-1.5">
-              <span className="text-gray-400 font-medium">数据中心</span>
+              <span 
+                onClick={onBackToCenter}
+                className="transition-colors hover:text-gray-800 cursor-pointer font-medium"
+              >
+                数据中心
+              </span>
             </li>
             <li role="presentation" aria-hidden="true" className="text-gray-300">
               <ChevronRight className="w-3.5 h-3.5" />
             </li>
             <li className="inline-flex items-center gap-1.5">
               <span className="font-normal text-gray-700 flex items-center gap-1 font-medium select-none">
-                <Database className="w-4 h-4 text-gray-400 mr-1" />
+                <Database className="w-3.5 h-3.5 text-gray-400 mr-0.5" />
                 {file.name}
               </span>
             </li>

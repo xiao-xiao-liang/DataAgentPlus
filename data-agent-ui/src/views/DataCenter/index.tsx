@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { 
@@ -22,17 +23,67 @@ import { SubTableDetail } from './components/SubTableDetail';
 
 // 引入类型与 Mock 数据
 import type { DataSource, UploadedFile } from './types';
-import { INITIAL_DATASOURCES, INITIAL_FILES } from './mockData';
+import { INITIAL_FILES } from './mockData';
+
+// 引入数据库 LOGO 静态资产
+import mysqlLogo from '../../assets/logos/mysql.svg';
+import postgresqlLogo from '../../assets/logos/postgresql.svg';
+import oracleLogo from '../../assets/logos/oracle.svg';
+import hbaseLogo from '../../assets/logos/hbase.svg';
+
+const getDatabaseLogo = (type: string) => {
+  const t = type?.toLowerCase();
+  if (t === 'mysql') return mysqlLogo;
+  if (t === 'postgresql' || t === 'postgres' || t === 'polardb') return postgresqlLogo;
+  if (t === 'oracle') return oracleLogo;
+  if (t === 'hbase') return hbaseLogo;
+  return null;
+};
 
 export const DataCenter: React.FC = () => {
-  const [datasources, setDatasources] = useState<DataSource[]>(INITIAL_DATASOURCES);
+  const { database } = useParams();
+  const navigate = useNavigate();
+  const [datasources, setDatasources] = useState<DataSource[]>([]);
   const [files, setFiles] = useState<UploadedFile[]>(INITIAL_FILES);
+
+  // 获取后端真实数据源列表
+  const fetchDatasources = async () => {
+    try {
+      const response = await fetch('/api/datasource');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.code === '0') {
+          const list = (result.data || []).map((ds: any) => ({
+            id: String(ds.id),
+            name: ds.name,
+            type: ds.type === 'mysql' ? 'MySQL' : ds.type === 'postgresql' ? 'PostgreSQL' : ds.type,
+            host: ds.host,
+            port: ds.port,
+            database: ds.databaseName || '',
+            username: ds.username,
+            status: ds.status === 'active' ? 'online' : 'offline',
+            createdAt: ds.createTime ? ds.createTime.replace('T', ' ').substring(0, 19) : '',
+            // 缓存已选表，在后端表关系建立前提供良好的体验
+            importedTables: JSON.parse(localStorage.getItem(`ds_imported_${ds.id}`) || '[]')
+          }));
+          setDatasources(list);
+        }
+      }
+    } catch (e) {
+      console.error('加载数据源列表失败', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchDatasources();
+  }, []);
 
   // 基础交互状态
   const [activeTab, setActiveTab] = useState<'RDS' | 'FILE'>('FILE'); // 默认切换到上传的数据
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [addPanelKey, setAddPanelKey] = useState(0);
 
   // 二级子表下钻详情状态
   const [selectedSubTableName, setSelectedSubTableName] = useState<string | null>(null);
@@ -42,6 +93,7 @@ export const DataCenter: React.FC = () => {
   useEffect(() => {
     setSelectedSubTableName(null);
   }, [selectedItemId]);
+
 
   // Toast 轻量气泡通知
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -58,12 +110,18 @@ export const DataCenter: React.FC = () => {
   // 右侧是否处于“添加数据”状态
   const [isAddingData, setIsAddingData] = useState(false);
 
-  // 模拟刷新动作
-  const handleRefresh = () => {
+  // 真实刷新动作
+  const handleRefresh = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 800);
+    await fetchDatasources();
+    setIsLoading(false);
+  };
+
+  // 返回数据中心主页
+  const handleBackToCenter = () => {
+    setSelectedItemId(null);
+    setIsAddingData(false);
+    navigate('/data');
   };
 
   // 模糊检索过滤
@@ -90,23 +148,62 @@ export const DataCenter: React.FC = () => {
     }
   }, [selectedItemId, activeTab, datasources, files]);
 
-  // 删除操作
-  const handleDeleteItem = (e: React.MouseEvent, id: string) => {
+  // 监听路由参数变化，同步选中状态（支持浏览器前进后退、刷新不丢失状态）
+  useEffect(() => {
+    if (database) {
+      const matched = datasources.find(ds => ds.database === database);
+      if (matched) {
+        setSelectedItemId(matched.id);
+        setActiveTab('RDS');
+        setIsAddingData(false);
+      }
+    } else {
+      if (activeTab === 'RDS' && selectedItemId) {
+        setSelectedItemId(null);
+      }
+    }
+  }, [database, datasources, activeTab, selectedItemId]);
+
+  // 删除操作 (对接后端物理删除 API)
+  const handleDeleteItem = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (activeTab === 'RDS') {
-      setDatasources(prev => prev.filter(ds => ds.id !== id));
+      if (!confirm('确定要删除该数据源连接吗？这将从系统中彻底移除它。')) return;
+      try {
+        const response = await fetch(`/api/datasource/${id}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.code === '0') {
+            setToastMessage('数据源删除成功');
+            // 清理本地已导入表列表缓存
+            localStorage.removeItem(`ds_imported_${id}`);
+            if (selectedItemId === id) {
+              setSelectedItemId(null);
+            }
+            await fetchDatasources();
+          } else {
+            setToastMessage(`删除失败: ${result.message}`);
+          }
+        }
+      } catch (err: any) {
+        setToastMessage(`删除失败: ${err.message || '网络异常'}`);
+      }
     } else {
       setFiles(prev => prev.filter(f => f.id !== id));
-    }
-    if (selectedItemId === id) {
-      setSelectedItemId(null);
+      if (selectedItemId === id) {
+        setSelectedItemId(null);
+      }
     }
   };
 
   // 处理添加确认
-  const handleConfirmAdd = (data: {
+  const handleConfirmAdd = async (data: {
     type: 'LOCAL_UPLOAD' | 'OSS_FILE' | 'RDS_DB' | 'POLAR_DB' | 'ANALYTIC_DB' | 'DMS_INSTANCE';
     fileName?: string;
+    tempId?: string;
+    selectedTables?: string[];
     dbForm?: {
       name: string;
       host: string;
@@ -114,6 +211,7 @@ export const DataCenter: React.FC = () => {
       database: string;
       username: string;
       password?: string;
+      importedTables?: string[];
     };
   }) => {
     if (data.type === 'LOCAL_UPLOAD') {
@@ -129,35 +227,29 @@ export const DataCenter: React.FC = () => {
       setFiles(prev => [newFile, ...prev]);
       setActiveTab('FILE');
       setSelectedItemId(newFile.id);
+      setIsAddingData(false);
     } else if (data.type === 'RDS_DB' || data.type === 'POLAR_DB' || data.type === 'ANALYTIC_DB') {
-      if (!data.dbForm || !data.dbForm.name || !data.dbForm.host || !data.dbForm.database || !data.dbForm.username) {
-        alert('请填写完整数据库连接信息');
-        return;
+      // 如果存在静默创建保存好的 tempId
+      if (data.tempId) {
+        // 保存选中的表关系到本地 LocalStorage 供后续使用
+        if (data.selectedTables) {
+          localStorage.setItem(`ds_imported_${data.tempId}`, JSON.stringify(data.selectedTables));
+        }
+        // 重新拉取后端最新数据源列表
+        await fetchDatasources();
+        // 切换 Tab 以让用户在左侧看到新加的数据库连接
+        setActiveTab('RDS');
+        setToastMessage('数据库连接成功，可以继续添加');
+        // 强行改变 key，重置 AddDataPanel 面板的输入和测试连接状态
+        setAddPanelKey(prev => prev + 1);
+      } else {
+        // 兜底防御：若无 tempId 直接提交（极少数由于测试连接异常），报错提示
+        alert('请先进行“测试连接”并通过后再试');
       }
-      const typeMap: Record<string, 'MySQL' | 'PostgreSQL' | 'ClickHouse'> = {
-        'RDS_DB': 'MySQL',
-        'POLAR_DB': 'MySQL',
-        'ANALYTIC_DB': 'MySQL'
-      };
-      const newDS: DataSource = {
-        id: `db-${Date.now()}`,
-        name: data.dbForm.name,
-        type: typeMap[data.type] || 'MySQL',
-        host: data.dbForm.host,
-        port: parseInt(data.dbForm.port) || 3306,
-        database: data.dbForm.database,
-        username: data.dbForm.username,
-        status: 'online',
-        createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
-      };
-      setDatasources(prev => [newDS, ...prev]);
-      setActiveTab('RDS');
-      setSelectedItemId(newDS.id);
     } else {
       setToastMessage('已连接该数据源 (前端模拟)');
+      setIsAddingData(false);
     }
-    
-    setIsAddingData(false);
   };
 
   return (
@@ -260,7 +352,11 @@ export const DataCenter: React.FC = () => {
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
                           <div 
-                            onClick={() => { setSelectedItemId(ds.id); setIsAddingData(false); }}
+                            onClick={() => { 
+                              setSelectedItemId(ds.id); 
+                              setIsAddingData(false); 
+                              navigate(`/data/${ds.database}`);
+                            }}
                             className={clsx(
                               "group relative flex items-center justify-between px-3 py-2 text-sm font-medium rounded transition-colors cursor-pointer",
                               (selectedItemId === ds.id && !isAddingData)
@@ -268,8 +364,14 @@ export const DataCenter: React.FC = () => {
                                 : "text-gray-600 hover:bg-gray-100/60 hover:text-gray-900"
                             )}
                           >
-                            <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
-                              <Database className="w-3.5 h-3.5 text-gray-400 flex-none" />
+                            <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0 select-none">
+                              {(() => {
+                                const logo = getDatabaseLogo(ds.type);
+                                if (logo) {
+                                  return <img src={logo} className="w-3.5 h-3.5 object-contain flex-none" alt={ds.type} />;
+                                }
+                                return <Database className="w-3.5 h-3.5 text-gray-400 flex-none" />;
+                              })()}
                               <span className="truncate group-hover:underline">{ds.name}</span>
                             </div>
                             <button 
@@ -357,8 +459,10 @@ export const DataCenter: React.FC = () => {
         <div className="w-[70%] flex-1 h-full overflow-hidden flex flex-col bg-white">
           {isAddingData ? (
             <AddDataPanel 
+              key={addPanelKey}
               onCancel={() => setIsAddingData(false)} 
               onConfirm={handleConfirmAdd} 
+              onBackToCenter={handleBackToCenter}
             />
           ) : !selectedItem ? (
             /* 空白页布局 */
@@ -384,7 +488,18 @@ export const DataCenter: React.FC = () => {
             </div>
           ) : 'host' in selectedItem ? (
             /* 选中数据库详情视图 */
-            <DataSourceDetail selectedItem={selectedItem} />
+            <DataSourceDetail 
+              selectedItem={selectedItem} 
+              onUpdateImportedTables={(dsId, updatedTables) => {
+                setDatasources(prev => prev.map(ds => {
+                  if (ds.id === dsId) {
+                    return { ...ds, importedTables: updatedTables };
+                  }
+                  return ds;
+                }));
+              }}
+              onBackToCenter={handleBackToCenter}
+            />
           ) : selectedSubTableName ? (
             /* 选中二级子数据表详情视图 */
             <SubTableDetail 
@@ -394,6 +509,7 @@ export const DataCenter: React.FC = () => {
               setToastMessage={setToastMessage}
               customColumnDescriptions={customColumnDescriptions}
               setCustomColumnDescriptions={setCustomColumnDescriptions}
+              onBackToCenter={handleBackToCenter}
             />
           ) : (
             /* 选中本地文件详情视图 */
@@ -405,6 +521,7 @@ export const DataCenter: React.FC = () => {
                 setSelectedItemId(null);
               }}
               setToastMessage={setToastMessage}
+              onBackToCenter={handleBackToCenter}
             />
           )}
         </div>

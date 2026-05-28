@@ -35,6 +35,84 @@ export const MOCK_DB_TABLES: Record<string, { name: string; columns: { name: str
         { member_id: 1003, nickname: '王五', phone: '137****9012', points: 6200, level: '钻石会员' }
       ]
     }
+  ],
+  polardb: [
+    {
+      name: 'orca_list_0000_0000',
+      columns: [
+        { name: 'id', type: 'BIGINT' },
+        { name: 'key_name', type: 'VARCHAR(255)' },
+        { name: 'element_value', type: 'TEXT' },
+        { name: 'index_pos', type: 'INT' },
+        { name: 'create_time', type: 'TIMESTAMP' }
+      ],
+      data: [
+        { id: 10001, key_name: 'list_key_1', element_value: 'val_001', index_pos: 0, create_time: '2026-05-25 10:00:00' },
+        { id: 10002, key_name: 'list_key_1', element_value: 'val_002', index_pos: 1, create_time: '2026-05-25 10:05:00' },
+        { id: 10003, key_name: 'list_key_2', element_value: 'val_abc', index_pos: 0, create_time: '2026-05-25 10:10:00' }
+      ]
+    },
+    {
+      name: 'orca_hash_0000_0000',
+      columns: [
+        { name: 'id', type: 'BIGINT' },
+        { name: 'key_name', type: 'VARCHAR(255)' },
+        { name: 'field_name', type: 'VARCHAR(255)' },
+        { name: 'field_value', type: 'TEXT' }
+      ],
+      data: [
+        { id: 20001, key_name: 'user:100', field_name: 'name', field_value: 'Alice' },
+        { id: 20002, key_name: 'user:100', field_name: 'age', field_value: '25' }
+      ]
+    },
+    {
+      name: 'orca_meta_0000_0000',
+      columns: [
+        { name: 'meta_id', type: 'INT' },
+        { name: 'meta_key', type: 'VARCHAR(100)' },
+        { name: 'meta_value', type: 'VARCHAR(255)' }
+      ],
+      data: [
+        { meta_id: 1, meta_key: 'version', meta_value: '1.0.0' },
+        { meta_id: 2, meta_key: 'status', meta_value: 'active' }
+      ]
+    },
+    {
+      name: 'orca_set_0000_0000',
+      columns: [
+        { name: 'id', type: 'BIGINT' },
+        { name: 'key_name', type: 'VARCHAR(255)' },
+        { name: 'member_value', type: 'VARCHAR(255)' }
+      ],
+      data: [
+        { id: 30001, key_name: 'set_1', member_value: 'mem_a' },
+        { id: 30002, key_name: 'set_1', member_value: 'mem_b' }
+      ]
+    },
+    {
+      name: 'orca_string_0000_0000',
+      columns: [
+        { name: 'id', type: 'BIGINT' },
+        { name: 'key_name', type: 'VARCHAR(255)' },
+        { name: 'val', type: 'TEXT' }
+      ],
+      data: [
+        { id: 40001, key_name: 'str_key_1', val: 'Hello PolarDB String' }
+      ]
+    },
+    {
+      name: 'orca_zset_0000_0000',
+      columns: [
+        { name: 'id', type: 'BIGINT' },
+        { name: 'key_name', type: 'VARCHAR(255)' },
+        { name: 'member_value', type: 'VARCHAR(255)' },
+        { name: 'score', type: 'DOUBLE' }
+      ],
+      data: [
+        { id: 50001, key_name: 'zset_1', member_value: 'player_a', score: 100.5 },
+        { id: 50002, key_name: 'zset_1', member_value: 'player_b', score: 200.0 }
+      ]
+    }
   ]
 };
 
@@ -116,6 +194,93 @@ export const MOCK_PREVIEW_DATA: Record<string, { columns: string[]; rows: any[] 
       { ID: '3', Attribute_A: 'Data_03', Attribute_B: 'Val_A', Value: 95.8, Status: 'Abnormal' },
       { ID: '4', Attribute_A: 'Data_04', Attribute_B: 'Val_C', Value: 145.0, Status: 'Normal' },
       { ID: '5', Attribute_A: 'Data_05', Attribute_B: 'Val_B', Value: 310.4, Status: 'Normal' }
+    ]
+  }
+};
+
+export const POLARDB_TABLE_DETAILS: Record<string, {
+  description: string;
+  size: string;
+  rows: number;
+  updateTime: string;
+  columns: {
+    name: string;
+    comment: string;
+    type: string;
+    isAnalytic: string;
+    assetDesc: string;
+    updateTime: string;
+  }[];
+}> = {
+  orca_hash_0000_0000: {
+    description: '存储Redis哈希结构的键值对及元数据',
+    size: '1 MB',
+    rows: 0,
+    updateTime: '2026-05-26 09:41:04',
+    columns: [
+      { name: 'redis_unique_id', comment: 'Redis唯一标识键', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: 'Redis内唯一主键', updateTime: '2026-05-26 09:41:00' },
+      { name: 'redis_blob_flag', comment: 'Blob数据标识', type: 'tinyint(3) unsigned', isAnalytic: '是', assetDesc: 'Blob类型标志位', updateTime: '2026-05-26 09:41:00' },
+      { name: 'redis_field_key', comment: 'Hash字段键名称', type: 'varbinary(2560)', isAnalytic: '是', assetDesc: 'Redis字段键名', updateTime: '2026-05-26 09:41:00' },
+      { name: 'redis_field_ttl', comment: '字段生存时间', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: '子额度过期时间', updateTime: '2026-05-26 09:41:00' },
+      { name: 'redis_field_blob_key', comment: 'Blob二进制键', type: 'longblob', isAnalytic: '是', assetDesc: 'Blob类型子键', updateTime: '2026-05-26 09:41:00' },
+      { name: 'redis_field_value', comment: 'Hash字段对应的值', type: 'longblob', isAnalytic: '是', assetDesc: 'Hash字段对应值', updateTime: '2026-05-26 09:41:00' }
+    ]
+  },
+  orca_list_0000_0000: {
+    description: '存储Redis列表的元数据信息',
+    size: '512 KB',
+    rows: 1540,
+    updateTime: '2026-05-26 09:42:15',
+    columns: [
+      { name: 'id', comment: '自增主键', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: '逻辑主键ID', updateTime: '2026-05-26 09:42:00' },
+      { name: 'key_name', comment: 'Redis键名', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'Redis Key', updateTime: '2026-05-26 09:42:00' },
+      { name: 'element_value', comment: '元素值', type: 'text', isAnalytic: '是', assetDesc: '列表存储的值', updateTime: '2026-05-26 09:42:00' },
+      { name: 'index_pos', comment: '元素索引位置', type: 'int(11)', isAnalytic: '是', assetDesc: '列表位置索引', updateTime: '2026-05-26 09:42:00' }
+    ]
+  },
+  orca_meta_0000_0000: {
+    description: '存储Redis键的元数据信息',
+    size: '256 KB',
+    rows: 80,
+    updateTime: '2026-05-26 09:43:10',
+    columns: [
+      { name: 'meta_id', comment: '元数据ID', type: 'int(11)', isAnalytic: '是', assetDesc: '内部ID', updateTime: '2026-05-26 09:43:00' },
+      { name: 'meta_key', comment: '配置项键名', type: 'varchar(100)', isAnalytic: '是', assetDesc: '配置键', updateTime: '2026-05-26 09:43:00' },
+      { name: 'meta_value', comment: '配置项对应的值', type: 'varchar(255)', isAnalytic: '是', assetDesc: '配置值', updateTime: '2026-05-26 09:43:00' }
+    ]
+  },
+  orca_set_0000_0000: {
+    description: '存储Redis集合的唯一标识和二进制数据',
+    size: '128 KB',
+    rows: 64,
+    updateTime: '2026-05-26 09:44:05',
+    columns: [
+      { name: 'id', comment: '唯一标识', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: '系统ID', updateTime: '2026-05-26 09:44:00' },
+      { name: 'key_name', comment: 'Redis键名', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'Set键名', updateTime: '2026-05-26 09:44:00' },
+      { name: 'member_value', comment: '集合成员值', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'Set成员', updateTime: '2026-05-26 09:44:00' }
+    ]
+  },
+  orca_string_0000_0000: {
+    description: '存储Redis字符串类型的键值对',
+    size: '2 MB',
+    rows: 24,
+    updateTime: '2026-05-26 09:44:50',
+    columns: [
+      { name: 'id', comment: '唯一标识', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: 'ID主键', updateTime: '2026-05-26 09:44:00' },
+      { name: 'key_name', comment: 'String键名', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'String键', updateTime: '2026-05-26 09:44:00' },
+      { name: 'val', comment: '字符串值', type: 'text', isAnalytic: '是', assetDesc: 'String具体值', updateTime: '2026-05-26 09:44:00' }
+    ]
+  },
+  orca_zset_0000_0000: {
+    description: '存储Redis有序集合的成员及其分数',
+    size: '1.2 MB',
+    rows: 4500,
+    updateTime: '2026-05-26 09:45:20',
+    columns: [
+      { name: 'id', comment: '主键', type: 'bigint(20) unsigned', isAnalytic: '是', assetDesc: 'ID主键', updateTime: '2026-05-26 09:45:00' },
+      { name: 'key_name', comment: 'ZSet键名', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'ZSet键', updateTime: '2026-05-26 09:45:00' },
+      { name: 'member_value', comment: 'ZSet成员名', type: 'varchar(255)', isAnalytic: '是', assetDesc: 'ZSet成员', updateTime: '2026-05-26 09:45:00' },
+      { name: 'score', comment: '分数权重', type: 'double', isAnalytic: '是', assetDesc: 'ZSet分数', updateTime: '2026-05-26 09:45:00' }
     ]
   }
 };
