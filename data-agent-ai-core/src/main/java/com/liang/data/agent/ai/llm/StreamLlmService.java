@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ChatResponse;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
+
 /**
  * 流式 LLM 调用实现 — 逐 Token 推送, 用于 SSE 场景
  */
@@ -15,16 +17,19 @@ public class StreamLlmService implements LlmService {
 
     @Override
     public Flux<ChatResponse> call(String system, String user) {
-        return registry.getChatClient().prompt().system(system).user(user).stream().chatResponse();
+        return registry.getChatClient().prompt().system(system).user(user).stream().chatResponse()
+                .timeout(Duration.ofSeconds(30));
     }
 
     @Override
     public Flux<ChatResponse> callSystem(String system) {
-        return registry.getChatClient().prompt().system(system).stream().chatResponse();
+        return registry.getChatClient().prompt().system(system).stream().chatResponse()
+                .timeout(Duration.ofSeconds(30));
     }
 
     @Override
     public Flux<ChatResponse> callUser(String user) {
-        return registry.getChatClient().prompt().user(user).stream().chatResponse();
+        return registry.getChatClient().prompt().user(user).stream().chatResponse()
+                .timeout(Duration.ofSeconds(30));
     }
 }

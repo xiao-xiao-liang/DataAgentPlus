@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
+import java.util.Optional;
 
 import static com.liang.data.agent.common.constant.ControlFlowKey.DB_DIALECT_TYPE;
 import static com.liang.data.agent.common.constant.ControlFlowKey.SQL_REGENERATE_REASON;
@@ -45,11 +46,10 @@ public class SemanticConsistencyNode implements NodeAction {
         String evidence = StateUtil.getStringValue(state, EVIDENCE_OUTPUT);
         String dialect = StateUtil.getStringValue(state, DB_DIALECT_TYPE, "MySQL");
 
-        SchemaDTO schemaDTO = StateUtil.getObjectValueOrNull(state, TABLE_RELATION_OUTPUT, SchemaDTO.class);
-        String schemaInfo = "";
-        if (schemaDTO != null && schemaDTO.getTables() != null) {
-            schemaInfo = PromptHelper.buildMixMacSqlDbPrompt(schemaDTO, true);
-        }
+        String schemaInfo = Optional.ofNullable(StateUtil.getObjectValueOrNull(state, TABLE_RELATION_OUTPUT, SchemaDTO.class))
+                .filter(dto -> dto.getTables() != null)
+                .map(dto -> PromptHelper.buildMixMacSqlDbPrompt(dto, true))
+                .orElse("");
 
         SemanticConsistencyDTO dto = SemanticConsistencyDTO.builder()
                 .sql(sql)

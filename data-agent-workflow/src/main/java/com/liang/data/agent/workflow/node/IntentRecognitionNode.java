@@ -50,7 +50,7 @@ public class IntentRecognitionNode implements NodeAction {
 
         // 2. 构建 Prompt 并调用 LLM
         String prompt = PromptHelper.buildIntentRecognitionPrompt(multiTurn, userInput);
-        log.debug("意图识别 Prompt:\n{}", prompt);
+//        log.debug("意图识别 Prompt:\n{}", prompt);
         Flux<ChatResponse> responseFlux = llmService.callUser(prompt);
 
         // 3. 包装为流式响应 (前后加 JSON 标记 + 状态消息)
