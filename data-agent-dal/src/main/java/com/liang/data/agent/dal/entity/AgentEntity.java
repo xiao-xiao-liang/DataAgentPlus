@@ -1,7 +1,10 @@
 package com.liang.data.agent.dal.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -9,7 +12,10 @@ import java.time.LocalDateTime;
  * 智能体表
  */
 @Data
+@Builder
 @TableName("agent")
+@NoArgsConstructor
+@AllArgsConstructor
 public class AgentEntity {
 
     @TableId(type = IdType.AUTO)
