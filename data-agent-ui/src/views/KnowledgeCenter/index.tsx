@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Search, Info, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw, Search, CheckCircle2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { useParams, useNavigate } from 'react-router-dom';
 
 // 引入类型与 Mock 数据
 import type { KnowledgeBase } from './types';
@@ -17,7 +18,9 @@ export const KnowledgeCenter: React.FC = () => {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedKBId, setSelectedKBId] = useState<string | null>(null);
+
+  const { knowledgeBaseId } = useParams<{ knowledgeBaseId: string }>();
+  const navigate = useNavigate();
 
   // 弹窗状态
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -94,9 +97,9 @@ export const KnowledgeCenter: React.FC = () => {
 
   // 获取当前选中的知识库对象
   const currentKB = useMemo(() => {
-    if (!selectedKBId) return null;
-    return knowledgeBases.find(kb => kb.id === selectedKBId) || null;
-  }, [knowledgeBases, selectedKBId]);
+    if (!knowledgeBaseId) return null;
+    return knowledgeBases.find(kb => kb.id === knowledgeBaseId) || null;
+  }, [knowledgeBases, knowledgeBaseId]);
 
   // 处理删除知识库
   const handleDeleteKB = (id: string) => {
@@ -108,8 +111,8 @@ export const KnowledgeCenter: React.FC = () => {
       setKnowledgeBases(updated);
       saveToStorage(updated);
       showToast(`已删除知识库 "${targetKB.name}"`, 'success');
-      if (selectedKBId === id) {
-        setSelectedKBId(null);
+      if (knowledgeBaseId === id) {
+        navigate('/knowledge');
       }
     }
   };
@@ -183,7 +186,7 @@ export const KnowledgeCenter: React.FC = () => {
         /* 1. 详情管理视图态 */
         <KnowledgeDetail 
           kb={currentKB}
-          onBack={() => setSelectedKBId(null)}
+          onBack={() => navigate('/knowledge')}
           onUpdateKB={handleUpdateKB}
           showToast={(msg) => showToast(msg, 'success')}
         />
@@ -194,16 +197,6 @@ export const KnowledgeCenter: React.FC = () => {
           {/* 标题 */}
           <div className="text-gray-800 flex h-[3.75rem] w-full items-center gap-2 px-6 py-4 text-sm flex-none">
             <span className="flex-none text-base font-bold text-gray-800">知识中心</span>
-          </div>
-
-          {/* 警告横幅信息提示 */}
-          <div className="px-6 flex-none">
-            <div className="flex w-fit items-center gap-2 rounded-[10px] bg-[#EEF3FC] px-3 h-9">
-              <Info className="text-[#2F54EB] h-3.5 w-3.5 flex-shrink-0" />
-              <span className="text-[#0A0A0B] text-sm leading-[21px] font-normal">
-                Data Agent免费版和个人版每个账号支持创建1个知识库，至多添加10个文件；DataAgent企业版默认支持至多10个知识库，每个库50个文件。
-              </span>
-            </div>
           </div>
 
           {/* 搜索和刷新过滤栏 */}
@@ -255,7 +248,12 @@ export const KnowledgeCenter: React.FC = () => {
               <KnowledgeList 
                 list={filteredBases}
                 onCreateClick={() => setIsCreateOpen(true)}
-                onSelect={(id) => setSelectedKBId(id)}
+                onSelect={(id) => {
+                  const kb = knowledgeBases.find(k => k.id === id);
+                  if (kb) {
+                    navigate(`/knowledge/${kb.id}?name=${encodeURIComponent(kb.name)}`);
+                  }
+                }}
                 onDelete={handleDeleteKB}
               />
             )}
