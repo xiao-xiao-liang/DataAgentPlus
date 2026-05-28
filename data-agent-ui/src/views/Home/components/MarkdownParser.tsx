@@ -11,10 +11,12 @@ type MarkdownPart =
   | { type: 'echarts'; code: string; key: string };
 
 const isFenceLine = (line: string) => /^\s*```/.test(line);
+
 const isTableLine = (line: string) => {
   const trimmed = line.trim();
   return trimmed.startsWith('|') && trimmed.endsWith('|');
 };
+
 const isListItemLine = (line: string) => /^\s*(?:[-*+]|\d+\.)\s+/.test(line);
 
 const isIndentedListContinuation = (line: string) => /^\s{2,}\S/.test(line);
@@ -51,6 +53,8 @@ const normalizeMarkdownContent = (value: string) => {
 
       return line
         .replace(/^(#{1,6})([^\s#])/g, '$1 $2')
+        .replace(/^(\s*\d+\.)(\S)/g, '$1 $2')
+        .replace(/^(\s*[-*+])(\S)/g, '$1 $2')
         .trimEnd();
     });
 
@@ -173,19 +177,39 @@ const isBlankTextNode = (child: React.ReactNode) => (
   typeof child === 'string' && child.trim() === ''
 );
 
+const isParagraphNode = (child: React.ReactNode): child is React.ReactElement<{ children?: React.ReactNode }> => {
+  return React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === 'p';
+};
+
 const renderListItemChildren = (children: React.ReactNode) => {
   const nodes = React.Children.toArray(children);
   const meaningfulNodes = nodes.filter((child) => !isBlankTextNode(child));
 
-  if (
-    meaningfulNodes.length === 1 &&
-    React.isValidElement<{ children?: React.ReactNode }>(meaningfulNodes[0]) &&
-    meaningfulNodes[0].type === 'p'
-  ) {
+  if (meaningfulNodes.length === 1 && isParagraphNode(meaningfulNodes[0])) {
     return (
       <span className="inline text-xs text-gray-650 leading-relaxed font-medium whitespace-pre-wrap">
         {meaningfulNodes[0].props.children}
       </span>
+    );
+  }
+
+  const paragraphNodes = meaningfulNodes.filter(isParagraphNode);
+  if (paragraphNodes.length > 0 && paragraphNodes.length === meaningfulNodes.length) {
+    const [firstParagraph, ...restParagraphs] = paragraphNodes;
+    return (
+      <>
+        <span className="inline text-xs text-gray-650 leading-relaxed font-medium whitespace-pre-wrap">
+          {firstParagraph.props.children}
+        </span>
+        {restParagraphs.map((paragraph, index) => (
+          <div
+            key={`list-paragraph-${index}`}
+            className="mt-1.5 text-xs text-gray-650 leading-relaxed font-medium whitespace-pre-wrap"
+          >
+            {paragraph.props.children}
+          </div>
+        ))}
+      </>
     );
   }
 
@@ -194,47 +218,50 @@ const renderListItemChildren = (children: React.ReactNode) => {
 
 const EchartsBlock: React.FC<{ code: string; chartKey: string }> = React.memo(({ code, chartKey }) => {
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const chartInstanceRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
   const chartOption = useMemo(() => getEchartsOption(code.trim()), [code]);
+  const chartOptionJson = useMemo(() => (chartOption ? JSON.stringify(chartOption) : ''), [chartOption]);
 
   useEffect(() => {
     if (!chartRef.current || !chartOption) return undefined;
 
     let disposed = false;
-    let chart: any = null;
+    let removeResizeListener: (() => void) | undefined;
 
     const renderChart = async () => {
       try {
         const echarts = await import('echarts');
         if (disposed || !chartRef.current) return;
 
-        chart = echarts.init(chartRef.current);
-        chart.setOption(chartOption, true);
+        chartInstanceRef.current = echarts.getInstanceByDom(chartRef.current) || echarts.init(chartRef.current);
+        chartInstanceRef.current.setOption(chartOption, { notMerge: true, lazyUpdate: true });
         setError(null);
 
-        const resize = () => chart?.resize();
+        const resize = () => chartInstanceRef.current?.resize();
         window.addEventListener('resize', resize);
-
-        return () => {
+        removeResizeListener = () => {
           window.removeEventListener('resize', resize);
-          chart?.dispose();
         };
       } catch (err) {
         setError(err instanceof Error ? err.message : '图表配置解析失败');
       }
     };
 
-    let cleanup: (() => void) | undefined;
-    renderChart().then((dispose) => {
-      cleanup = dispose;
-    });
+    renderChart();
 
     return () => {
       disposed = true;
-      cleanup?.();
-      chart?.dispose();
+      removeResizeListener?.();
     };
   }, [chartOption]);
+
+  useEffect(() => {
+    return () => {
+      chartInstanceRef.current?.dispose();
+      chartInstanceRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="my-4 w-full overflow-hidden rounded-lg border border-gray-150 bg-white shadow-3xs">
@@ -246,7 +273,7 @@ const EchartsBlock: React.FC<{ code: string; chartKey: string }> = React.memo(({
         ref={chartRef}
         data-testid="echarts-chart"
         data-chart-key={chartKey}
-        data-chart-option={chartOption ? JSON.stringify(chartOption) : ''}
+        data-chart-option={chartOptionJson}
         className="h-[320px] w-full"
         aria-label="ECharts 图表"
       />
@@ -264,8 +291,9 @@ EchartsBlock.displayName = 'EchartsBlock';
 export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ content }) => {
   if (!content) return null;
 
-  const cleanContent = normalizeMarkdownContent(content);
-  const parts = splitMarkdownByEcharts(cleanContent);
+  const cleanContent = useMemo(() => normalizeMarkdownContent(content), [content]);
+  const parts = useMemo(() => splitMarkdownByEcharts(cleanContent), [cleanContent]);
+  const remarkPlugins = useMemo(() => [[remarkGfm, { singleTilde: false }] as any], []);
 
   return (
     <div className="space-y-1 select-text w-full">
@@ -275,79 +303,79 @@ export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ conte
         ) : (
           <ReactMarkdown
             key={part.key}
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={remarkPlugins}
             components={{
-          pre: ({ children }) => <>{children}</>,
-          h1: ({ children }) => (
-            <h1 className="text-base font-bold text-gray-900 border-b border-gray-200 pb-1.5 mt-5 mb-3 tracking-tight">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-[14px] font-bold text-gray-800 border-b border-gray-100 pb-1 mt-4 mb-2">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-[13px] font-bold text-gray-700 mt-3 mb-1.5">{children}</h3>
-          ),
-          p: ({ children }) => (
-            <p className="text-xs text-gray-650 leading-relaxed font-medium my-1.5 whitespace-pre-wrap">{children}</p>
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ol>
-          ),
-          li: ({ children }) => (
-            <li className="leading-relaxed whitespace-pre-wrap">{renderListItemChildren(children)}</li>
-          ),
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-650 hover:underline font-bold">{children}</a>
-          ),
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-lg border border-gray-150 shadow-3xs w-full">
-              <table className="w-full text-left border-collapse text-xs leading-normal">{children}</table>
-            </div>
-          ),
-          thead: ({ children }) => (
-            <thead className="bg-gray-50/80 border-b border-gray-150 font-bold text-gray-700 select-none">{children}</thead>
-          ),
-          tbody: ({ children }) => (
-            <tbody className="divide-y divide-gray-100">{children}</tbody>
-          ),
-          tr: ({ children }) => (
-            <tr className="hover:bg-gray-50/30 transition-colors">{children}</tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-3 py-2 border-r border-gray-100 last:border-r-0 whitespace-nowrap">{children}</th>
-          ),
-          td: ({ children }) => (
-            <td className="px-3 py-1.5 border-r border-gray-100 last:border-r-0 whitespace-nowrap font-medium text-gray-655">{children}</td>
-          ),
-          code: ({ className, children, ...props }) => {
-            const match = /language-(\w+)/.exec(className || '');
-            const lang = match?.[1]?.toLowerCase();
-            const codeStr = String(children).replace(/\n$/, '');
-
-            if (!lang) {
-              return (
-                <code className="px-1 py-0.5 bg-gray-150/70 text-indigo-750 font-mono rounded text-[11px]" {...props}>
-                  {children}
-                </code>
-              );
-            }
-
-            if (lang === 'echarts') {
-              return <EchartsBlock chartKey={`inline-${hashString(codeStr)}`} code={codeStr} />;
-            }
-
-            return (
-              <div className="my-2 p-3 bg-gray-50 border border-gray-150 rounded-lg text-xs font-mono text-gray-500 shadow-3xs w-full">
-                <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-gray-150 text-[10px] text-gray-400 font-bold select-none uppercase tracking-wide">
-                  <span>代码片段 ({lang.toUpperCase()})</span>
+              pre: ({ children }) => <>{children}</>,
+              h1: ({ children }) => (
+                <h1 className="text-base font-bold text-gray-900 border-b border-gray-200 pb-1.5 mt-5 mb-3 tracking-tight">{children}</h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-[14px] font-bold text-gray-800 border-b border-gray-100 pb-1 mt-4 mb-2">{children}</h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-[13px] font-bold text-gray-700 mt-3 mb-1.5">{children}</h3>
+              ),
+              p: ({ children }) => (
+                <p className="text-xs text-gray-650 leading-relaxed font-medium my-1.5 whitespace-pre-wrap">{children}</p>
+              ),
+              ul: ({ children }) => (
+                <ul className="list-disc pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="list-decimal pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ol>
+              ),
+              li: ({ children }) => (
+                <li className="leading-relaxed whitespace-pre-wrap">{renderListItemChildren(children)}</li>
+              ),
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-650 hover:underline font-bold">{children}</a>
+              ),
+              table: ({ children }) => (
+                <div className="my-3 overflow-x-auto rounded-lg border border-gray-150 shadow-3xs w-full">
+                  <table className="w-full text-left border-collapse text-xs leading-normal">{children}</table>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre pr-1 max-h-48 scrollbar-thin text-[11px] leading-relaxed select-text">{codeStr}</pre>
-              </div>
-            );
-          }
+              ),
+              thead: ({ children }) => (
+                <thead className="bg-gray-50/80 border-b border-gray-150 font-bold text-gray-700 select-none">{children}</thead>
+              ),
+              tbody: ({ children }) => (
+                <tbody className="divide-y divide-gray-100">{children}</tbody>
+              ),
+              tr: ({ children }) => (
+                <tr className="hover:bg-gray-50/30 transition-colors">{children}</tr>
+              ),
+              th: ({ children }) => (
+                <th className="px-3 py-2 border-r border-gray-100 last:border-r-0 whitespace-nowrap">{children}</th>
+              ),
+              td: ({ children }) => (
+                <td className="px-3 py-1.5 border-r border-gray-100 last:border-r-0 whitespace-nowrap font-medium text-gray-655">{children}</td>
+              ),
+              code: ({ className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || '');
+                const lang = match?.[1]?.toLowerCase();
+                const codeStr = String(children).replace(/\n$/, '');
+
+                if (!lang) {
+                  return (
+                    <code className="px-1 py-0.5 bg-gray-150/70 text-indigo-750 font-mono rounded text-[11px]" {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+
+                if (lang === 'echarts') {
+                  return <EchartsBlock chartKey={`inline-${hashString(codeStr)}`} code={codeStr} />;
+                }
+
+                return (
+                  <div className="my-2 p-3 bg-gray-50 border border-gray-150 rounded-lg text-xs font-mono text-gray-500 shadow-3xs w-full">
+                    <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-gray-150 text-[10px] text-gray-400 font-bold select-none uppercase tracking-wide">
+                      <span>代码片段 ({lang.toUpperCase()})</span>
+                    </div>
+                    <pre className="overflow-x-auto whitespace-pre pr-1 max-h-48 scrollbar-thin text-[11px] leading-relaxed select-text">{codeStr}</pre>
+                  </div>
+                );
+              },
             }}
           >
             {part.content}

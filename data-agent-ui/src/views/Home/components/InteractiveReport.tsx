@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Maximize2, Minimize2, Share2, FileText, Activity } from 'lucide-react';
 import clsx from 'clsx';
 import { MarkdownParser } from './MarkdownParser';
@@ -11,10 +11,21 @@ interface InteractiveReportProps {
 
 export const InteractiveReport: React.FC<InteractiveReportProps> = ({ isOpen, markdownContent = '', onClose }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const hasMarkdownReport = Boolean(markdownContent.trim());
+
+  useEffect(() => {
+    if (!isOpen || !hasMarkdownReport || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const rafId = window.requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isOpen, hasMarkdownReport, markdownContent]);
 
   if (!isOpen) return null;
-
-  const hasMarkdownReport = Boolean(markdownContent.trim());
 
   return (
     <div
@@ -86,7 +97,7 @@ export const InteractiveReport: React.FC<InteractiveReportProps> = ({ isOpen, ma
       </div>
 
       {hasMarkdownReport ? (
-        <div className="flex-1 overflow-y-auto px-8 py-7 select-text">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-7 select-text">
           <div className="mx-auto max-w-[960px] text-gray-850">
             <MarkdownParser content={markdownContent} />
           </div>

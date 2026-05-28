@@ -832,6 +832,10 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const hasBody = Boolean(children);
 
+  useEffect(() => {
+    setIsOpen(defaultOpen);
+  }, [defaultOpen]);
+
   return (
     <div className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs select-none">
       <button
@@ -1042,6 +1046,11 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
   const hasResultOutput = Boolean(resultSetBlock);
   const hasPythonOutput = Boolean(pythonBlock);
   const hasReportOutput = Boolean(reportBlock);
+  const hasPlanningStage = planLogs.length > 0 || hasPlanOutput;
+  const planStageShouldOpen = hasPlanningStage && !hasSqlOutput && !hasResultOutput && !hasPythonOutput && !hasReportOutput;
+  const sqlStageShouldOpen = (Boolean(sqlBlock) || sqlLogs.length > 0) && !hasResultOutput && !hasPythonOutput && !hasReportOutput;
+  const resultStageShouldOpen = (Boolean(resultSetBlock) || resultLogs.length > 0) && !hasPythonOutput && !hasReportOutput;
+  const pythonStageShouldOpen = (Boolean(pythonBlock) || pythonLogs.length > 0) && !hasReportOutput;
 
   return (
     <div className="my-3 flex w-full max-w-[680px] flex-col gap-2.5">
@@ -1097,26 +1106,26 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
         </WorkflowNodeCard>
       )}
 
-      {planBlock && (
+      {hasPlanningStage && (
         <>
           <WorkflowNodeCard
             title="生成执行计划"
             summary={summarizeLines(planLogs, '已分析需求并生成工作流执行计划。')}
             status={statusFrom(hasCompletedLog(planLogs) || hasSqlOutput || hasResultOutput || isComplete)}
             icon={<GitBranch className="size-3.5" />}
-            defaultOpen={false}
+            defaultOpen={planStageShouldOpen}
           >
             <WorkflowLogList lines={planLogs} />
-            <PlanSourceBlock code={formatPlanCode(planBlock)} language="json" />
+            {planBlock ? <PlanSourceBlock code={formatPlanCode(planBlock)} language="json" /> : <WorkflowLoadingDots />}
           </WorkflowNodeCard>
           <WorkflowNodeCard
             title="执行计划具体内容"
             summary="查看每一步工具调用、分析指令与输出目标。"
             status={statusFrom(hasSqlOutput || hasResultOutput || hasPythonOutput || hasReportOutput || isComplete)}
             icon={<ClipboardCopy className="size-3.5" />}
-            defaultOpen={false}
+            defaultOpen={planStageShouldOpen}
           >
-            <ExecutionPlanDetails planJson={planBlock.content} query={userQuery} />
+            {planBlock ? <ExecutionPlanDetails planJson={planBlock.content} query={userQuery} /> : <WorkflowLoadingDots />}
           </WorkflowNodeCard>
         </>
       )}
@@ -1127,7 +1136,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           summary={summarizeLines(sqlLogs, '已生成 SQL，并进入语义一致性检查与执行。')}
           status={statusFrom(hasSqlOutput && (hasCompletedLog(sqlLogs) || hasResultOutput || isComplete))}
           icon={<LineChart className="size-3.5" />}
-          defaultOpen={false}
+          defaultOpen={sqlStageShouldOpen}
         >
           {sqlBlock ? <CodeBlock language="sql" code={sqlBlock.content} /> : <WorkflowLoadingDots />}
           <div className={clsx(sqlBlock && sqlLogs.length > 0 && 'mt-3')}>
@@ -1142,7 +1151,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           summary={summarizeLines(resultLogs, 'SQL 查询结果已返回。')}
           status={statusFrom(hasResultOutput && (hasPythonOutput || hasReportOutput || isComplete))}
           icon={<Database className="size-3.5" />}
-          defaultOpen={false}
+          defaultOpen={resultStageShouldOpen}
         >
           {resultSetBlock ? <ResultSetTable dataJson={resultSetBlock.content} /> : <WorkflowLoadingDots />}
           <div className={clsx(resultSetBlock && resultLogs.length > 0 && 'mt-3')}>
@@ -1157,7 +1166,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           summary={summarizeLines(pythonLogs, '已生成并执行 Python 分析代码。')}
           status={statusFrom(hasPythonOutput && (hasReportOutput || isComplete))}
           icon={<Code2 className="size-3.5" />}
-          defaultOpen={false}
+          defaultOpen={pythonStageShouldOpen}
         >
           {pythonBlock ? <CodeBlock language="python" code={pythonBlock.content} /> : <WorkflowLoadingDots />}
           <div className={clsx(pythonBlock && pythonLogs.length > 0 && 'mt-3')}>
@@ -1172,7 +1181,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           summary={summarizeLines(reportLogs, 'Markdown 报告已生成，并在右侧报告栏打开。')}
           status={isComplete ? 'done' : 'active'}
           icon={<FileText className="size-3.5" />}
-          defaultOpen={false}
+          defaultOpen={hasReportOutput}
         >
           <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
             <div className="min-w-0">
@@ -1615,6 +1624,8 @@ const Home: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -1682,12 +1693,27 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     const latestReport = getLatestMarkdownReportState(messages);
-    if (!latestReport.exists) return;
+    if (!latestReport.exists) {
+      setReportContent('');
+      setIsReportOpen(false);
+      return;
+    }
     if (latestReport.content !== reportContent) {
       setReportContent(latestReport.content);
     }
     setIsReportOpen(true);
   }, [messages, reportContent]);
+
+  useEffect(() => {
+    if (!isChatState || !chatScrollRef.current) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      chatBottomRef.current?.scrollIntoView({ block: 'end' });
+      chatScrollRef.current!.scrollTop = chatScrollRef.current!.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isChatState, isReportOpen, messages]);
 
   // 挂载时如果 state 含有文件，自动关联
   useEffect(() => {
@@ -1724,6 +1750,8 @@ const Home: React.FC = () => {
 
     if (!sessionId || sessionId.startsWith('session_')) {
       // 临时会话或者没有 sessionId 时，清空消息
+      setReportContent('');
+      setIsReportOpen(false);
       setMessages([]);
       return;
     }
@@ -2059,6 +2087,7 @@ const Home: React.FC = () => {
         {isChatState && (
           <button 
             onClick={() => {
+              setReportContent('');
               setIsReportOpen(false);
               setMessages([]);
               navigate('/chat');
@@ -2072,7 +2101,7 @@ const Home: React.FC = () => {
       
       {/* 主视口大包裹器，配置开启报告时的左右平滑分栏 */}
       <div className={clsx("flex flex-row w-full h-full relative overflow-hidden flex-1", isChatState ? "pb-36" : "")}>
-        <div className="flex-1 flex flex-col h-full items-center overflow-y-auto relative min-w-0 transition-all duration-300">
+        <div ref={chatScrollRef} className="flex-1 flex flex-col h-full items-center overflow-y-auto relative min-w-0 transition-all duration-300">
           
           {/* 🚀 消息流渲染 */}
           {isChatState ? (
@@ -2416,9 +2445,10 @@ const Home: React.FC = () => {
                             </HoverCard.Content>
                           </HoverCard.Portal>
                         </HoverCard.Root>
-                      );
-                    })}
-                  </div>
+                );
+              })}
+              <div ref={chatBottomRef} className="h-px w-full" />
+            </div>
                 )}
                 <textarea 
                   placeholder="通过下方指定一份数据并给我布置数据分析任务，'shift+enter'换行"
