@@ -4,6 +4,8 @@ import Home from '../views/Home';
 import { DataCenter } from '../views/DataCenter';
 import { McpCenter } from '../views/McpCenter';
 import { KnowledgeCenter } from '../views/KnowledgeCenter';
+import { CustomAgent } from '../views/CustomAgent';
+import { CreateAgent } from '../views/CreateAgent';
 
 const Placeholder = ({ title }: { title: string }) => (
   <div className="flex h-full items-center justify-center text-gray-400 text-xl font-medium">
@@ -33,7 +35,19 @@ const router = createBrowserRouter([
         element: <DataCenter />,
       },
       {
+        path: 'data/:database',
+        element: <DataCenter />,
+      },
+      {
+        path: 'data/:database/:tableName',
+        element: <DataCenter />,
+      },
+      {
         path: 'knowledge',
+        element: <KnowledgeCenter />,
+      },
+      {
+        path: 'knowledge/:knowledgeBaseId',
         element: <KnowledgeCenter />,
       },
       {
@@ -42,7 +56,11 @@ const router = createBrowserRouter([
       },
       {
         path: 'agent',
-        element: <Placeholder title="自定义Agent" />,
+        element: <CustomAgent />,
+      },
+      {
+        path: 'agent/create',
+        element: <CreateAgent />,
       },
       {
         path: 'mcp',
