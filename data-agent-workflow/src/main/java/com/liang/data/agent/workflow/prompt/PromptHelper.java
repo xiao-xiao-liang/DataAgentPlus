@@ -253,4 +253,139 @@ public final class PromptHelper {
         params.put("semanticModel", semanticModel);
         return PromptConstant.getSemanticModelPromptTemplate().render(params);
     }
-}
+
+    // ==================== Phase 7 新增方法 ====================
+
+    /**
+     * 构建 Python 分析 Prompt
+     *
+     * <p>将用户查询和 Python 执行输出填充到 python-analyze.txt 模板中</p>
+     */
+    public static String buildPythonAnalyzePrompt(String userQuery, String pythonOutput) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("user_query", StringUtils.isBlank(userQuery) ? "数据分析" : userQuery);
+        params.put("python_output", StringUtils.isBlank(pythonOutput) ? "{}" : pythonOutput);
+        return PromptConstant.getPythonAnalyzePromptTemplate().render(params);
+    }
+
+    /**
+     * 构建数据视图分析 Prompt（用于 SQL 结果图表类型推荐）
+     *
+     * <p>data-view-analyze.txt 模板分为系统提示词和用户提示词两部分，
+     * 以 "=== 用户输入 ===" 分隔。此方法只返回系统提示词部分。</p>
+     */
+    public static String buildDataViewAnalyzeSystemPrompt() {
+        String fullPrompt = PromptConstant.getDataViewAnalyzePromptTemplate().render(
+                Map.of("format", DISPLAY_STYLE_FORMAT));
+        // 分割系统提示词和用户提示词模板
+        String[] parts = fullPrompt.split("=== 用户输入 ===", 2);
+        return parts[0].trim();
+    }
+
+    /**
+     * 构建数据视图分析的用户提示词
+     */
+    public static String buildDataViewAnalyzeUserPrompt(String userQuery, String sampleDataJson) {
+        return String.format("""
+                # 正式任务
+
+                <最新>用户输入: %s
+                范例数据: %s
+
+                # 输出
+                """, StringUtils.isBlank(userQuery) ? "数据可视化" : userQuery, sampleDataJson);
+    }
+
+    /**
+     * 构建结构化的用户需求与执行计划描述（用于报告生成）
+     */
+    public static String buildUserRequirementsAndPlan(String userInput, com.liang.data.agent.workflow.dto.planner.Plan plan) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 用户原始需求\n");
+        sb.append(userInput).append("\n\n");
+
+        if (plan.getThoughtProcess() != null) {
+            sb.append("## 执行计划概述\n");
+            sb.append("**思考过程**: ").append(plan.getThoughtProcess()).append("\n\n");
+        }
+
+        sb.append("## 详细执行步骤\n");
+        var executionPlan = plan.getExecutionPlan();
+        if (executionPlan != null) {
+            for (int i = 0; i < executionPlan.size(); i++) {
+                var step = executionPlan.get(i);
+                sb.append("### 步骤 ").append(i + 1).append(": 编号 ").append(step.getStep()).append("\n");
+                sb.append("**工具**: ").append(step.getToolToUse()).append("\n");
+                if (step.getToolParameters() != null) {
+                    sb.append("**参数描述**: ").append(step.getToolParameters().getInstruction()).append("\n");
+                }
+                sb.append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 构建结构化的分析步骤与数据描述（用于报告生成）
+     */
+    public static String buildAnalysisStepsAndData(com.liang.data.agent.workflow.dto.planner.Plan plan, Map<String, String> executionResults) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 数据执行结果\n");
+
+        if (executionResults == null || executionResults.isEmpty()) {
+            sb.append("暂无执行结果数据\n");
+            return sb.toString();
+        }
+
+        var executionPlan = plan.getExecutionPlan();
+        for (Map.Entry<String, String> entry : executionResults.entrySet()) {
+            String stepKey = entry.getKey();
+            String stepResult = entry.getValue();
+
+            // 跳过 _analysis 后缀的条目（稍后关联展示）
+            if (stepKey.endsWith("_analysis")) {
+                continue;
+            }
+
+            sb.append("### ").append(stepKey).append("\n");
+
+            // 尝试关联步骤描述
+            try {
+                int stepIndex = Integer.parseInt(stepKey.replace("step_", "")) - 1;
+                if (executionPlan != null && stepIndex >= 0 && stepIndex < executionPlan.size()) {
+                    var step = executionPlan.get(stepIndex);
+                    sb.append("**步骤编号**: ").append(step.getStep()).append("\n");
+                    sb.append("**使用工具**: ").append(step.getToolToUse()).append("\n");
+                    if (step.getToolParameters() != null) {
+                        sb.append("**参数描述**: ").append(step.getToolParameters().getInstruction()).append("\n");
+                        if (step.getToolParameters().getSqlQuery() != null) {
+                            sb.append("**执行SQL**: \n```sql\n")
+                                    .append(step.getToolParameters().getSqlQuery())
+                                    .append("\n```\n");
+                        }
+                    }
+                }
+            } catch (NumberFormatException ignored) {
+                // 忽略 step key 解析异常
+            }
+
+            sb.append("**执行结果**: \n```json\n").append(stepResult).append("\n```\n\n");
+
+            // 关联 Python 分析结果
+            String analysisKey = stepKey + "_analysis";
+            String analysisResult = executionResults.get(analysisKey);
+            if (analysisResult != null && !analysisResult.trim().isEmpty()) {
+                sb.append("**Python 分析结果**: ").append(analysisResult).append("\n\n");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * DisplayStyleBO 的 JSON 格式描述（用于 LLM 输出约束）
+     */
+    private static final String DISPLAY_STYLE_FORMAT = """
+            {"type": "图表类型(table/column/bar/line/pie)", "title": "图表标题", "x": "X轴字段名", "y": "Y轴字段名"}
+            """;
+}
