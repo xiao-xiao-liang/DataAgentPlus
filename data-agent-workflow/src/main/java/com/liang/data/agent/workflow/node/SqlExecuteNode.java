@@ -23,6 +23,7 @@ import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
+import com.liang.data.agent.workflow.util.SqlStatementGuard;
 import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,10 @@ public class SqlExecuteNode implements NodeAction {
         log.info("SQL 执行 - 开始，智能体 ID: {}, SQL: {}", agentId, sql);
 
         // ======================== 阶段一：获取激活的数据源配置 ========================
+        if (!SqlStatementGuard.isSingleStatementQuery(sql)) {
+            return buildErrorResponse(state, "SQL 包含多条语句，请仅生成一条可执行的查询语句", null);
+        }
+
         Integer datasourceId = agentDatasourceMapper.getActiveDatasource(Integer.valueOf(agentId));
 
         if (Objects.isNull(datasourceId)) {
