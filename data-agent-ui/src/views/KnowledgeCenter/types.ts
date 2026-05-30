@@ -19,3 +19,24 @@ export interface KnowledgeBase {
   description: string;
   files: KnowledgeFile[];
 }
+
+export interface KnowledgeCandidate {
+  id: number;
+  agentId: number;
+  datasourceId?: number;
+  sessionId?: string;
+  threadId?: string;
+  sourceQuestion: string;
+  clarificationQuestion?: string;
+  userAnswer?: string;
+  normalizedContent: string;
+  candidateType: string;
+  title: string;
+  scope: string;
+  status: string;
+  confidenceScore?: number;
+  publishedTargetType?: string;
+  publishedTargetId?: number;
+  createTime?: string;
+  updateTime?: string;
+}

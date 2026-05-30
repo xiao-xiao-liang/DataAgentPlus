@@ -11,6 +11,7 @@ import { INITIAL_KNOWLEDGE_BASES } from './mockData';
 import { CreateKnowledgeDialog } from './components/CreateKnowledgeDialog';
 import { KnowledgeList } from './components/KnowledgeList';
 import { KnowledgeDetail } from './components/KnowledgeDetail';
+import { KnowledgeCandidateList } from './components/KnowledgeCandidateList';
 
 const LOCAL_STORAGE_KEY = 'data-agent-knowledge-bases';
 
@@ -21,6 +22,7 @@ export const KnowledgeCenter: React.FC = () => {
 
   const { knowledgeBaseId } = useParams<{ knowledgeBaseId: string }>();
   const navigate = useNavigate();
+  const agentId = new URLSearchParams(window.location.search).get('agentId') || '1';
 
   // 弹窗状态
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -225,6 +227,8 @@ export const KnowledgeCenter: React.FC = () => {
             </div>
 
             {/* 骨架屏加载状态 */}
+            <KnowledgeCandidateList agentId={agentId} showToast={(msg) => showToast(msg, 'success')} />
+
             {isLoading ? (
               <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 items-start gap-4 overflow-y-auto px-6 md:grid-cols-2 lg:grid-cols-3">
                 {[1, 2, 3].map(n => (
