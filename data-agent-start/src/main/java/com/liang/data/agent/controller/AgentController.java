@@ -166,4 +166,40 @@ public class AgentController {
         String apiKey = agentService.resetApiKey(id);
         return Results.success(apiKey);
     }
+
+    /**
+     * 启用智能体的 API Key。
+     *
+     * @param id 智能体 ID
+     * @return 操作结果
+     */
+    @PostMapping("/{id}/api-key/enable")
+    public Result<Void> enableApiKey(@PathVariable Integer id) {
+        agentService.enableApiKey(id);
+        return Results.success();
+    }
+
+    /**
+     * 禁用智能体的 API Key。
+     *
+     * @param id 智能体 ID
+     * @return 操作结果
+     */
+    @PostMapping("/{id}/api-key/disable")
+    public Result<Void> disableApiKey(@PathVariable Integer id) {
+        agentService.disableApiKey(id);
+        return Results.success();
+    }
+
+    /**
+     * 删除智能体的 API Key。
+     *
+     * @param id 智能体 ID
+     * @return 操作结果
+     */
+    @DeleteMapping("/{id}/api-key")
+    public Result<Void> deleteApiKey(@PathVariable Integer id) {
+        agentService.deleteApiKey(id);
+        return Results.success();
+    }
 }

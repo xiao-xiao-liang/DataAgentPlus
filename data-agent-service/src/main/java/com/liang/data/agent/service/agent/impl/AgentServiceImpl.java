@@ -115,6 +115,7 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, AgentEntity> impl
         
         String apiKey = UUID.randomUUID().toString().replace("-", "");
         entity.setApiKey(apiKey);
+        entity.setApiKeyEnabled(1);
         this.updateById(entity);
         log.info("生成 API Key 成功, id={}", id);
         return apiKey;
@@ -125,9 +126,43 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, AgentEntity> impl
         AgentEntity entity = getEntityById(id);
         String apiKey = UUID.randomUUID().toString().replace("-", "");
         entity.setApiKey(apiKey);
+        entity.setApiKeyEnabled(1);
         this.updateById(entity);
         log.info("重置 API Key 成功, id={}", id);
         return apiKey;
+    }
+
+    @Override
+    public void enableApiKey(Integer id) {
+        AgentEntity entity = getEntityById(id);
+        if (!StringUtils.hasText(entity.getApiKey())) {
+            throw new ServiceException("请先生成 API Key");
+        }
+        entity.setApiKeyEnabled(1);
+        this.updateById(entity);
+        log.info("启用 API Key 成功, id={}", id);
+    }
+
+    @Override
+    public void disableApiKey(Integer id) {
+        AgentEntity entity = getEntityById(id);
+        if (!StringUtils.hasText(entity.getApiKey())) {
+            throw new ServiceException("请先生成 API Key");
+        }
+        entity.setApiKeyEnabled(0);
+        this.updateById(entity);
+        log.info("禁用 API Key 成功, id={}", id);
+    }
+
+    @Override
+    public void deleteApiKey(Integer id) {
+        getEntityById(id);
+        this.lambdaUpdate()
+                .eq(AgentEntity::getId, id)
+                .set(AgentEntity::getApiKey, null)
+                .set(AgentEntity::getApiKeyEnabled, 0)
+                .update();
+        log.info("删除 API Key 成功, id={}", id);
     }
 
     /**

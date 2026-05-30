@@ -88,4 +88,25 @@ public interface AgentService extends IService<AgentEntity> {
      * @return 新的 API Key
      */
     String resetApiKey(Integer id);
+
+    /**
+     * 启用 API Key 调用。
+     *
+     * @param id 智能体ID
+     */
+    void enableApiKey(Integer id);
+
+    /**
+     * 禁用 API Key 调用。
+     *
+     * @param id 智能体ID
+     */
+    void disableApiKey(Integer id);
+
+    /**
+     * 删除 API Key。
+     *
+     * @param id 智能体ID
+     */
+    void deleteApiKey(Integer id);
 }
