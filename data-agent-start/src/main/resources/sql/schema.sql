@@ -207,6 +207,39 @@ CREATE TABLE IF NOT EXISTS semantic_model
   DEFAULT CHARSET = utf8mb4 COMMENT = '语义模型表';
 
 -- ----------------------------
+-- 知识候选表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS knowledge_candidate
+(
+    id                     BIGINT       NOT NULL AUTO_INCREMENT,
+    agent_id               INT          NOT NULL COMMENT '关联智能体ID',
+    datasource_id          INT           DEFAULT NULL COMMENT '关联数据源ID',
+    session_id             VARCHAR(64)   DEFAULT NULL COMMENT '会话ID',
+    thread_id              VARCHAR(64)   DEFAULT NULL COMMENT 'StateGraph线程ID',
+    source_question        TEXT         NOT NULL COMMENT '触发候选知识的原始问题',
+    clarification_question TEXT          DEFAULT NULL COMMENT '系统提出的澄清问题',
+    user_answer            TEXT          DEFAULT NULL COMMENT '用户澄清回答',
+    normalized_content     JSON         NOT NULL COMMENT '结构化候选知识内容',
+    candidate_type         VARCHAR(64)  NOT NULL COMMENT '候选类型',
+    title                  VARCHAR(255) NOT NULL COMMENT '候选知识标题',
+    scope                  VARCHAR(32)  NOT NULL COMMENT '作用域',
+    status                 VARCHAR(32)  NOT NULL COMMENT '状态',
+    confidence_score       DECIMAL(5, 4) DEFAULT NULL COMMENT '模型归纳置信度',
+    reviewer_id            BIGINT        DEFAULT NULL COMMENT '审核人ID',
+    review_comment         TEXT          DEFAULT NULL COMMENT '审核意见',
+    published_target_type  VARCHAR(64)   DEFAULT NULL COMMENT '发布目标类型',
+    published_target_id    BIGINT        DEFAULT NULL COMMENT '发布目标ID',
+    del_flag               TINYINT       DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
+    create_time            TIMESTAMP     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time            TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_agent_status (agent_id, status),
+    INDEX idx_thread_id (thread_id),
+    INDEX idx_candidate_type (candidate_type)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT = '知识沉淀候选表';
+
+-- ----------------------------
 -- 9. 智能体预设问题表
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS agent_preset_question
