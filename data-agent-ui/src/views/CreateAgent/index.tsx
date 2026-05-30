@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronRight,
   Save,
   Reply,
@@ -18,7 +19,11 @@ import {
   Copy,
   Check,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  BookOpen,
+  CalendarClock,
+  ShieldCheck,
+  Settings2
 } from 'lucide-react';
 
 interface FormState {
@@ -42,6 +47,22 @@ interface AgentDatasourceVO {
   selectTables?: string[];
 }
 
+type AgentSection = 'overview' | 'info' | 'datasource' | 'apikey';
+type ApiExampleLanguage = 'curl' | 'javascript' | 'python';
+
+const AGENT_SECTIONS: AgentSection[] = ['overview', 'info', 'datasource', 'apikey'];
+const DEFAULT_AGENT_SECTION: AgentSection = 'overview';
+const API_EXAMPLE_LANGUAGES: { id: ApiExampleLanguage; label: string }[] = [
+  { id: 'curl', label: 'curl' },
+  { id: 'javascript', label: 'JavaScript' },
+  { id: 'python', label: 'Python' }
+];
+
+const getAgentSectionFromSearch = (search: string): AgentSection => {
+  const section = new URLSearchParams(search).get('tab') as AgentSection | null;
+  return section && AGENT_SECTIONS.includes(section) ? section : DEFAULT_AGENT_SECTION;
+};
+
 const AVATAR_GRADIENTS = [
   'from-[#2D336B]/80 to-[#2D336B] shadow-[#2D336B]/10',
   'from-slate-500 to-slate-600 shadow-slate-500/10',
@@ -52,16 +73,40 @@ const AVATAR_GRADIENTS = [
   'from-zinc-500 to-zinc-600 shadow-zinc-500/10'
 ];
 
+const SELECT_CLASS =
+  'w-full h-9 rounded-md border border-gray-200 bg-slate-50/70 px-3 pr-9 text-xs font-medium text-slate-700 shadow-inner outline-none transition-all appearance-none cursor-pointer hover:border-slate-300 hover:bg-white focus:border-[#2D336B] focus:bg-white focus:ring-2 focus:ring-[#2D336B]/10';
+
+const YIWEN_CARD_CLASS =
+  'rounded-[14px] border border-[#dbe8f7] bg-white shadow-[0_8px_20px_rgba(31,74,125,0.05)]';
+
+const YIWEN_ICON_TILE_CLASS =
+  'flex size-9 flex-none items-center justify-center rounded-[10px] bg-[#eef5ff] text-[#2563eb]';
+
+const DETAIL_PANEL_CLASS =
+  'rounded-[18px] border border-[#dbe8f7] bg-[#fbfdff] shadow-[0_12px_30px_rgba(31,74,125,0.06)]';
+
 export const CreateAgent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryAgentId = useMemo(() => new URLSearchParams(location.search).get('id'), [location.search]);
+  const querySection = useMemo(() => getAgentSectionFromSearch(location.search), [location.search]);
 
-  // Tab 导航状态：'info' (智能体信息) | 'datasource' (数据源配置) | 'apikey' (API key相关)
-  const [activeTab, setActiveTab] = useState<'info' | 'datasource' | 'apikey'>('info');
+  // 配置工作区：overview 汇总能力装配状态，其他 section 承载具体模块配置
+  const [activeTab, setActiveTab] = useState<AgentSection>(querySection);
 
   // 是否为编辑模式
   const [isEdit, setIsEdit] = useState(false);
   const [agentId, setAgentId] = useState<number | null>(null);
+
+  const navigateToSection = (section: AgentSection, replace = false) => {
+    setActiveTab(section);
+    const params = new URLSearchParams(location.search);
+    if (agentId && !params.get('id')) {
+      params.set('id', String(agentId));
+    }
+    params.set('tab', section);
+    navigate(`${location.pathname}?${params.toString()}`, { replace });
+  };
 
   // 表单状态
   const [form, setForm] = useState<FormState>({
@@ -96,10 +141,13 @@ export const CreateAgent: React.FC = () => {
 
   // ==================== API Key 密钥管理状态 ====================
   const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyEnabled, setApiKeyEnabled] = useState(false);
   const [keyLoading, setKeyLoading] = useState(false);
   const [keyVisible, setKeyVisible] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [apiExampleLanguage, setApiExampleLanguage] = useState<ApiExampleLanguage>('curl');
+  const [exampleCopySuccess, setExampleCopySuccess] = useState(false);
 
   // 加载可用数据源列表
   const fetchDatasources = () => {
@@ -176,6 +224,7 @@ export const CreateAgent: React.FC = () => {
         setApiKey(res.data);
       } else {
         setApiKey('');
+        setApiKeyEnabled(false);
       }
     } catch (err) {
       console.error('拉取 API Key 失败:', err);
@@ -186,13 +235,15 @@ export const CreateAgent: React.FC = () => {
 
   // 检测是否是编辑模式并加载智能体详情
   useEffect(() => {
+    setActiveTab(querySection);
+  }, [querySection]);
+
+  useEffect(() => {
     fetchDatasources();
 
-    const params = new URLSearchParams(location.search);
-    const id = params.get('id');
-    if (id) {
+    if (queryAgentId) {
       setIsEdit(true);
-      const parsedId = Number(id);
+      const parsedId = Number(queryAgentId);
       setAgentId(parsedId);
       
       // 1. 拉取后端智能体详情
@@ -208,6 +259,7 @@ export const CreateAgent: React.FC = () => {
               category: data.data.category || '',
               tags: data.data.tags || '',
             });
+            setApiKeyEnabled(data.data.apiKeyEnabled === 1);
             // 解析标签
             const parsedTags = data.data.tags ? data.data.tags.split(',') : [];
             setTagsList(parsedTags.filter((t: string) => t.trim().length > 0));
@@ -222,8 +274,11 @@ export const CreateAgent: React.FC = () => {
 
       // 3. 拉取 API Key 信息
       loadApiKeyInfo(parsedId);
+    } else {
+      setIsEdit(false);
+      setAgentId(null);
     }
-  }, [location]);
+  }, [queryAgentId]);
 
   // 头像、标签、表名变动等交互函数
   const handleRandomAvatar = () => {
@@ -254,20 +309,16 @@ export const CreateAgent: React.FC = () => {
 
     if (!dsId) return;
 
-    setLoadingTables(true);
-    try {
-      const res = await fetch(`/api/datasource/${dsId}/tables`).then(r => r.json());
-      if (res.success && res.data) {
-        setAllTables(res.data);
-      }
-    } catch (err) {
-      console.error('加载数据表失败:', err);
-    } finally {
-      setLoadingTables(false);
+    if (bindingVo && String(bindingVo.datasourceId) === dsId) {
+      await loadTablesForDs(Number(dsId), bindingVo.selectTables || []);
     }
   };
 
   const handleTableCheck = (tableName: string) => {
+    if (!canConfigureTables) {
+      showNotification('请先绑定数据源，再选择需要向量化的数据表', 'error');
+      return;
+    }
     setSelectedTables(prev => 
       prev.includes(tableName) 
         ? prev.filter(t => t !== tableName) 
@@ -276,6 +327,10 @@ export const CreateAgent: React.FC = () => {
   };
 
   const toggleSelectAllTables = () => {
+    if (!canConfigureTables) {
+      showNotification('请先绑定数据源，再选择需要向量化的数据表', 'error');
+      return;
+    }
     if (selectedTables.length === allTables.length) {
       setSelectedTables([]);
     } else {
@@ -339,10 +394,22 @@ export const CreateAgent: React.FC = () => {
   // 手动强同步 Schema
   const handleSyncSchema = async () => {
     if (!agentId) return;
+    if (!canConfigureTables) {
+      showNotification('请先绑定数据源，再触发表同步与向量化', 'error');
+      return;
+    }
+    if (selectedTables.length === 0) {
+      showNotification('请至少选择一张需要向量化的数据表', 'error');
+      return;
+    }
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/agent/${agentId}/schema/sync`, {
-        method: 'POST'
+      const res = await fetch(`/api/agent/${agentId}/datasource/${selectedDsId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(selectedTables)
       }).then(r => r.json());
 
       if (res.success) {
@@ -370,6 +437,7 @@ export const CreateAgent: React.FC = () => {
 
       if (res.success && res.data) {
         setApiKey(res.data);
+        setApiKeyEnabled(true);
         showNotification('成功为智能体生成 API Key', 'success');
       } else {
         showNotification(res.message || '生成 API Key 失败', 'error');
@@ -391,6 +459,7 @@ export const CreateAgent: React.FC = () => {
 
       if (res.success && res.data) {
         setApiKey(res.data);
+        setApiKeyEnabled(true);
         setConfirmReset(false);
         showNotification('已作废旧密钥，新 API Key 生成成功', 'success');
       } else {
@@ -403,12 +472,67 @@ export const CreateAgent: React.FC = () => {
     }
   };
 
+  const handleToggleApiKeyEnabled = async () => {
+    if (!agentId || !apiKey) return;
+    setKeyLoading(true);
+    try {
+      const nextEnabled = !apiKeyEnabled;
+      const res = await fetch(`/api/agent/${agentId}/api-key/${nextEnabled ? 'enable' : 'disable'}`, {
+        method: 'POST'
+      }).then(r => r.json());
+
+      if (res.success) {
+        setApiKeyEnabled(nextEnabled);
+        showNotification(nextEnabled ? 'API Key 已启用' : 'API Key 已禁用', 'success');
+      } else {
+        showNotification(res.message || '更新 API Key 状态失败', 'error');
+      }
+    } catch (err) {
+      console.error('更新 API Key 状态失败:', err);
+      showNotification('更新 API Key 状态时发生网络异常', 'error');
+    } finally {
+      setKeyLoading(false);
+    }
+  };
+
+  const handleDeleteKey = async () => {
+    if (!agentId || !apiKey) return;
+    setKeyLoading(true);
+    try {
+      const res = await fetch(`/api/agent/${agentId}/api-key`, {
+        method: 'DELETE'
+      }).then(r => r.json());
+
+      if (res.success) {
+        setApiKey('');
+        setApiKeyEnabled(false);
+        setKeyVisible(false);
+        setConfirmReset(false);
+        showNotification('API Key 已删除', 'success');
+      } else {
+        showNotification(res.message || '删除 API Key 失败', 'error');
+      }
+    } catch (err) {
+      console.error('删除 API Key 失败:', err);
+      showNotification('删除 API Key 时发生网络异常', 'error');
+    } finally {
+      setKeyLoading(false);
+    }
+  };
+
   const handleCopyKey = () => {
     if (!apiKey) return;
     navigator.clipboard.writeText(apiKey);
     setCopySuccess(true);
     showNotification('已成功复制 API Key 至剪切板', 'success');
     setTimeout(() => setCopySuccess(false), 2000);
+  };
+
+  const handleCopyExample = (example: string) => {
+    navigator.clipboard.writeText(example);
+    setExampleCopySuccess(true);
+    showNotification('已复制调用示例', 'success');
+    setTimeout(() => setExampleCopySuccess(false), 2000);
   };
 
   // 注入模版：游戏销售分析助手
@@ -464,7 +588,7 @@ export const CreateAgent: React.FC = () => {
           setAgentId(savedId);
           setIsEdit(true);
           // 就地静默重写 URL，将新建状态转换为编辑状态，无需退回主页即可解锁其他 Tab
-          window.history.replaceState(null, '', `/agent/create?id=${savedId}`);
+          navigate(`/agent/create?id=${savedId}&tab=${silent ? activeTab : 'datasource'}`, { replace: true });
           loadBindingInfo(savedId);
           loadApiKeyInfo(savedId);
         }
@@ -490,6 +614,15 @@ export const CreateAgent: React.FC = () => {
 
   // 调试：保存并携带 agentId 跳转到 Chat
   const handleDebug = async () => {
+    if (!isFormValid) {
+      navigateToSection('info');
+      return;
+    }
+    if (!canConfigureTables) {
+      showNotification('请先绑定数据源，再调试运行', 'error');
+      navigateToSection('datasource');
+      return;
+    }
     const savedId = await handleSave(true);
     if (savedId) {
       navigate(`/chat?agentId=${savedId}`);
@@ -498,6 +631,15 @@ export const CreateAgent: React.FC = () => {
 
   // 发布：保存并自动激活发布状态
   const handlePublish = async () => {
+    if (!isFormValid) {
+      navigateToSection('info');
+      return;
+    }
+    if (!canConfigureTables) {
+      showNotification('发布前请先绑定数据源', 'error');
+      navigateToSection('datasource');
+      return;
+    }
     const savedId = await handleSave(true);
     if (!savedId) return;
 
@@ -557,6 +699,171 @@ export const CreateAgent: React.FC = () => {
     }
   };
 
+  const boundDatasourceId = bindingVo?.datasourceId ? String(bindingVo.datasourceId) : '';
+  const isDatasourceBound = Boolean(bindingVo && boundDatasourceId);
+  const hasDatasourceSelectionChanged = Boolean(selectedDsId && selectedDsId !== boundDatasourceId);
+  const canConfigureTables = isDatasourceBound && selectedDsId === boundDatasourceId;
+  const canRunAgent = isFormValid && canConfigureTables && !hasDatasourceSelectionChanged;
+  const selectedDatasource = datasources.find(ds => String(ds.id) === selectedDsId);
+  const shouldShowBindAction = Boolean(selectedDsId) && (!bindingVo || hasDatasourceSelectionChanged);
+
+  const tabCompletion = {
+    info: isFormValid,
+    datasource: canConfigureTables,
+    apikey: Boolean(apiKey)
+  };
+
+  const selectedTableSummary = `${selectedTables.length}/${allTables.length || 0} 张表`;
+  const datasourceStatusText = canConfigureTables
+    ? `${bindingVo?.datasourceName || selectedDatasource?.name || '已绑定数据源'} · 已选 ${selectedTableSummary}`
+    : agentId
+      ? '待绑定数据源并选择分析表'
+      : '保存基础信息后解锁';
+
+  const readinessItems = [
+    { label: '基础信息已完成', done: isFormValid, detail: isFormValid ? '名称与分类可用' : '需要名称和分类' },
+    { label: '数据源已绑定', done: canConfigureTables, detail: canConfigureTables ? bindingVo?.datasourceName || '已绑定' : '调试前需要绑定' },
+    { label: `已选 ${selectedTableSummary}`, done: selectedTables.length > 0, detail: selectedTables.length > 0 ? '将参与 Schema 召回' : '建议至少选择 1 张表' },
+    { label: 'API Key 已生成', done: Boolean(apiKey), detail: apiKey ? (apiKeyEnabled ? '已启用' : '当前禁用') : '按需生成' },
+    { label: '知识库未绑定', done: false, detail: '知识库绑定能力即将接入' },
+    { label: '周期任务未配置', done: false, detail: '周期运行能力即将接入' }
+  ];
+  const pendingReadinessCount = readinessItems.filter(item => !item.done).length;
+
+  const capabilityCards = [
+    {
+      id: 'info',
+      title: '基础信息',
+      description: isFormValid ? `${form.category} · ${form.name}` : '维护名称、分类、描述与系统 Prompt',
+      status: isFormValid ? '已完成' : '待补全',
+      icon: Settings2,
+      enabled: true,
+      action: '编辑',
+      onClick: () => navigateToSection('info')
+    },
+    {
+      id: 'datasource',
+      title: '数据环境',
+      description: datasourceStatusText,
+      status: canConfigureTables ? '已完成' : '待配置',
+      icon: Database,
+      enabled: Boolean(agentId),
+      action: agentId ? '配置' : '先保存',
+      onClick: () => navigateToSection(agentId ? 'datasource' : 'info')
+    },
+    {
+      id: 'knowledge',
+      title: '知识库',
+      description: '关联文档、FAQ 与业务知识，让 Agent 具备领域上下文',
+      status: '规划中',
+      icon: BookOpen,
+      enabled: false,
+      action: '预留',
+      disabledReason: '知识库绑定能力即将接入'
+    },
+    {
+      id: 'apikey',
+      title: 'API 调用',
+      description: apiKey ? (apiKeyEnabled ? '已生成并启用调用凭证' : '已生成调用凭证，当前禁用') : '生成或重置外部调用凭证',
+      status: apiKey ? (apiKeyEnabled ? '已启用' : '已禁用') : '可选',
+      icon: Key,
+      enabled: Boolean(agentId),
+      action: agentId ? '管理' : '先保存',
+      onClick: () => navigateToSection(agentId ? 'apikey' : 'info')
+    },
+    {
+      id: 'schedule',
+      title: '周期运行',
+      description: '按固定时间触发 Agent 分析任务并沉淀结果',
+      status: '规划中',
+      icon: CalendarClock,
+      enabled: false,
+      action: '预留',
+      disabledReason: '周期运行能力即将接入'
+    },
+    {
+      id: 'publish',
+      title: '发布检查',
+      description: pendingReadinessCount === 0 ? '全部检查项已完成，可以发布' : `${pendingReadinessCount} 项仍需处理`,
+      status: pendingReadinessCount === 0 ? '已就绪' : '有阻塞',
+      icon: ShieldCheck,
+      enabled: true,
+      action: '查看检查项',
+      onClick: () => navigateToSection('overview')
+    }
+  ];
+
+  const apiOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const apiAgentId = agentId || 2;
+  const apiKeyForExample = keyVisible && apiKey ? apiKey : '<your_api_key>';
+  const sessionEndpoint = `${apiOrigin}/api/agent/${apiAgentId}/sessions`;
+  const messageEndpoint = `${apiOrigin}/api/sessions/<sessionId>/messages`;
+  const apiExamples: Record<ApiExampleLanguage, string> = {
+    curl: `# 创建会话
+curl -X POST "${sessionEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${apiKeyForExample}" \\
+  -d '{"title":"demo"}'
+
+# 发送消息
+curl -X POST "${messageEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${apiKeyForExample}" \\
+  -d '{"role":"user","content":"帮我分析一下本月销售额","messageType":"text","titleNeeded":true}'`,
+    javascript: `const apiKey = "${apiKeyForExample}";
+
+const sessionRes = await fetch("${sessionEndpoint}", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey
+  },
+  body: JSON.stringify({ title: "demo" })
+});
+const session = await sessionRes.json();
+const sessionId = session.data.id;
+
+const messageRes = await fetch(\`${apiOrigin}/api/sessions/\${sessionId}/messages\`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": apiKey
+  },
+  body: JSON.stringify({
+    role: "user",
+    content: "帮我分析一下本月销售额",
+    messageType: "text",
+    titleNeeded: true
+  })
+});
+const message = await messageRes.json();`,
+    python: `import requests
+
+api_key = "${apiKeyForExample}"
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": api_key,
+}
+
+session_resp = requests.post(
+    "${sessionEndpoint}",
+    headers=headers,
+    json={"title": "demo"},
+)
+session_id = session_resp.json()["data"]["id"]
+
+message_resp = requests.post(
+    f"${apiOrigin}/api/sessions/{session_id}/messages",
+    headers=headers,
+    json={
+        "role": "user",
+        "content": "帮我分析一下本月销售额",
+        "messageType": "text",
+        "titleNeeded": True,
+    },
+)`
+  };
+
   const avatarIndex = Number(form.avatar) || 0;
 
   return (
@@ -608,24 +915,38 @@ export const CreateAgent: React.FC = () => {
 
             {/* Tab 栏 */}
             <div className="bg-gray-100 p-0.5 rounded-lg flex gap-0.5">
-              {[
-                { id: 'info', label: '智能体信息' },
-                { id: 'datasource', label: '数据源配置' },
-                { id: 'apikey', label: 'API Key 相关' }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-1 text-[11px] font-semibold rounded-md transition-all duration-200 border-none focus:outline-none cursor-pointer ${
-                    activeTab === tab.id
-                      ? 'bg-white text-gray-800 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700 bg-transparent'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+              {([
+                { id: 'overview' as const, label: '配置总览' },
+                { id: 'info' as const, label: '智能体信息' },
+                { id: 'datasource' as const, label: '数据环境' },
+                { id: 'apikey' as const, label: 'API 调用' }
+              ]).map(tab => {
+                const isDone = tab.id === 'overview' ? pendingReadinessCount === 0 : tabCompletion[tab.id];
+                const needsAttention = tab.id === 'datasource' && isFormValid && !canConfigureTables;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => navigateToSection(tab.id)}
+                    className={`px-3.5 py-1 text-[11px] font-semibold rounded-md transition-all duration-200 border-none focus:outline-none cursor-pointer inline-flex items-center gap-1.5 ${
+                      activeTab === tab.id
+                        ? 'bg-white text-gray-800 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700 bg-transparent'
+                    }`}
+                  >
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        isDone
+                          ? 'bg-emerald-500'
+                          : needsAttention
+                            ? 'bg-amber-500'
+                            : 'bg-slate-300'
+                      }`}
+                    />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -644,6 +965,153 @@ export const CreateAgent: React.FC = () => {
 
         {/* 主编辑渲染区分支 */}
         <div className="flex-grow min-h-0 p-6 overflow-hidden">
+
+          {/* ==================== OVERVIEW: Agent 能力工作台 ==================== */}
+          {activeTab === 'overview' && (
+            <div className="h-full grid grid-cols-[minmax(0,1fr)_300px] gap-5 overflow-hidden animate-in fade-in duration-300">
+              <div className="min-w-0 overflow-hidden">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400 select-none">
+                      <Sparkles className="h-3.5 w-3.5 text-[#2D336B]" />
+                      Agent 能力工作台
+                    </div>
+                    <h2 className="mt-1 text-xl font-bold text-slate-900 tracking-normal">
+                      {form.name || '未命名智能体'}
+                    </h2>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                      通过模块化能力装配来管理智能体：基础资料、数据环境、知识库、API 调用和周期运行可以独立配置，也会汇总到发布检查中。
+                    </p>
+                  </div>
+                  <div className="flex flex-none items-center gap-2 rounded-md border border-gray-200 bg-[#FAFAFA] px-3 py-2 select-none">
+                    <span className="text-[10px] font-bold text-slate-400">状态</span>
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                      isEdit ? 'bg-gray-100 text-gray-700' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {isEdit ? '草稿配置中' : '待创建'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3 select-none">
+                  <div className={`${YIWEN_CARD_CLASS} px-4 py-3`}>
+                    <div className="text-[11px] font-bold text-[#8fa1bb]">配置进度</div>
+                    <div className="mt-1 text-xl font-extrabold text-[#020817]">{6 - pendingReadinessCount}/6</div>
+                    <div className="mt-1 text-[11px] font-semibold text-[#63738a]">发布检查项完成度</div>
+                  </div>
+                  <div className={`${YIWEN_CARD_CLASS} px-4 py-3`}>
+                    <div className="text-[11px] font-bold text-[#8fa1bb]">运行环境</div>
+                    <div className="mt-1 truncate text-base font-extrabold text-[#020817]">
+                      {bindingVo?.datasourceName || '未绑定数据源'}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold text-[#63738a]">NL2SQL 数据环境</div>
+                  </div>
+                  <div className={`${YIWEN_CARD_CLASS} px-4 py-3`}>
+                    <div className="text-[11px] font-bold text-[#8fa1bb]">调用方式</div>
+                    <div className="mt-1 text-base font-extrabold text-[#020817]">
+                      {apiKey ? 'API Key 已启用' : '仅站内调试'}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold text-[#63738a]">外部系统接入状态</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between select-none">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">能力装配</h3>
+                    <p className="mt-0.5 text-[11px] text-slate-400">按能力模块管理 Agent，后续功能可以继续平滑扩展。</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                  {capabilityCards.map(card => {
+                    const Icon = card.icon;
+                    const isBlocked = !card.enabled;
+                    const statusClass = card.status === '已完成' || card.status === '已就绪' || card.status === '已启用'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : card.status === '有阻塞' || card.status === '待配置' || card.status === '已禁用'
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : 'bg-slate-50 text-slate-500 border-slate-200';
+
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        disabled={isBlocked}
+                        onClick={card.onClick}
+                        title={card.disabledReason || `进入${card.title}`}
+                        className={`${YIWEN_CARD_CLASS} h-[104px] overflow-hidden p-3 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 ${
+                          isBlocked
+                            ? 'cursor-not-allowed opacity-75'
+                            : 'cursor-pointer hover:-translate-y-0.5 hover:border-[#bfd5f1] hover:shadow-[0_12px_28px_rgba(31,74,125,0.09)] active:scale-[0.99]'
+                        }`}
+                      >
+                        <div className="flex h-full flex-col justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className={YIWEN_ICON_TILE_CLASS}>
+                              <Icon className="h-5 w-5" strokeWidth={2.4} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <h4 className="truncate text-sm font-extrabold leading-tight text-[#020817]">{card.title}</h4>
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass}`}>
+                                    {card.status}
+                                  </span>
+                                </div>
+                                {!isBlocked && (
+                                  <ChevronRight className="h-3.5 w-3.5 flex-none text-[#8fa1bb]" />
+                                )}
+                              </div>
+                              <p className="mt-1.5 overflow-hidden text-[11px] font-semibold leading-4 text-[#5f718a] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{card.description}</p>
+                              {card.disabledReason && (
+                                <p className="mt-1 truncate text-[10px] font-semibold text-[#8fa1bb]">{card.disabledReason}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <aside className={`${YIWEN_CARD_CLASS} min-h-0 overflow-hidden bg-[#fbfdff] p-4 select-none`}>
+                <div className="flex items-center justify-between border-b border-[#e5eef9] pb-3">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-[#020817]">上线检查</h3>
+                    <p className="mt-0.5 text-[11px] font-semibold text-[#8fa1bb]">调试和发布前的关键依赖</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                    pendingReadinessCount === 0
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  }`}>
+                    {pendingReadinessCount === 0 ? '可发布' : `${pendingReadinessCount} 项待处理`}
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {readinessItems.map(item => (
+                    <div key={item.label} className="flex items-start gap-2.5 rounded-[14px] border border-[#dbe8f7] bg-white px-3 py-2 shadow-[0_6px_18px_rgba(31,74,125,0.04)]">
+                      <span className={`mt-0.5 flex size-4 flex-none items-center justify-center rounded-full ${
+                        item.done ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {item.done ? <Check className="h-2.5 w-2.5" /> : <AlertCircle className="h-2.5 w-2.5" />}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-extrabold text-[#020817]">{item.label}</div>
+                        <div className="mt-0.5 truncate text-[10px] font-semibold leading-4 text-[#8fa1bb]">{item.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 rounded-[14px] border border-dashed border-[#dbe8f7] bg-white px-3 py-3 text-[10px] font-semibold leading-4 text-[#63738a]">
+                  发布检查只表达“是否具备上线条件”。数据源、知识库、周期任务仍由各自能力模块独立管理，后续新增 Controller 时可以继续增加能力卡。
+                </div>
+              </aside>
+            </div>
+          )}
           
           {/* ==================== TAB 1: 智能体配置与 Prompt 编程区 ==================== */}
           {activeTab === 'info' && (
@@ -651,7 +1119,7 @@ export const CreateAgent: React.FC = () => {
               
               {/* 左侧：基本资料 (340px) */}
               <div className="w-[340px] flex-none flex flex-col overflow-y-auto pr-1">
-                <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-5 shadow-sm">
+                <div className={`${DETAIL_PANEL_CLASS} p-5 space-y-5`}>
                   
                   {/* 智能体名片 */}
                   <div className="flex items-center gap-3.5 select-none">
@@ -701,7 +1169,7 @@ export const CreateAgent: React.FC = () => {
                         <select
                           value={form.category}
                           onChange={(e) => setForm({ ...form, category: e.target.value })}
-                          className="flex w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-xs h-8 placeholder:text-gray-400 focus:outline-none focus:border-[#2D336B] focus:ring-1 focus:ring-[#2D336B] transition-all appearance-none cursor-pointer"
+                          className={SELECT_CLASS}
                         >
                           <option value="">-- 请选择分类 --</option>
                           <option value="NL2SQL助手">NL2SQL数据助手</option>
@@ -709,7 +1177,7 @@ export const CreateAgent: React.FC = () => {
                           <option value="报表提取专家">报表提取专家</option>
                           <option value="日常业务答疑">日常业务答疑</option>
                         </select>
-                        <div className="absolute right-3 top-2.5 pointer-events-none text-gray-450 text-[8px]">▼</div>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none h-3.5 w-3.5 text-slate-400" />
                       </div>
                     </div>
 
@@ -786,8 +1254,8 @@ export const CreateAgent: React.FC = () => {
                 </div>
 
                 {/* 提示词文本编辑器卡片 */}
-                <div className="flex-grow min-h-[220px] relative border border-gray-200 rounded-lg overflow-hidden flex flex-col bg-white">
-                  <div className="flex-none flex items-center justify-between border-b border-gray-200 px-4 py-2 bg-[#FAFAFA] text-[10px] text-gray-500 select-none">
+                <div className={`${DETAIL_PANEL_CLASS} flex-grow min-h-[220px] relative overflow-hidden flex flex-col bg-white`}>
+                  <div className="flex-none flex items-center justify-between border-b border-[#e5eef9] px-4 py-2 bg-[#f7fbff] text-[10px] text-gray-500 select-none">
                     <div className="flex items-center gap-1.5">
                       <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span className="font-bold text-gray-700">Prompt IDE 沙盒</span>
@@ -805,7 +1273,7 @@ export const CreateAgent: React.FC = () => {
                 </div>
 
                 {/* 快捷模板工具箱 */}
-                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 shadow-sm flex-none select-none">
+                <div className={`${DETAIL_PANEL_CLASS} p-4 space-y-3 flex-none select-none`}>
                   <div className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-[#2D336B]" />
                     <span className="text-xs font-bold text-gray-800">一键填充 Prompt 快捷模板</span>
@@ -837,7 +1305,7 @@ export const CreateAgent: React.FC = () => {
             <div className="h-full flex flex-row gap-6 overflow-hidden animate-in fade-in duration-300">
               {!agentId ? (
                 /* 锁定引导面板 */
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-white border border-dashed border-gray-200 rounded-lg select-none">
+                <div className={`${DETAIL_PANEL_CLASS} flex-1 flex flex-col items-center justify-center text-center p-8 select-none`}>
                   <div className="size-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner mb-4">
                     <Key className="w-6 h-6 animate-pulse" />
                   </div>
@@ -851,7 +1319,7 @@ export const CreateAgent: React.FC = () => {
                 <>
                   {/* 左侧：数据源选择器 (360px) */}
                   <div className="w-[360px] flex-none flex flex-col overflow-y-auto pr-1">
-                    <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4 shadow-sm h-full flex flex-col justify-between">
+                    <div className={`${DETAIL_PANEL_CLASS} p-5 space-y-4 h-full flex flex-col justify-between`}>
                       <div className="space-y-4">
                         <span className="text-xs font-bold text-slate-800 flex items-center gap-2 select-none">
                           <Database className="w-4 h-4 text-[#2D336B]" />
@@ -864,21 +1332,33 @@ export const CreateAgent: React.FC = () => {
                             <select 
                               value={selectedDsId} 
                               onChange={handleDsChange}
-                              className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:border-[#2D336B] focus:ring-1 focus:ring-[#2D336B]/10 transition-all appearance-none cursor-pointer"
+                              className={SELECT_CLASS}
                             >
                               <option value="">-- 未关联任何数据库 --</option>
                               {datasources.map(ds => (
                                 <option key={ds.id} value={ds.id}>{ds.name} ({ds.type})</option>
                               ))}
                             </select>
-                            <div className="absolute right-3 top-3 pointer-events-none text-slate-400 text-[10px]">▼</div>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none h-3.5 w-3.5 text-slate-400" />
                           </div>
                         </div>
 
+                        {selectedDsId && !isDatasourceBound && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-3 text-[10px] leading-relaxed text-amber-800 select-none">
+                            已选择 {selectedDatasource?.name || '目标数据源'}，但尚未绑定到当前 Agent。绑定完成后才能选择需要同步/向量化的数据表。
+                          </div>
+                        )}
+
+                        {hasDatasourceSelectionChanged && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-3 text-[10px] leading-relaxed text-amber-800 select-none">
+                            切换数据源会清空当前已选表和已有向量化结果，请先绑定新数据源。
+                          </div>
+                        )}
+
                         {/* 绑定状态卡片 */}
                         {bindingVo && (
-                          <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-[#FAFAFA] select-none shadow-sm animate-in fade-in duration-300">
-                            <div className="flex justify-between items-center text-xs pb-2 border-b border-gray-200">
+                          <div className="rounded-[14px] border border-[#dbe8f7] bg-white p-4 space-y-3 select-none shadow-[0_8px_20px_rgba(31,74,125,0.04)] animate-in fade-in duration-300">
+                            <div className="flex justify-between items-center text-xs pb-2 border-b border-[#e5eef9]">
                               <span className="text-slate-500 font-medium">已关联数据源</span>
                               <span className="font-extrabold text-slate-800">{bindingVo.datasourceName || '未知'}</span>
                             </div>
@@ -903,7 +1383,7 @@ export const CreateAgent: React.FC = () => {
 
                       {/* 绑定与解绑操作区 */}
                       <div className="space-y-2.5 pt-4 border-t border-gray-250 select-none">
-                        {!bindingVo ? (
+                        {shouldShowBindAction ? (
                           <button
                             type="button"
                             disabled={!selectedDsId || actionLoading}
@@ -920,10 +1400,10 @@ export const CreateAgent: React.FC = () => {
                                 绑定同步中...
                               </>
                             ) : (
-                              '保存并开始自动同步'
+                              hasDatasourceSelectionChanged ? '保存新数据源绑定' : '绑定数据源并初始化同步'
                             )}
                           </button>
-                        ) : (
+                        ) : bindingVo ? (
                           <div className="space-y-3">
                             {/* 原地气泡确认 */}
                             {showUnbindConfirm ? (
@@ -959,9 +1439,13 @@ export const CreateAgent: React.FC = () => {
                               <div className="flex gap-2 animate-in fade-in duration-200">
                                 <button
                                   type="button"
-                                  disabled={actionLoading}
+                                  disabled={actionLoading || !canConfigureTables}
                                   onClick={handleSyncSchema}
-                                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 cursor-pointer shadow-sm transition-all active:scale-95"
+                                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 border shadow-sm transition-all ${
+                                    canConfigureTables
+                                      ? 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700 cursor-pointer active:scale-95'
+                                      : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                                  }`}
                                 >
                                   {actionLoading ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2D336B]" />
@@ -982,38 +1466,62 @@ export const CreateAgent: React.FC = () => {
                               </div>
                             )}
                           </div>
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-gray-200 bg-slate-50 px-3 py-3 text-[10px] leading-relaxed text-slate-400">
+                            选择一个数据源后，先完成绑定，再进入表选择和向量化配置。
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
 
                   {/* 右侧：表网格与元数据监控 (flex-1) */}
-                  <div className="flex-grow flex flex-col min-h-0 bg-white border border-gray-200 rounded-lg p-5 shadow-sm overflow-hidden">
+                  <div className={`${DETAIL_PANEL_CLASS} flex-grow flex flex-col min-h-0 p-5 overflow-hidden`}>
                     {selectedDsId ? (
-                      <div className="flex-1 flex flex-col min-h-0 space-y-4">
+                      !canConfigureTables ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#f7fbff] border border-dashed border-[#dbe8f7] rounded-[14px] select-none">
+                          <div className="size-12 rounded-full bg-white border border-gray-200 flex items-center justify-center text-slate-400 shadow-sm mb-4">
+                            <Database className="w-5 h-5" />
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-750">表选择暂未开放</h4>
+                          <p className="text-[11px] text-slate-500 mt-2 max-w-[420px] leading-relaxed">
+                            请先绑定数据源，绑定成功后才能选择需要同步/向量化的数据表。
+                          </p>
+                          <div className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-semibold text-amber-800">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            当前选择: {selectedDatasource?.name || '待绑定数据源'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col min-h-0 space-y-4">
                         <div className="flex justify-between items-center text-xs select-none flex-none">
                           <span className="font-semibold text-gray-800">同步的业务数据表 ({selectedTables.length} / {allTables.length})</span>
                           <button 
                             type="button" 
                             onClick={toggleSelectAllTables}
-                            className="text-[#2D336B] hover:text-[#1C214C] hover:underline cursor-pointer border-none bg-transparent text-[10px] font-semibold transition-all focus:outline-none"
+                            disabled={!canConfigureTables}
+                            className={`border-none bg-transparent text-[10px] font-semibold transition-all focus:outline-none ${
+                              canConfigureTables
+                                ? 'text-[#2D336B] hover:text-[#1C214C] hover:underline cursor-pointer'
+                                : 'text-slate-300 cursor-not-allowed'
+                            }`}
                           >
                             {selectedTables.length === allTables.length ? '全不选' : '全选'}
                           </button>
                         </div>
                         
                         {loadingTables ? (
-                          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-xs bg-[#FAFAFA] border border-gray-200 rounded-lg">
+                          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-xs bg-[#f7fbff] border border-[#dbe8f7] rounded-[14px]">
                             <Loader2 className="w-6 h-6 animate-spin text-[#2D336B] mb-2" />
                             分析读取数据表中...
                           </div>
                         ) : allTables.length === 0 ? (
-                          <div className="text-[11px] text-slate-400 bg-slate-55 border border-gray-200 rounded-lg p-4 text-center select-none flex-1 flex items-center justify-center">
+                          <div className="text-[11px] text-slate-400 bg-[#f7fbff] border border-[#dbe8f7] rounded-[14px] p-4 text-center select-none flex-1 flex items-center justify-center">
                             该数据源下未发现任何可同步的数据表
                           </div>
                         ) : (
                           /* 网格化大表卡片 Bento Card Grid */
-                          <div className="flex-grow overflow-y-auto border border-gray-200 rounded-lg bg-[#FAFAFA] p-4 shadow-inner">
+                          <div className="flex-grow overflow-y-auto border border-[#dbe8f7] rounded-[14px] bg-[#f7fbff] p-4 shadow-inner">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                               {allTables.map(table => {
                                 const isChecked = selectedTables.includes(table.tableName);
@@ -1049,6 +1557,7 @@ export const CreateAgent: React.FC = () => {
                           </div>
                         )}
                       </div>
+                      )
                     ) : (
                       /* 提示先选择数据库 */
                       <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400 select-none">
@@ -1064,10 +1573,10 @@ export const CreateAgent: React.FC = () => {
 
           {/* ==================== TAB 3: API Key 密钥管理器 ==================== */}
           {activeTab === 'apikey' && (
-            <div className="h-full flex items-center justify-center animate-in fade-in duration-300">
+            <div className={`h-full animate-in fade-in duration-300 ${agentId ? 'overflow-hidden' : 'flex items-center justify-center'}`}>
               {!agentId ? (
                 /* 锁定引导面板 */
-                <div className="w-[480px] flex flex-col items-center justify-center text-center p-8 bg-white border border-dashed border-gray-200 rounded-lg select-none">
+                <div className={`${DETAIL_PANEL_CLASS} w-[480px] flex flex-col items-center justify-center text-center p-8 select-none`}>
                   <div className="size-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner mb-4">
                     <Key className="w-6 h-6 animate-pulse" />
                   </div>
@@ -1077,112 +1586,197 @@ export const CreateAgent: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                /* 独立高配置 API Key 面板 */
-                <div className="bg-white border border-gray-200 rounded-lg w-[560px] max-w-full shadow-sm p-8 flex flex-col gap-6 relative animate-in zoom-in-95 duration-200">
-                  <div className="space-y-1 border-b border-gray-200 pb-4 select-none">
-                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      <Key className="w-4.5 h-4.5 text-[#2D336B]" />
-                      API Key 极客密钥配置
-                    </h3>
-                    <p className="text-[10px] text-gray-400 leading-normal">
-                      管理该智能体的 API 调用凭证，可以通过该 Key 将智能体的 NL2SQL 功能嵌入第三方系统。
-                    </p>
-                  </div>
-
-                  {keyLoading ? (
-                    <div className="flex flex-col items-center justify-center py-10 gap-2 select-none">
-                      <Loader2 className="w-6 h-6 text-[#2D336B] animate-spin" />
-                      <span className="text-[10px] text-slate-400">正在与服务器同步 API Key...</span>
+                <div className="h-full w-full grid grid-cols-[420px_1fr] gap-5 overflow-hidden">
+                  <div className={`${DETAIL_PANEL_CLASS} min-h-0 p-6 flex flex-col gap-5`}>
+                    <div className="space-y-1 border-b border-[#e5eef9] pb-4 select-none">
+                      <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <Key className="w-4.5 h-4.5 text-[#2D336B]" />
+                        API 调用凭证
+                      </h3>
+                      <p className="text-[10px] text-gray-400 leading-normal">
+                        管理该智能体的外部调用凭证，调用时通过 X-API-Key 请求头完成鉴权。
+                      </p>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      
-                      {!apiKey ? (
-                        /* 状态 1：尚未生成 API Key */
-                        <div className="space-y-4 py-4 text-center select-none">
-                          <AlertCircle className="w-10 h-10 text-slate-355 mx-auto" />
-                          <p className="text-[11px] text-slate-550 max-w-[280px] mx-auto leading-relaxed">
-                            该智能体目前尚未拥有 API 密钥凭证，无法从外部进行接口拉取。
-                          </p>
-                          <button
-                            type="button"
-                            onClick={handleGenerateKey}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 px-6 text-white bg-[#2D336B] hover:bg-[#1C214C] cursor-pointer shadow-sm transition-all active:scale-95 border-none focus:outline-none"
-                          >
-                            <Key className="w-3.5 h-3.5" />
-                            生成第一颗 API Key
-                          </button>
-                        </div>
-                      ) : (
-                        /* 状态 2：已有 API Key，显示管理面板 */
-                        <div className="space-y-5">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-500 block select-none">调用密钥 (API KEY)</label>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-[#FAFAFA] text-gray-800 font-mono text-[11px] px-3.5 py-2.5 rounded-md select-all overflow-x-auto whitespace-nowrap scrollbar-none flex items-center justify-between border border-gray-200 shadow-inner">
-                                <span>
-                                  {keyVisible ? apiKey : `sk-${'•'.repeat(24)}`}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setKeyVisible(!keyVisible)}
-                                  className="text-gray-400 hover:text-gray-700 cursor-pointer border-none bg-transparent ml-2 focus:outline-none shrink-0"
-                                  title={keyVisible ? '隐藏' : '显示'}
-                                >
-                                  {keyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-                              
-                              <button
-                                type="button"
-                                onClick={handleCopyKey}
-                                className="inline-flex items-center justify-center size-9 bg-white border border-gray-200 hover:bg-gray-50 rounded-md cursor-pointer shrink-0 transition-all active:scale-95 focus:outline-none"
-                                title="复制到剪贴板"
-                              >
-                                {copySuccess ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-slate-650" />}
-                              </button>
-                            </div>
-                          </div>
 
-                          {/* 重置 Key 的警示确认区域 */}
-                          {confirmReset ? (
-                            <div className="bg-red-50/50 border border-red-200 rounded-lg p-4 space-y-3 animate-in slide-in-from-top-1 duration-200 select-none">
-                              <div className="flex items-start gap-2.5">
-                                <AlertCircle className="w-4 h-4 text-red-650 shrink-0 mt-0.5" />
-                                <div className="text-[10px] text-red-805 leading-relaxed font-semibold">
-                                  警告：重置后原密钥立即失效！任何正在使用旧密钥的第三方生产应用将立即丧失访问权限。
-                                </div>
-                              </div>
-                              <div className="flex gap-2 justify-end pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmReset(false)}
-                                  className="px-3 py-1 rounded bg-white border border-gray-200 text-gray-700 font-semibold text-[10px] cursor-pointer hover:bg-gray-50 focus:outline-none"
-                                >
-                                  取消
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleResetKey}
-                                  className="px-3 py-1 rounded bg-red-600 text-white font-semibold text-[10px] cursor-pointer hover:bg-red-700 focus:outline-none border-none shadow-sm"
-                                >
-                                  确认重置密钥
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
+                    <div className="rounded-[14px] border border-[#dbe8f7] bg-white px-4 py-3 select-none">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-bold text-[#8fa1bb]">API Key 状态</div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className={`inline-flex size-2 rounded-full ${
+                              apiKey ? (apiKeyEnabled ? 'bg-emerald-500' : 'bg-amber-500') : 'bg-slate-300'
+                            }`} />
+                            <span className="text-sm font-extrabold text-[#020817]">
+                              {apiKey ? (apiKeyEnabled ? '已启用' : '已禁用') : '未生成'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!apiKey || keyLoading}
+                          onClick={handleToggleApiKeyEnabled}
+                          className={`inline-flex h-8 items-center justify-center rounded-full px-4 text-xs font-bold transition-all focus:outline-none ${
+                            apiKey && !keyLoading
+                              ? apiKeyEnabled
+                                ? 'cursor-pointer border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100/70 active:scale-95'
+                                : 'cursor-pointer border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70 active:scale-95'
+                              : 'cursor-not-allowed border border-[#dbe8f7] bg-[#f6f9fd] text-[#a8b4c4]'
+                          }`}
+                        >
+                          {apiKeyEnabled ? '禁用' : '启用'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {keyLoading ? (
+                      <div className="flex flex-1 flex-col items-center justify-center py-10 gap-2 select-none">
+                        <Loader2 className="w-6 h-6 text-[#2D336B] animate-spin" />
+                        <span className="text-[10px] text-slate-400">正在与服务器同步 API Key...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-1 flex-col justify-between gap-5">
+                        {!apiKey ? (
+                          <div className="space-y-4 rounded-[14px] border border-dashed border-[#dbe8f7] bg-white px-5 py-6 text-center select-none">
+                            <AlertCircle className="w-9 h-9 text-slate-355 mx-auto" />
+                            <p className="text-[11px] text-slate-550 max-w-[280px] mx-auto leading-relaxed">
+                              该智能体目前尚未拥有 API 密钥凭证，生成后即可使用右侧示例接入。
+                            </p>
                             <button
                               type="button"
-                              onClick={() => setConfirmReset(true)}
-                              className="w-full inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 bg-red-50 border border-red-200 hover:bg-red-100/50 text-red-655 cursor-pointer shadow-sm transition-all active:scale-95 focus:outline-none select-none"
+                              onClick={handleGenerateKey}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 px-6 text-white bg-[#2D336B] hover:bg-[#1C214C] cursor-pointer shadow-sm transition-all active:scale-95 border-none focus:outline-none"
                             >
-                              作废并重置 API Key 凭证
+                              <Key className="w-3.5 h-3.5" />
+                              生成 API Key
                             </button>
-                          )}
+                          </div>
+                        ) : (
+                          <div className="space-y-5">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-slate-500 block select-none">调用密钥 (API KEY)</label>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-[#f7fbff] text-gray-800 font-mono text-[11px] px-3.5 py-2.5 rounded-md select-all overflow-x-auto whitespace-nowrap scrollbar-none flex items-center justify-between border border-[#dbe8f7] shadow-inner">
+                                  <span>
+                                    {keyVisible ? apiKey : `sk-${'•'.repeat(24)}`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setKeyVisible(!keyVisible)}
+                                    className="text-gray-400 hover:text-gray-700 cursor-pointer border-none bg-transparent ml-2 focus:outline-none shrink-0"
+                                    title={keyVisible ? '隐藏' : '显示'}
+                                  >
+                                    {keyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleCopyKey}
+                                  className="inline-flex items-center justify-center size-9 bg-white border border-[#dbe8f7] hover:bg-[#f7fbff] rounded-md cursor-pointer shrink-0 transition-all active:scale-95 focus:outline-none"
+                                  title="复制到剪贴板"
+                                >
+                                  {copySuccess ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-slate-650" />}
+                                </button>
+                              </div>
+                            </div>
+
+                            {confirmReset ? (
+                              <div className="bg-red-50/50 border border-red-200 rounded-[14px] p-4 space-y-3 animate-in slide-in-from-top-1 duration-200 select-none">
+                                <div className="flex items-start gap-2.5">
+                                  <AlertCircle className="w-4 h-4 text-red-650 shrink-0 mt-0.5" />
+                                  <div className="text-[10px] text-red-805 leading-relaxed font-semibold">
+                                    警告：重置后原密钥立即失效，正在使用旧密钥的第三方应用将无法继续访问。
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 justify-end pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmReset(false)}
+                                    className="px-3 py-1 rounded bg-white border border-gray-200 text-gray-700 font-semibold text-[10px] cursor-pointer hover:bg-gray-50 focus:outline-none"
+                                  >
+                                    取消
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleResetKey}
+                                    className="px-3 py-1 rounded bg-red-600 text-white font-semibold text-[10px] cursor-pointer hover:bg-red-700 focus:outline-none border-none shadow-sm"
+                                  >
+                                    确认重置密钥
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmReset(true)}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 bg-red-50 border border-red-200 hover:bg-red-100/50 text-red-655 cursor-pointer shadow-sm transition-all active:scale-95 focus:outline-none select-none"
+                                >
+                                  重置 API Key
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteKey}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-md font-semibold text-xs h-9 bg-white border border-red-200 hover:bg-red-50 text-red-655 cursor-pointer shadow-sm transition-all active:scale-95 focus:outline-none select-none"
+                                >
+                                  删除 API Key
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="rounded-[14px] border border-[#dbe8f7] bg-white px-4 py-3 text-[11px] font-semibold leading-5 text-[#63738a]">
+                          推荐在服务端保存 API Key，避免暴露在浏览器、日志或客户端安装包中。
                         </div>
-                      )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`${DETAIL_PANEL_CLASS} min-h-0 overflow-hidden p-5 flex flex-col`}>
+                    <div className="flex flex-none items-start justify-between gap-4 border-b border-[#e5eef9] pb-4 select-none">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-[#020817]">
+                          <Terminal className="h-4 w-4 text-[#2D336B]" />
+                          调用示例
+                        </h3>
+                        <p className="mt-1 text-[11px] font-semibold text-[#8fa1bb]">
+                          创建会话后发送消息，请在请求头中携带 X-API-Key。
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyExample(apiExamples[apiExampleLanguage])}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-[#dbe8f7] bg-white px-3 text-[11px] font-bold text-[#2563eb] shadow-[0_6px_14px_rgba(31,74,125,0.06)] transition-all hover:bg-[#f7fbff] active:scale-95 focus:outline-none"
+                      >
+                        {exampleCopySuccess ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {exampleCopySuccess ? '已复制' : '复制示例'}
+                      </button>
                     </div>
-                  )}
+
+                    <div className="mt-4 flex flex-none items-center gap-2 select-none">
+                      {API_EXAMPLE_LANGUAGES.map(lang => (
+                        <button
+                          key={lang.id}
+                          type="button"
+                          onClick={() => setApiExampleLanguage(lang.id)}
+                          className={`h-8 rounded-full px-3 text-[11px] font-bold transition-all focus:outline-none ${
+                            apiExampleLanguage === lang.id
+                              ? 'bg-[#2D336B] text-white shadow-[0_8px_18px_rgba(45,51,107,0.18)]'
+                              : 'border border-[#dbe8f7] bg-white text-[#63738a] hover:bg-[#f7fbff]'
+                          }`}
+                        >
+                          {lang.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[14px] border border-[#111827] bg-[#0b1020] shadow-[0_16px_36px_rgba(15,23,42,0.16)]">
+                      <pre className="h-full overflow-auto p-5 text-[12px] leading-6 text-slate-200">
+                        <code>{apiExamples[apiExampleLanguage]}</code>
+                      </pre>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1190,7 +1784,8 @@ export const CreateAgent: React.FC = () => {
 
         </div>
 
-        {/* 底部悬浮操作栏 */}
+        {/* 底部悬浮操作栏：仅基础信息/总览保留全局保存、调试、发布动作 */}
+        {(activeTab === 'overview' || activeTab === 'info') && (
         <div className="flex-none flex items-center justify-end gap-3 border-t border-gray-200 p-4 bg-[#FAFAFA] rounded-b-lg shadow-sm select-none">
           <button
             type="button"
@@ -1222,9 +1817,12 @@ export const CreateAgent: React.FC = () => {
             type="button"
             disabled={!isFormValid}
             onClick={handleDebug}
+            title={canRunAgent ? '调试运行' : '请先绑定数据源'}
             className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-semibold text-xs h-9 px-4 border border-transparent transition-all focus:outline-none ${
-              isFormValid
+              canRunAgent
                 ? 'bg-[#2D336B] hover:bg-[#1C214C] text-white cursor-pointer active:scale-95 duration-150 shadow-sm border-none'
+                : isFormValid
+                  ? 'bg-white border-amber-200 text-amber-800 hover:bg-amber-50 cursor-pointer active:scale-95 duration-150 shadow-sm'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-40'
             }`}
           >
@@ -1236,9 +1834,12 @@ export const CreateAgent: React.FC = () => {
             type="button"
             disabled={!isFormValid}
             onClick={handlePublish}
+            title={canRunAgent ? '发布上线' : '发布前请先绑定数据源'}
             className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-semibold text-xs h-9 px-4 border border-transparent transition-all focus:outline-none ${
-              isFormValid
+              canRunAgent
                 ? 'bg-[#2D336B] hover:bg-[#1C214C] text-white cursor-pointer active:scale-95 duration-150 shadow-sm border-none'
+                : isFormValid
+                  ? 'bg-white border-amber-200 text-amber-800 hover:bg-amber-50 cursor-pointer active:scale-95 duration-150 shadow-sm'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-40'
             }`}
           >
@@ -1246,6 +1847,7 @@ export const CreateAgent: React.FC = () => {
             发布上线
           </button>
         </div>
+        )}
 
       </div>
     </div>
