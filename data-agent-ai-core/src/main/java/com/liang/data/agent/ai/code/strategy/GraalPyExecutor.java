@@ -5,9 +5,9 @@ import com.liang.data.agent.ai.code.model.TaskResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
-import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.IOAccess;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ClassUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,13 +28,14 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
 
     @Override
     public boolean isAvailable() {
-        return true; // 嵌入式沙箱环境默认可用
+        return ClassUtils.isPresent("org.graalvm.polyglot.Context", getClass().getClassLoader())
+                && ClassUtils.isPresent("com.oracle.graal.python.PythonLanguage", getClass().getClassLoader());
     }
 
     @Override
     public TaskResponse execute(String code, String inputJson, int timeoutSeconds) {
         long startTime = System.currentTimeMillis();
-        
+
         ByteArrayInputStream inputStream = new ByteArrayInputStream(inputJson.getBytes(StandardCharsets.UTF_8));
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
@@ -44,14 +45,14 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
                 .allowHostAccess(HostAccess.ALL)
                 .allowIO(IOAccess.NONE)
                 .allowNativeAccess(false)
+                .option("engine.WarnInterpreterOnly", "false")
                 .in(inputStream)
                 .out(new PrintStream(outputStream, true, StandardCharsets.UTF_8))
                 .err(new PrintStream(errorStream, true, StandardCharsets.UTF_8))
                 .build()) {
 
-            // 执行代码。GraalVM 的 Python 引擎将在隔离沙箱里运行脚本并输出 stdout/stderr
-            Value evalResult = context.eval("python", code);
-            
+            context.eval("python", code);
+
             long timeMs = System.currentTimeMillis() - startTime;
             String stdout = outputStream.toString(StandardCharsets.UTF_8).trim();
             String stderr = errorStream.toString(StandardCharsets.UTF_8).trim();
@@ -59,17 +60,16 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
             log.info("GraalVM Python 执行完成，耗时：{} 毫秒", timeMs);
 
             if (!stderr.isEmpty()) {
-                // 如果 GraalVM 运行时向 stderr 吐了错误，代表报错
                 return TaskResponse.failure(stdout, stderr, timeMs);
             }
-            
+
             return TaskResponse.success(stdout, timeMs);
 
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             String stderr = errorStream.toString(StandardCharsets.UTF_8).trim();
             long timeMs = System.currentTimeMillis() - startTime;
             log.warn("GraalVM Python 执行遇到异常: {}", e.getMessage());
-            
+
             String errorMsg = stderr.isEmpty() ? e.getMessage() : stderr + "\n" + e.getMessage();
             return TaskResponse.failure("", errorMsg, timeMs);
         }
