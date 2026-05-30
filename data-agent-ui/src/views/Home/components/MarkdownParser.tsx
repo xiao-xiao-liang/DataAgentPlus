@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CodeBlock } from './CodeBlock';
 
 export interface MarkdownParserProps {
   content: string;
@@ -365,6 +366,10 @@ export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ conte
 
                 if (lang === 'echarts') {
                   return <EchartsBlock chartKey={`inline-${hashString(codeStr)}`} code={codeStr} />;
+                }
+
+                if (lang === 'python' || lang === 'sql') {
+                  return <CodeBlock language={lang} code={codeStr} />;
                 }
 
                 return (

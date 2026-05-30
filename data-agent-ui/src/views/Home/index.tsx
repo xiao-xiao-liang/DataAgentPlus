@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Trophy, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, ClipboardCopy } from 'lucide-react';
+import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass } from 'lucide-react';
 import clsx from 'clsx';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -8,7 +8,20 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import { MOCK_PREVIEW_DATA, INITIAL_FILES } from '../DataCenter/mockData';
 import { InteractiveReport } from './components/InteractiveReport';
+import { ClarificationCard } from './components/ClarificationCard';
+import { MemoryCandidateCard } from './components/MemoryCandidateCard';
 import { parseStreamingPlan } from './streamingPlan';
+import {
+  formatStructuredAnalysisOutput,
+  extractExecutionPlanView,
+  getPythonExecutionOutputBlock,
+  isPythonExecutionResidue,
+  isStructuredAnalysisOutput,
+  normalizeCodeForDisplay,
+  tokenizeCodeForDisplay,
+  type CodeLanguage,
+  type CodeToken,
+} from './workflowDisplay';
 
 // 消息 Block 数据结构
 interface MessageBlock {
@@ -23,9 +36,36 @@ interface Message {
   data?: any;
   blocks?: MessageBlock[];
   isComplete?: boolean;
+  workflowEvents?: WorkflowEvent[];
 }
 
 type ChatMode = 'nl2sqlOnly' | 'humanReview' | null;
+
+type WorkflowEventType = 'clarification_request' | 'clarification_confirmation' | 'memory_candidate';
+
+interface WorkflowEvent<T = any> {
+  eventType: WorkflowEventType;
+  payload: T;
+}
+
+interface ClarificationRequestPayload {
+  question: string;
+  reason?: string;
+  missingTerm?: string;
+}
+
+interface ClarificationConfirmationPayload {
+  confirmationText: string;
+}
+
+interface MemoryCandidatePayload {
+  candidateId?: number | string;
+  title: string;
+  normalizedContent: string;
+  confidenceScore?: number;
+}
+
+type MemoryCandidateActionStatus = 'idle' | 'pending' | 'submitted' | 'published' | 'ignored' | 'error';
 
 const getPreviewData = (fileName: string) => {
   if (fileName.includes('餐厅')) return MOCK_PREVIEW_DATA.restaurant;
@@ -144,43 +184,6 @@ const DataUnderstanding: React.FC = () => {
           </ul>
         </li>
       </ul>
-    </div>
-  );
-};
-
-// ================= 子组件：PlanSourceBlock (带复制与标签头的高保真代码/计划源码框) =================
-interface PlanSourceBlockProps {
-  code: string;
-  language?: string;
-}
-
-const PlanSourceBlock: React.FC<PlanSourceBlockProps> = ({ code, language = 'json' }) => {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div className="w-full text-gray-800 select-text">
-      {/* 头部 */}
-      <div className="text-gray-500 bg-gray-100/80 mt-2 flex items-center gap-4 rounded-t-lg border border-gray-200 px-3 py-1.5 font-semibold text-[11px] select-none">
-        <div className="font-bold uppercase tracking-wider">{language}</div>
-        <div className="ml-auto flex items-center">
-          <button 
-            onClick={handleCopy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md hover:bg-gray-200/80 text-gray-500 hover:text-gray-700 text-xs border-none bg-transparent cursor-pointer size-6 p-1 transition-colors"
-            type="button"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            <span className="font-bold">{copied ? "已复制" : "复制"}</span>
-          </button>
-        </div>
-      </div>
-      {/* 代码内容 */}
-      <div className="mb-2 max-h-60 overflow-auto rounded-b-lg border border-t-0 border-gray-200 bg-white font-mono text-[11px] leading-relaxed p-4 whitespace-pre">
-        {code}
-      </div>
     </div>
   );
 };
@@ -313,32 +316,26 @@ interface Plan {
   execution_plan: ExecutionStep[];
 }
 
-const getToolDisplayName = (tool: string, query: string) => {
-  if (!tool) return 'UNKNOWN_NODE';
-  const isGame = query.includes('游戏') || query.includes('营销') || query.includes('销量') || query.includes('Strategy') || query.includes('SLG');
-  if (isGame) {
-    if (tool === 'sql_generate') return "策略类游戏的全球销量表现与区域市场偏好分析";
-    if (tool === 'python_generate') return "策略类游戏的评分-销量关系建模与口碑价值量化";
-    if (tool === 'report_generator') return "策略类游戏长尾营销洞察报告生成";
-  }
-  const cleanTool = tool.trim().toUpperCase();
-  if (cleanTool.endsWith('_NODE')) return cleanTool;
-  return `${cleanTool}_NODE`;
-};
-
 const parsePlanJson = (planJson?: string): Plan | null => {
   return parseStreamingPlan(planJson) as Plan | null;
 };
 
-const getStepInstruction = (step: ExecutionStep) => {
-  return step.tool_parameters?.instruction || step.tool_parameters?.summary_and_recommendations || '';
+// ================= 子组件：SQL/Python 代码框 =================
+const tokenClassName: Record<CodeToken['type'], string> = {
+  plain: 'text-gray-700',
+  keyword: 'text-indigo-650 font-semibold',
+  string: 'text-emerald-700',
+  number: 'text-amber-700',
+  comment: 'text-gray-400 italic',
+  operator: 'text-sky-700',
 };
 
-// ================= 子组件：SQL/Python 代码框 =================
-const CodeBlock: React.FC<{ language: 'sql' | 'python'; code: string }> = ({ language, code }) => {
+const CodeBlock: React.FC<{ language: CodeLanguage; code: string }> = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
+  const displayCode = normalizeCodeForDisplay(code, language);
+  const tokenLines = tokenizeCodeForDisplay(code, language);
   const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+    navigator.clipboard.writeText(displayCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -354,8 +351,48 @@ const CodeBlock: React.FC<{ language: 'sql' | 'python'; code: string }> = ({ lan
           {copied ? "已复制" : "复制"}
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto text-gray-700 whitespace-pre">
-        <code>{code}</code>
+      <pre className="p-4 overflow-x-auto whitespace-pre">
+        <code>
+          {tokenLines.map((line, lineIndex) => (
+            <React.Fragment key={`line-${lineIndex}`}>
+              {line.map((token, tokenIndex) => (
+                <span key={`${lineIndex}-${tokenIndex}`} className={tokenClassName[token.type]}>
+                  {token.text}
+                </span>
+              ))}
+              {lineIndex < tokenLines.length - 1 && '\n'}
+            </React.Fragment>
+          ))}
+        </code>
+      </pre>
+    </div>
+  );
+};
+
+const StructuredAnalysisOutputBlock: React.FC<{ content: string }> = ({ content }) => {
+  const [copied, setCopied] = useState(false);
+  const formatted = formatStructuredAnalysisOutput(content);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(formatted);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-gray-150 bg-white shadow-2xs">
+      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2 select-none">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">分析引擎输出</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="rounded border border-indigo-200 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-all hover:bg-indigo-50 hover:text-indigo-800 active:scale-95 cursor-pointer"
+        >
+          {copied ? '已复制' : '复制'}
+        </button>
+      </div>
+      <pre className="max-h-64 overflow-auto p-4 text-[12px] leading-relaxed text-gray-700 whitespace-pre-wrap">
+        {formatted}
       </pre>
     </div>
   );
@@ -907,7 +944,6 @@ interface WorkflowNodeStackProps {
   logs: string[];
   isComplete: boolean;
   currentBlockCount: number;
-  userQuery: string;
   onOpenReport: (content: string) => void;
 }
 
@@ -930,15 +966,6 @@ const WorkflowLogList: React.FC<{ lines: string[] }> = ({ lines }) => {
   );
 };
 
-const formatPlanCode = (planBlock?: ContentBlock | MessageBlock) => {
-  if (!planBlock) return '';
-  try {
-    return JSON.stringify(JSON.parse(planBlock.content.replace('$$$json', '').trim()), null, 2);
-  } catch {
-    return planBlock.content.replace('$$$json', '').trim();
-  }
-};
-
 const getToolLabel = (tool?: string) => {
   const normalized = (tool || '').trim().toLowerCase();
   if (normalized === 'sql_generate') return 'SQL 查询';
@@ -947,8 +974,8 @@ const getToolLabel = (tool?: string) => {
   return normalized || '工作流步骤';
 };
 
-const ExecutionPlanDetails: React.FC<{ planJson: string; query: string }> = ({ planJson, query }) => {
-  const plan = parsePlanJson(planJson);
+const ExecutionPlanDetails: React.FC<{ planJson: string }> = ({ planJson }) => {
+  const plan = extractExecutionPlanView(planJson);
 
   if (!plan) {
     return (
@@ -959,36 +986,41 @@ const ExecutionPlanDetails: React.FC<{ planJson: string; query: string }> = ({ p
     );
   }
 
-  const steps = plan.execution_plan || [];
+  const steps = plan.steps || [];
 
   return (
-    <div className="space-y-4">
-      {plan.thought_process && (
-        <p className="m-0 rounded-lg border border-gray-100 bg-white px-3 py-2 text-[13px] leading-6 text-gray-600">
-          {plan.thought_process}
+    <div className="space-y-3">
+      {plan.thoughtProcess && (
+        <p className="m-0 text-[13px] leading-6 text-gray-650">
+          {plan.thoughtProcess}
         </p>
       )}
-      <div className="space-y-3">
+      <ol className="m-0 space-y-2.5 p-0">
         {steps.map((step, index) => {
-          const instruction = getStepInstruction(step) || '执行计划中的一个工作流步骤。';
           return (
-            <div key={`${step.tool_to_use}-${step.step}-${index}`} className="rounded-lg border border-gray-150 bg-white px-3.5 py-3">
-              <div className="flex items-center gap-2">
+            <li key={`${step.tool}-${step.step}-${index}`} className="flex gap-3 rounded-lg border border-gray-150 bg-white px-3.5 py-3">
+              <div className="pt-0.5">
                 <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#EEEAFE] text-[11px] font-bold text-[#5B55FF]">
                   {step.step || index + 1}
                 </span>
-                <span className="min-w-0 truncate text-[13px] font-bold text-gray-850">
-                  {getToolDisplayName(step.tool_to_use, query)}
-                </span>
-                <span className="ml-auto shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
-                  {getToolLabel(step.tool_to_use)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="min-w-0 truncate text-[13px] font-bold text-gray-850">
+                    {step.tool.trim().toUpperCase()}
+                  </span>
+                  <span className="ml-auto shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                    {getToolLabel(step.tool)}
+                  </span>
+                </div>
+                <span className="block text-[12.5px] leading-6 text-gray-600">
+                  {step.instruction}
                 </span>
               </div>
-              <p className="m-0 mt-2 text-[12.5px] leading-6 text-gray-600">{instruction}</p>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
     </div>
   );
 };
@@ -997,7 +1029,6 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
   blocks = [],
   logs,
   isComplete,
-  userQuery,
   onOpenReport,
 }) => {
   const planBlock = getWorkflowPlanBlock(blocks);
@@ -1006,19 +1037,22 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
   const resultSetBlock = getResultSetBlock(blocks);
   const reportBlock = getBlockByType(blocks, 'markdown-report');
 
-  const intentLogs = getLinesByKeywords(logs, ['意图识别', '了解用户', '理解用户', '问题增强']);
+  const intentLogs = getLinesByKeywords(logs, ['意图识别', '了解用户', '理解用户']);
   const evidenceLogs = getLinesByKeywords(logs, ['知识库', '证据', '查询重写', '召回证据', '正在获取证据']);
+  const queryEnhanceLogs = getLinesByKeywords(logs, ['问题增强']);
   const schemaLogs = getLinesByKeywords(logs, ['Schema', '数据结构', '表关系', '候选集', '召回成功']);
   const feasibilityLogs = getLinesByKeywords(logs, ['可执行', '评估', '计划校验']);
-  const planLogs = getLinesByKeywords(logs, ['执行计划', '固定执行计划', '即将执行步骤', '人工复核', '人工审核']);
+  const planLogs = getLinesByKeywords(logs, ['生成执行计划', '执行计划生成完成', '固定执行计划', '人工复核', '人工审核']);
   const sqlLogs = getLinesByKeywords(logs, ['SQL', '语义一致性', '正在修复SQL']);
   const resultLogs = getLinesByKeywords(logs, ['结果集', '渲染展示图表', 'SQL 执行成功']);
   const pythonLogs = getLinesByKeywords(logs, ['Python', '分析引擎', '运行结果']);
   const reportLogs = getLinesByKeywords(logs, ['报告', '分析报告', '开始整理']);
+  const pythonOutputBlock = getPythonExecutionOutputBlock(blocks);
 
   const hasAnyWorkflowNode =
     intentLogs.length > 0 ||
     evidenceLogs.length > 0 ||
+    queryEnhanceLogs.length > 0 ||
     schemaLogs.length > 0 ||
     feasibilityLogs.length > 0 ||
     planLogs.length > 0 ||
@@ -1026,6 +1060,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
     sqlBlock ||
     sqlLogs.length > 0 ||
     pythonBlock ||
+    pythonOutputBlock ||
     resultSetBlock ||
     resultLogs.length > 0 ||
     pythonLogs.length > 0 ||
@@ -1044,13 +1079,14 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
   const hasPlanOutput = Boolean(planBlock);
   const hasSqlOutput = Boolean(sqlBlock);
   const hasResultOutput = Boolean(resultSetBlock);
-  const hasPythonOutput = Boolean(pythonBlock);
+  const hasPythonOutput = Boolean(pythonBlock || pythonOutputBlock);
+  const hasPythonExecutionOutput = Boolean(pythonOutputBlock);
   const hasReportOutput = Boolean(reportBlock);
   const hasPlanningStage = planLogs.length > 0 || hasPlanOutput;
   const planStageShouldOpen = hasPlanningStage && !hasSqlOutput && !hasResultOutput && !hasPythonOutput && !hasReportOutput;
   const sqlStageShouldOpen = (Boolean(sqlBlock) || sqlLogs.length > 0) && !hasResultOutput && !hasPythonOutput && !hasReportOutput;
   const resultStageShouldOpen = (Boolean(resultSetBlock) || resultLogs.length > 0) && !hasPythonOutput && !hasReportOutput;
-  const pythonStageShouldOpen = (Boolean(pythonBlock) || pythonLogs.length > 0) && !hasReportOutput;
+  const pythonStageShouldOpen = (Boolean(pythonBlock) || hasPythonExecutionOutput || pythonLogs.length > 0) && !hasReportOutput;
 
   return (
     <div className="my-3 flex w-full max-w-[680px] flex-col gap-2.5">
@@ -1058,7 +1094,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
         <WorkflowNodeCard
           title="理解用户需求"
           summary={summarizeLines(intentLogs, '识别用户意图并确认分析目标。')}
-          status={statusFrom(hasCompletedLog(intentLogs) || evidenceLogs.length > 0 || schemaLogs.length > 0 || hasPlanOutput)}
+          status={statusFrom(hasCompletedLog(intentLogs) || evidenceLogs.length > 0 || queryEnhanceLogs.length > 0 || schemaLogs.length > 0 || hasPlanOutput)}
           icon={<Search className="size-3.5" />}
           defaultOpen={!hasCompletedLog(intentLogs) && !hasPlanOutput}
         >
@@ -1071,12 +1107,25 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
         <WorkflowNodeCard
           title="检索知识库"
           summary={summarizeLines(evidenceLogs, '检索知识库与历史上下文，整理分析口径。')}
-          status={statusFrom(hasCompletedLog(evidenceLogs) || schemaLogs.length > 0 || hasPlanOutput)}
+          status={statusFrom(hasCompletedLog(evidenceLogs) || queryEnhanceLogs.length > 0 || schemaLogs.length > 0 || hasPlanOutput)}
           icon={<BookOpen className="size-3.5" />}
           defaultOpen={!hasCompletedLog(evidenceLogs) && !hasPlanOutput}
         >
           <WorkflowLogList lines={evidenceLogs} />
           {!hasCompletedLog(evidenceLogs) && <WorkflowLoadingDots />}
+        </WorkflowNodeCard>
+      )}
+
+      {queryEnhanceLogs.length > 0 && (
+        <WorkflowNodeCard
+          title="增强分析问题"
+          summary={summarizeLines(queryEnhanceLogs, '规范化用户问题并扩展后续数据召回查询。')}
+          status={statusFrom(hasCompletedLog(queryEnhanceLogs) || schemaLogs.length > 0 || hasPlanOutput)}
+          icon={<Sparkles className="size-3.5" />}
+          defaultOpen={!hasCompletedLog(queryEnhanceLogs) && !hasPlanOutput}
+        >
+          <WorkflowLogList lines={queryEnhanceLogs} />
+          {!hasCompletedLog(queryEnhanceLogs) && <WorkflowLoadingDots />}
         </WorkflowNodeCard>
       )}
 
@@ -1107,27 +1156,22 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
       )}
 
       {hasPlanningStage && (
-        <>
-          <WorkflowNodeCard
-            title="生成执行计划"
-            summary={summarizeLines(planLogs, '已分析需求并生成工作流执行计划。')}
-            status={statusFrom(hasCompletedLog(planLogs) || hasSqlOutput || hasResultOutput || isComplete)}
-            icon={<GitBranch className="size-3.5" />}
-            defaultOpen={planStageShouldOpen}
-          >
-            <WorkflowLogList lines={planLogs} />
-            {planBlock ? <PlanSourceBlock code={formatPlanCode(planBlock)} language="json" /> : <WorkflowLoadingDots />}
-          </WorkflowNodeCard>
-          <WorkflowNodeCard
-            title="执行计划具体内容"
-            summary="查看每一步工具调用、分析指令与输出目标。"
-            status={statusFrom(hasSqlOutput || hasResultOutput || hasPythonOutput || hasReportOutput || isComplete)}
-            icon={<ClipboardCopy className="size-3.5" />}
-            defaultOpen={planStageShouldOpen}
-          >
-            {planBlock ? <ExecutionPlanDetails planJson={planBlock.content} query={userQuery} /> : <WorkflowLoadingDots />}
-          </WorkflowNodeCard>
-        </>
+        <WorkflowNodeCard
+          title="生成执行计划"
+          summary={summarizeLines(planLogs, '已分析需求并生成工作流执行计划。')}
+          status={statusFrom(hasCompletedLog(planLogs) || hasSqlOutput || hasResultOutput || isComplete)}
+          icon={<GitBranch className="size-3.5" />}
+          defaultOpen={planStageShouldOpen}
+        >
+          {planBlock ? (
+            <ExecutionPlanDetails planJson={planBlock.content} />
+          ) : (
+            <>
+              <WorkflowLogList lines={planLogs} />
+              <WorkflowLoadingDots />
+            </>
+          )}
+        </WorkflowNodeCard>
       )}
 
       {(sqlBlock || sqlLogs.length > 0) && (
@@ -1160,7 +1204,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
         </WorkflowNodeCard>
       )}
 
-      {(pythonBlock || pythonLogs.length > 0) && (
+      {(pythonBlock || pythonOutputBlock || pythonLogs.length > 0) && (
         <WorkflowNodeCard
           title="运行分析建模"
           summary={summarizeLines(pythonLogs, '已生成并执行 Python 分析代码。')}
@@ -1168,8 +1212,9 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           icon={<Code2 className="size-3.5" />}
           defaultOpen={pythonStageShouldOpen}
         >
-          {pythonBlock ? <CodeBlock language="python" code={pythonBlock.content} /> : <WorkflowLoadingDots />}
-          <div className={clsx(pythonBlock && pythonLogs.length > 0 && 'mt-3')}>
+          {pythonBlock ? <CodeBlock language="python" code={pythonBlock.content} /> : (!pythonOutputBlock && <WorkflowLoadingDots />)}
+          {pythonOutputBlock && <StructuredAnalysisOutputBlock content={pythonOutputBlock.content} />}
+          <div className={clsx((pythonBlock || pythonOutputBlock) && pythonLogs.length > 0 && 'mt-3')}>
             <WorkflowLogList lines={pythonLogs} />
           </div>
         </WorkflowNodeCard>
@@ -1185,8 +1230,8 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
         >
           <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
             <div className="min-w-0">
-              <div className="text-[13px] font-bold text-gray-850">Markdown 报告已生成</div>
-              <div className="mt-0.5 truncate text-[11px] font-medium text-gray-500">已在右侧报告栏打开，可继续查看或后续转换为网页报告。</div>
+              <div className="text-[13px] font-bold text-gray-850">本次分析报告已生成</div>
+              <div className="mt-0.5 truncate text-[11px] font-medium text-gray-500">右侧报告栏会展示本次对话生成的 Markdown 内容。</div>
             </div>
             <button
               type="button"
@@ -1240,6 +1285,18 @@ const ProcessedTextBlock: React.FC<{ text: string; isComplete?: boolean; query?:
   if (!trimmed) return null;
   if (trimmed.includes('等待人工复核反馈')) return null;
   if (isStructuredWorkflowResidue(trimmed)) return null;
+  if (isPythonExecutionResidue(trimmed)) return null;
+  if (isStructuredAnalysisOutput(trimmed)) {
+    return (
+      <TaskToolCard
+        title="分析引擎输出"
+        summary="Python 数据分析代码已返回结构化结果。"
+        defaultOpen={false}
+      >
+        <StructuredAnalysisOutputBlock content={trimmed} />
+      </TaskToolCard>
+    );
+  }
 
   // 0. 异常防御：捕获后端节点执行抛出的错误堆栈或 Exception 信息
   const lowerText = trimmed.toLowerCase();
@@ -1500,12 +1557,40 @@ const getLatestMarkdownReportState = (messages: Message[]) => {
   return { exists: false, content: '' };
 };
 
-const createSseDataParser = (onData: (content: string) => void) => {
+const EVENT_PREFIX = '@@DATA_AGENT_EVENT@@';
+const EVENT_SUFFIX = '@@END_DATA_AGENT_EVENT@@';
+
+const splitWorkflowEvents = (content: string): { visibleContent: string; events: WorkflowEvent[] } => {
+  const events: WorkflowEvent[] = [];
+  let visibleContent = content;
+  while (visibleContent.includes(EVENT_PREFIX) && visibleContent.includes(EVENT_SUFFIX)) {
+    const start = visibleContent.indexOf(EVENT_PREFIX);
+    const end = visibleContent.indexOf(EVENT_SUFFIX, start);
+    if (end < 0) break;
+    const jsonText = visibleContent.slice(start + EVENT_PREFIX.length, end);
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (parsed.eventType && parsed.payload) {
+        events.push({ eventType: parsed.eventType, payload: parsed.payload });
+      }
+    } catch (error) {
+      console.warn('解析工作流事件失败', error);
+    }
+    visibleContent = visibleContent.slice(0, start) + visibleContent.slice(end + EVENT_SUFFIX.length);
+  }
+  return { visibleContent, events };
+};
+
+const createSseDataParser = (onData: (content: string) => void, onEvent?: (event: WorkflowEvent) => void) => {
   let dataLines: string[] = [];
 
   const flush = () => {
     if (dataLines.length === 0) return;
-    onData(dataLines.join('\n'));
+    const { visibleContent, events } = splitWorkflowEvents(dataLines.join('\n'));
+    events.forEach(event => onEvent?.(event));
+    if (visibleContent.trim()) {
+      onData(visibleContent);
+    }
     dataLines = [];
   };
 
@@ -1522,6 +1607,15 @@ const createSseDataParser = (onData: (content: string) => void) => {
   };
 
   return { processLine, flush };
+};
+
+const getMemoryCandidateKey = (candidateId?: number | string | null) =>
+  candidateId === undefined || candidateId === null ? 'missing' : String(candidateId);
+
+const isValidMemoryCandidateId = (candidateId?: number | string | null) => {
+  if (candidateId === undefined || candidateId === null || String(candidateId).trim() === '') return false;
+  const numericId = Number(candidateId);
+  return Number.isFinite(numericId) && numericId > 0;
 };
 
 const hasPendingHumanApproval = (blocks?: ContentBlock[] | MessageBlock[]) => {
@@ -1638,6 +1732,7 @@ const Home: React.FC = () => {
   const [selectedMcps, setSelectedMcps] = useState<string[]>([]);
   const [mcpSearchQuery, setMcpSearchQuery] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [memoryCandidateActions, setMemoryCandidateActions] = useState<Record<string, MemoryCandidateActionStatus>>({});
   
   // 自定义智能体 ID 和名称状态
   const [agentId, setAgentId] = useState<string>('default');
@@ -1797,6 +1892,32 @@ const Home: React.FC = () => {
   ];
 
   // ================= 核心流式发送逻辑 =================
+  const hasRenderableAssistantPayload = (message?: Message) => {
+    if (!message || message.role !== 'assistant') {
+      return false;
+    }
+    return Boolean(
+      (message.content || '').trim() ||
+      (message.blocks?.length ?? 0) > 0 ||
+      (message.workflowEvents?.length ?? 0) > 0
+    );
+  };
+
+  const appendWorkflowEvent = (event: WorkflowEvent) => {
+    setMessages(prev => {
+      const nextMessages = [...prev];
+      const lastIdx = nextMessages.length - 1;
+      if (lastIdx < 0 || nextMessages[lastIdx].role !== 'assistant') {
+        return nextMessages;
+      }
+      nextMessages[lastIdx] = {
+        ...nextMessages[lastIdx],
+        workflowEvents: [...(nextMessages[lastIdx].workflowEvents || []), event],
+      };
+      return nextMessages;
+    });
+  };
+
   const handleSend = async (text: string) => {
     if (!text.trim()) return;
 
@@ -1906,7 +2027,7 @@ const Home: React.FC = () => {
       const sseParser = createSseDataParser((content) => {
         accumulatedRaw += content;
         updateBlocks(accumulatedRaw);
-      });
+      }, appendWorkflowEvent);
 
       while (true) {
         const { value, done } = await reader.read();
@@ -2013,7 +2134,7 @@ const Home: React.FC = () => {
       const sseParser = createSseDataParser((content) => {
         accumulatedRaw += content;
         updateBlocks(accumulatedRaw);
-      });
+      }, appendWorkflowEvent);
 
       while (true) {
         const { value, done } = await reader.read();
@@ -2041,6 +2162,132 @@ const Home: React.FC = () => {
       markStreamComplete();
     } finally {
       setFeedbackSubmitting(false);
+    }
+  };
+
+  const handleClarificationInteraction = async (
+    interactionType: 'CLARIFICATION_ANSWER' | 'CLARIFICATION_CONFIRM',
+    content: string
+  ) => {
+    const currentSessionId = sessionId;
+    if (!currentSessionId || currentSessionId.startsWith('session_') || feedbackSubmitting) return;
+
+    setFeedbackSubmitting(true);
+    setIsTyping(true);
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content },
+      { role: 'assistant', blocks: [], isComplete: false, workflowEvents: [] },
+    ]);
+
+    let accumulatedRaw = '';
+    const updateBlocks = (rawStr: string) => {
+      const parsedBlocks = parseRawContent(rawStr);
+      setMessages(prev => {
+        const nextMessages = [...prev];
+        const lastIdx = nextMessages.length - 1;
+        nextMessages[lastIdx] = {
+          ...nextMessages[lastIdx],
+          blocks: parsedBlocks,
+        };
+        return nextMessages;
+      });
+    };
+
+    try {
+      const response = await fetch('/api/v1/graph/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId,
+          threadId: currentSessionId,
+          query: '',
+          interactionType,
+          interactionContent: content,
+          nl2sqlOnly: false,
+        }),
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      setIsTyping(false);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamBuffer = '';
+      const sseParser = createSseDataParser((chunk) => {
+        accumulatedRaw += chunk;
+        updateBlocks(accumulatedRaw);
+      }, appendWorkflowEvent);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.split('\n');
+        streamBuffer = lines.pop() || '';
+        for (const line of lines) {
+          sseParser.processLine(line);
+        }
+      }
+      if (streamBuffer) {
+        sseParser.processLine(streamBuffer);
+      }
+      sseParser.flush();
+    } catch (error) {
+      accumulatedRaw += `系统繁忙，请稍后再试：${error instanceof Error ? error.message : '澄清提交失败'}`;
+      updateBlocks(accumulatedRaw);
+    } finally {
+      setMessages(prev => {
+        const nextMessages = [...prev];
+        const lastIdx = nextMessages.length - 1;
+        if (lastIdx >= 0 && nextMessages[lastIdx].role === 'assistant') {
+          nextMessages[lastIdx] = { ...nextMessages[lastIdx], isComplete: true };
+        }
+        return nextMessages;
+      });
+      setFeedbackSubmitting(false);
+      setIsTyping(false);
+    }
+  };
+
+  const handleMemoryCandidateAction = async (
+    candidateId: number | string | undefined,
+    action: 'submit' | 'publish' | 'ignore'
+  ) => {
+    const actionKey = getMemoryCandidateKey(candidateId);
+    if (action === 'ignore') {
+      setMemoryCandidateActions(prev => ({ ...prev, [actionKey]: 'ignored' }));
+      return;
+    }
+
+    if (!isValidMemoryCandidateId(candidateId)) {
+      setMemoryCandidateActions(prev => ({ ...prev, [actionKey]: 'error' }));
+      return;
+    }
+
+    const url = action === 'submit'
+      ? `/api/v1/knowledge-candidates/${candidateId}/submit`
+      : `/api/v1/knowledge-candidates/${candidateId}/publish`;
+
+    setMemoryCandidateActions(prev => ({ ...prev, [actionKey]: 'pending' }));
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: action === 'publish' ? JSON.stringify({ targetType: 'BUSINESS_KNOWLEDGE' }) : undefined,
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success === false) {
+        throw new Error(result?.message || `HTTP error! status: ${response.status}`);
+      }
+      setMemoryCandidateActions(prev => ({
+        ...prev,
+        [actionKey]: action === 'submit' ? 'submitted' : 'published',
+      }));
+    } catch (error) {
+      console.error('候选知识操作失败', error);
+      setMemoryCandidateActions(prev => ({ ...prev, [actionKey]: 'error' }));
     }
   };
 
@@ -2127,14 +2374,22 @@ const Home: React.FC = () => {
 
                 // msg.role === 'assistant' 渲染（官网三行无气泡排版样式）
                 const userQuery = messages[idx - 1]?.content || "";
+                if (!hasRenderableAssistantPayload(msg)) {
+                  return null;
+                }
+
                 const feedbackAlreadyHandled = messages.slice(idx + 1).some((nextMsg) =>
                   nextMsg.role === 'assistant' &&
                   nextMsg.blocks?.some((block) => block.type === 'text' && block.content.includes('人工审核已'))
                 );
                 const pendingApproval = hasPendingHumanApproval(msg.blocks) && !feedbackAlreadyHandled;
+                const pendingClarification = (msg.workflowEvents || []).some((event) =>
+                  event.eventType === 'clarification_request' || event.eventType === 'clarification_confirmation'
+                );
+                const waitingForUserInput = pendingApproval || pendingClarification;
                 const approvalPlanJson = getPlanBlock(msg.blocks);
                 const workflowLogs = collectWorkflowLogs(msg.blocks);
-                const effectiveComplete = Boolean(msg.isComplete && !pendingApproval);
+                const effectiveComplete = Boolean(msg.isComplete && !waitingForUserInput);
                 return (
                   <div 
                     key={idx} 
@@ -2158,7 +2413,6 @@ const Home: React.FC = () => {
                           blocks={msg.blocks || []}
                           isComplete={effectiveComplete}
                           currentBlockCount={msg.blocks?.length || 0}
-                          userQuery={userQuery}
                         onOpenReport={(content) => {
                           setReportContent(content);
                           setIsReportOpen(true);
@@ -2228,32 +2482,73 @@ const Home: React.FC = () => {
                       )}
 
                       {/* 如果分析已经彻底完成，渲染耗时时间轴进度图 */}
+                      {msg.workflowEvents?.map((event, eventIdx) => {
+                        if (event.eventType === 'clarification_request') {
+                          const payload = event.payload as ClarificationRequestPayload;
+                          return (
+                            <ClarificationCard
+                              key={`${event.eventType}-${eventIdx}`}
+                              mode="answer"
+                              question={payload.question || '请补充业务口径后继续分析。'}
+                              onSubmit={(value) => handleClarificationInteraction('CLARIFICATION_ANSWER', value)}
+                            />
+                          );
+                        }
+                        if (event.eventType === 'clarification_confirmation') {
+                          const payload = event.payload as ClarificationConfirmationPayload;
+                          return (
+                            <ClarificationCard
+                              key={`${event.eventType}-${eventIdx}`}
+                              mode="confirm"
+                              question={payload.confirmationText || '请确认归纳后的业务口径是否正确。'}
+                              defaultValue="正确，继续。"
+                              onSubmit={(value) => handleClarificationInteraction('CLARIFICATION_CONFIRM', value)}
+                            />
+                          );
+                        }
+                        if (event.eventType === 'memory_candidate') {
+                          const payload = event.payload as MemoryCandidatePayload;
+                          const candidateActionKey = getMemoryCandidateKey(payload.candidateId);
+                          const candidateActionStatus = memoryCandidateActions[candidateActionKey] || 'idle';
+                          return (
+                            <MemoryCandidateCard
+                              key={`${event.eventType}-${eventIdx}`}
+                              title={payload.title || '候选业务知识'}
+                              content={payload.normalizedContent || ''}
+                              persistDisabled={!isValidMemoryCandidateId(payload.candidateId)}
+                              actionStatus={candidateActionStatus}
+                              onIgnore={() => handleMemoryCandidateAction(payload.candidateId, 'ignore')}
+                              onSave={() => handleMemoryCandidateAction(payload.candidateId, 'submit')}
+                              onPublish={() => handleMemoryCandidateAction(payload.candidateId, 'publish')}
+                            />
+                          );
+                        }
+                        return null;
+                      })}
+
                       {effectiveComplete && shouldShowAnalysisTimeLine(userQuery, msg.blocks || []) && (
                         <AnalysisTimeLine query={userQuery} blocks={msg.blocks || []} />
                       )}
 
                       {/* 流式完成且包含报告，渲染报告入口卡片 */}
                       {effectiveComplete && msg.blocks?.some(b => b.type === 'markdown-report') && (
-                        <div className="my-4 border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 flex items-center justify-between shadow-2xs w-full max-w-[620px] select-none animate-in fade-in slide-in-from-top-1 duration-200">
-                          <div className="flex items-center gap-2.5">
-                            <Trophy className="w-5 h-5 text-indigo-600 flex-none" />
-                            <div className="space-y-0.5">
-                              <span className="text-[13px] font-bold text-gray-800 block">本次分析报告已生成</span>
-                              <span className="text-[11px] text-gray-450 block font-medium">右侧报告栏会展示本次对话生成的 Markdown 内容</span>
-                            </div>
+                        <div className="my-4 flex min-h-[68px] w-full max-w-[944px] items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-7 py-3 shadow-2xs select-none animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="flex min-w-0 items-center gap-4">
+                            <Compass className="size-5 flex-none text-gray-700" />
+                            <span className="truncate text-[20px] font-normal text-gray-750">以交互式网页报告分享 Data Agent 的分析</span>
                           </div>
                           <div className="flex items-center gap-2 flex-none">
                             <button 
                               onClick={() => alert('已取消')}
-                              className="inline-flex items-center justify-center border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 text-xs font-semibold rounded-lg text-gray-600 transition-colors cursor-pointer active:scale-95"
+                              className="inline-flex h-10 items-center justify-center rounded-xl border border-gray-200 bg-white px-5 text-[16px] font-normal text-gray-500 transition-colors hover:bg-gray-50 cursor-pointer active:scale-95"
                             >
                               取消
                             </button>
                             <button 
                               onClick={() => setIsReportOpen(true)}
-                              className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 px-4.5 py-1.5 text-xs font-bold rounded-lg text-white shadow-sm transition-colors cursor-pointer active:scale-95"
+                              className="inline-flex h-10 items-center justify-center rounded-xl bg-black px-5 text-[16px] font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 cursor-pointer active:scale-95"
                             >
-                              查看报告
+                              绘制网页
                             </button>
                           </div>
                         </div>
@@ -2261,7 +2556,7 @@ const Home: React.FC = () => {
                     </div>
 
                     {/* 第三行：流式等待态 / 完成后工具栏 */}
-                    {effectiveComplete ? (
+                    {!waitingForUserInput && (effectiveComplete ? (
                       <div className="pl-[38px] flex items-center gap-2 mt-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 select-none">
                         <div className="flex items-center gap-1 transition-opacity duration-200">
                           <button className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded cursor-pointer size-6 transition-all border-none bg-transparent" aria-label="点赞">
@@ -2281,12 +2576,12 @@ const Home: React.FC = () => {
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 delay-100" />
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 delay-200" />
                       </div>
-                    )}
+                    ))}
                   </div>
                 );
               })}
 
-              {isTyping && (
+              {isTyping && !hasRenderableAssistantPayload([...messages].reverse().find(msg => msg.role === 'assistant')) && (
                 <div className="group relative flex flex-col w-full py-4 animate-pulse">
                   {/* 第一行：头像与名称 */}
                   <div className="flex h-[26px] items-center mb-2 select-none">
