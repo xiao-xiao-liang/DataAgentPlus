@@ -490,6 +490,7 @@ export const DataCenter: React.FC = () => {
             /* 选中数据库详情视图 */
             <DataSourceDetail 
               selectedItem={selectedItem} 
+              onNotice={setToastMessage}
               onUpdateImportedTables={(dsId, updatedTables) => {
                 setDatasources(prev => prev.map(ds => {
                   if (ds.id === dsId) {

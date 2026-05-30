@@ -12,10 +12,12 @@ import {
   ChevronDown, 
   ChevronLeft, 
   ChevronRight,
-  Key
+  Key,
+  Link2
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { DataSource } from '../types';
+import { LogicalRelationConfig } from './LogicalRelationConfig';
 
 // 引入数据库 LOGO 静态资产
 import mysqlLogo from '../../../assets/logos/mysql.svg';
@@ -36,12 +38,14 @@ interface DataSourceDetailProps {
   selectedItem: DataSource;
   onUpdateImportedTables?: (dsId: string, updatedTables: string[]) => void;
   onBackToCenter?: () => void;
+  onNotice?: (message: string) => void;
 }
 
 export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({ 
   selectedItem, 
   onUpdateImportedTables,
-  onBackToCenter
+  onBackToCenter,
+  onNotice
 }) => {
   const { tableName } = useParams();
   const navigate = useNavigate();
@@ -262,6 +266,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
   
   // 表详情选项卡：列信息 'columns' | 表预览 'preview'
   const [activeDetailTab, setActiveDetailTab] = useState<'columns' | 'preview'>('columns');
+  const [activeLibraryTab, setActiveLibraryTab] = useState<'tables' | 'relations'>('tables');
 
   // 懒加载真实采样数据
   useEffect(() => {
@@ -280,6 +285,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
   useEffect(() => {
     setActiveSubTable(null);
     setActiveDetailTab('columns');
+    setActiveLibraryTab('tables');
     setSearchQuery('');
   }, [selectedItem]);
 
@@ -489,6 +495,34 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
 
             {/* 数据库表列表表格 */}
             <div className="flex-1 overflow-hidden flex flex-col mt-2">
+              <div className="mb-3 flex flex-none items-center gap-1 border-b border-gray-100 select-none">
+                <button
+                  onClick={() => setActiveLibraryTab('tables')}
+                  className={clsx(
+                    "flex h-8 items-center gap-1.5 border-0 bg-transparent px-3 text-sm font-semibold transition-colors",
+                    activeLibraryTab === 'tables'
+                      ? "border-b-2 border-gray-900 text-gray-900"
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <Sheet className="h-3.5 w-3.5" />
+                  数据表
+                </button>
+                <button
+                  onClick={() => setActiveLibraryTab('relations')}
+                  className={clsx(
+                    "flex h-8 items-center gap-1.5 border-0 bg-transparent px-3 text-sm font-semibold transition-colors",
+                    activeLibraryTab === 'relations'
+                      ? "border-b-2 border-gray-900 text-gray-900"
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  逻辑外键
+                </button>
+              </div>
+              {activeLibraryTab === 'tables' ? (
+                <>
               <div className="mb-2.5 flex justify-between items-center flex-none select-none">
                 <div className="relative w-64">
                   <input 
@@ -594,6 +628,14 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                 </div>
               </div>
 
+                </>
+              ) : (
+                <LogicalRelationConfig
+                  selectedItem={selectedItem}
+                  tables={tablesList}
+                  onNotice={onNotice}
+                />
+              )}
             </div>
           </div>
         ) : (
