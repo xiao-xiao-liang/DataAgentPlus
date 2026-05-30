@@ -41,6 +41,10 @@ public class SchemaRecallNode implements NodeAction {
     public Map<String, Object> apply(OverAllState state) throws Exception {
         var queryEnhanceOutput = StateUtil.getObjectValue(state, QUERY_ENHANCE_NODE_OUTPUT, QueryEnhanceOutputDTO.class);
         String input = queryEnhanceOutput.getCanonicalQuery();
+        String clarificationEvidence = StateUtil.getStringValue(state, CLARIFICATION_EVIDENCE, "");
+        String recallInput = StringUtils.hasText(clarificationEvidence)
+                ? input + "\n用户补充澄清：" + clarificationEvidence
+                : input;
         String agentId = StateUtil.getStringValue(state, AGENT_ID);
         log.info("Schema 召回 - 规范化查询: {}, agentId: {}", input, agentId);
 
@@ -81,10 +85,10 @@ public class SchemaRecallNode implements NodeAction {
 
         // 2.1 主查询检索
         try {
-            List<Document> mainDocs = schemaService.recallTableDocuments(datasourceId, input);
+            List<Document> mainDocs = schemaService.recallTableDocuments(datasourceId, recallInput);
             if (mainDocs != null) {
                 for (Document doc : mainDocs) {
-                    if (doc != null && doc.getId() != null && docIds.add(doc.getId())) {
+                    if (doc != null && docIds.add(doc.getId())) {
                         tableDocuments.add(doc);
                     }
                 }
@@ -103,7 +107,7 @@ public class SchemaRecallNode implements NodeAction {
                         List<Document> extDocs = schemaService.recallTableDocuments(datasourceId, query);
                         if (extDocs != null) {
                             for (Document doc : extDocs) {
-                                if (doc != null && doc.getId() != null && docIds.add(doc.getId())) {
+                                if (doc != null && docIds.add(doc.getId())) {
                                     tableDocuments.add(doc);
                                 }
                             }
@@ -136,10 +140,15 @@ public class SchemaRecallNode implements NodeAction {
                     + " 张表，表名: " + String.join(", ", recalledTableNames);
         }
 
-        Flux<ChatResponse> displayFlux = Flux.just(
-                ChatResponseUtil.createResponse("开始多路 Schema 信息召回..."),
-                ChatResponseUtil.createResponse(message),
-                ChatResponseUtil.createResponse("Schema 候选集召回成功。"));
+        List<ChatResponse> displayMessages = new ArrayList<>();
+        displayMessages.add(ChatResponseUtil.createResponse("开始多路 Schema 信息召回..."));
+        displayMessages.add(ChatResponseUtil.createResponse(message));
+        if (tableDocuments.isEmpty()) {
+            displayMessages.add(ChatResponseUtil.createResponse("Schema 候选集为空，已转入问题澄清。"));
+        } else {
+            displayMessages.add(ChatResponseUtil.createResponse("Schema 候选集召回成功。"));
+        }
+        Flux<ChatResponse> displayFlux = Flux.fromIterable(displayMessages);
 
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
                 this.getClass(), state,

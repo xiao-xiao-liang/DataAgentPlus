@@ -77,4 +77,12 @@ public final class ControlFlowKey {
      * 等待人工反馈状态标识
      */
     public static final String WAIT_FOR_FEEDBACK = "WAIT_FOR_FEEDBACK";
+
+    public static final String CLARIFICATION_NEXT_NODE = "clarification_next_node";
+
+    public static final String MEMORY_CANDIDATE_NEXT_NODE = "memory_candidate_next_node";
+
+    public static final String WAIT_FOR_CLARIFICATION = "WAIT_FOR_CLARIFICATION";
+
+    public static final String WAIT_FOR_CLARIFICATION_CONFIRM = "WAIT_FOR_CLARIFICATION_CONFIRM";
 }

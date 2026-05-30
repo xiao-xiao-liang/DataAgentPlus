@@ -1,28 +1,38 @@
 package com.liang.data.agent.workflow.dispatcher;
 
-import com.liang.data.agent.common.constant.StateKey;
 import com.alibaba.cloud.ai.graph.OverAllState;
-import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.action.EdgeAction;
+import com.liang.data.agent.common.enums.FeasibilityRequestType;
+import com.liang.data.agent.workflow.dto.node.FeasibilityAssessmentOutputDTO;
+import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.liang.data.agent.common.constant.NodeOutputKey.FEASIBILITY_ASSESSMENT_NODE_OUTPUT;
+import static com.liang.data.agent.common.constant.StateKey.CLARIFICATION_ASK_NODE;
+import static com.liang.data.agent.common.constant.StateKey.PLANNER_NODE;
 
-/** 可行性评估路由: 含"数据分析"→Planner, 否则→END */
 @Slf4j
 public class FeasibilityAssessmentDispatcher implements EdgeAction {
-    
+
     @Override
-    public String apply(OverAllState state) throws Exception {
-        String value = state.value(FEASIBILITY_ASSESSMENT_NODE_OUTPUT, END);
-        
-        if (value != null && value.contains("【需求类型】：《数据分析》")) {
-            log.info("可行性评估: 数据分析 → Planner");
-            return StateKey.PLANNER_NODE;
+    public String apply(OverAllState state) {
+        FeasibilityAssessmentOutputDTO output = StateUtil.getObjectValue(
+                state,
+                FEASIBILITY_ASSESSMENT_NODE_OUTPUT,
+                FeasibilityAssessmentOutputDTO.class,
+                new FeasibilityAssessmentOutputDTO()
+        );
+        String requestType = output.getRequestType();
+        if (FeasibilityRequestType.DATA_ANALYSIS.getCode().equals(requestType)) {
+            log.info("可行性评估: DATA_ANALYSIS -> Planner");
+            return PLANNER_NODE;
         }
-        
-        log.info("可行性评估: 非数据分析 → END");
+        if (FeasibilityRequestType.NEED_CLARIFICATION.getCode().equals(requestType)) {
+            log.info("可行性评估: NEED_CLARIFICATION -> ClarificationAsk");
+            return CLARIFICATION_ASK_NODE;
+        }
+        log.info("可行性评估: CHAT/OTHER -> END, type={}", requestType);
         return END;
     }
 }

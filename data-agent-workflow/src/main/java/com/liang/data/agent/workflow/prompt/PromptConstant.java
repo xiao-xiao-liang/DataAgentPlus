@@ -134,4 +134,12 @@ public final class PromptConstant {
     public static PromptTemplate getDataViewAnalyzePromptTemplate() {
         return new PromptTemplate(PromptLoader.load("data-view-analyze"));
     }
+
+    public static PromptTemplate getClarificationNormalizePromptTemplate() {
+        return new PromptTemplate(PromptLoader.load("clarification-normalize"));
+    }
+
+    public static PromptTemplate getMemoryCandidatePromptTemplate() {
+        return new PromptTemplate(PromptLoader.load("memory-candidate"));
+    }
 }

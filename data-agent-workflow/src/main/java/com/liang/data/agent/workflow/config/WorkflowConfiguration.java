@@ -42,6 +42,7 @@ public class WorkflowConfiguration {
             m.put(INPUT_KEY, KeyStrategy.REPLACE);
             m.put(AGENT_ID, KeyStrategy.REPLACE);
             m.put(DATASOURCE_ID, KeyStrategy.REPLACE);
+            m.put(THREAD_ID, KeyStrategy.REPLACE);
             m.put(MULTI_TURN_CONTEXT, KeyStrategy.REPLACE);
 
             // 节点输出
@@ -57,6 +58,15 @@ public class WorkflowConfiguration {
             m.put(DB_DIALECT_TYPE, KeyStrategy.REPLACE);
             m.put(GENERATED_SEMANTIC_MODEL_PROMPT, KeyStrategy.REPLACE);
             m.put(FEASIBILITY_ASSESSMENT_NODE_OUTPUT, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_REQUEST, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_FEEDBACK_DATA, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_NORMALIZED_OUTPUT, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_CONFIRM_DATA, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_EVIDENCE, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_CONFIRMED, KeyStrategy.REPLACE);
+            m.put(MEMORY_CANDIDATE_OUTPUT, KeyStrategy.REPLACE);
+            m.put(MEMORY_CANDIDATE_ID, KeyStrategy.REPLACE);
+            m.put(MEMORY_SAVE_REQUIRED, KeyStrategy.REPLACE);
 
             // SQL 链路
             m.put(SQL_GENERATE_OUTPUT, KeyStrategy.REPLACE);
@@ -87,6 +97,10 @@ public class WorkflowConfiguration {
             m.put(IS_ONLY_NL2SQL, KeyStrategy.REPLACE);
             m.put(HUMAN_REVIEW_ENABLED, KeyStrategy.REPLACE);
             m.put(HUMAN_FEEDBACK_DATA, KeyStrategy.REPLACE);
+            m.put(CLARIFICATION_NEXT_NODE, KeyStrategy.REPLACE);
+            m.put(WAIT_FOR_CLARIFICATION, KeyStrategy.REPLACE);
+            m.put(WAIT_FOR_CLARIFICATION_CONFIRM, KeyStrategy.REPLACE);
+            m.put(MEMORY_CANDIDATE_NEXT_NODE, KeyStrategy.REPLACE);
 
             // 最终结果
             m.put(RESULT, KeyStrategy.REPLACE);
@@ -110,7 +124,11 @@ public class WorkflowConfiguration {
                 .addNode(PYTHON_EXECUTE_NODE, nodeBeanUtil.toAsyncNode(PythonExecuteNode.class))
                 .addNode(PYTHON_ANALYZE_NODE, nodeBeanUtil.toAsyncNode(PythonAnalyzeNode.class))
                 .addNode(REPORT_GENERATOR_NODE, nodeBeanUtil.toAsyncNode(ReportGeneratorNode.class))
-                .addNode(HUMAN_FEEDBACK_NODE, nodeBeanUtil.toAsyncNode(HumanFeedbackNode.class));
+                .addNode(HUMAN_FEEDBACK_NODE, nodeBeanUtil.toAsyncNode(HumanFeedbackNode.class))
+                .addNode(CLARIFICATION_ASK_NODE, nodeBeanUtil.toAsyncNode(ClarificationAskNode.class))
+                .addNode(CLARIFICATION_NORMALIZE_NODE, nodeBeanUtil.toAsyncNode(ClarificationNormalizeNode.class))
+                .addNode(CLARIFICATION_CONFIRM_NODE, nodeBeanUtil.toAsyncNode(ClarificationConfirmNode.class))
+                .addNode(MEMORY_CANDIDATE_NODE, nodeBeanUtil.toAsyncNode(MemoryCandidateNode.class));
 
         // ==================== 3. 定义边和路由 ====================
 
@@ -127,14 +145,31 @@ public class WorkflowConfiguration {
         // Schema→SQL 链路
         graph.addConditionalEdges(SCHEMA_RECALL_NODE,
                         edge_async(new SchemaRecallDispatcher()),
-                        Map.of(TABLE_RELATION_NODE, TABLE_RELATION_NODE, END, END))
+                        Map.of(TABLE_RELATION_NODE, TABLE_RELATION_NODE,
+                                CLARIFICATION_ASK_NODE, CLARIFICATION_ASK_NODE,
+                                END, END))
                 .addConditionalEdges(TABLE_RELATION_NODE,
                         edge_async(new TableRelationDispatcher()),
                         Map.of(FEASIBILITY_ASSESSMENT_NODE, FEASIBILITY_ASSESSMENT_NODE,
                                 TABLE_RELATION_NODE, TABLE_RELATION_NODE, END, END))
                 .addConditionalEdges(FEASIBILITY_ASSESSMENT_NODE,
                         edge_async(new FeasibilityAssessmentDispatcher()),
-                        Map.of(PLANNER_NODE, PLANNER_NODE, END, END));
+                        Map.of(PLANNER_NODE, PLANNER_NODE,
+                                CLARIFICATION_ASK_NODE, CLARIFICATION_ASK_NODE,
+                                END, END))
+                .addEdge(CLARIFICATION_ASK_NODE, CLARIFICATION_NORMALIZE_NODE)
+                .addEdge(CLARIFICATION_NORMALIZE_NODE, CLARIFICATION_CONFIRM_NODE)
+                .addConditionalEdges(CLARIFICATION_CONFIRM_NODE,
+                        edge_async(new ClarificationConfirmDispatcher()),
+                        Map.of(MEMORY_CANDIDATE_NODE, MEMORY_CANDIDATE_NODE,
+                                SCHEMA_RECALL_NODE, SCHEMA_RECALL_NODE,
+                                PLANNER_NODE, PLANNER_NODE,
+                                END, END))
+                .addConditionalEdges(MEMORY_CANDIDATE_NODE,
+                        edge_async(new MemoryCandidateDispatcher()),
+                        Map.of(SCHEMA_RECALL_NODE, SCHEMA_RECALL_NODE,
+                                PLANNER_NODE, PLANNER_NODE,
+                                END, END));
 
         // Plan 链路
         graph.addEdge(PLANNER_NODE, PLAN_EXECUTOR_NODE)

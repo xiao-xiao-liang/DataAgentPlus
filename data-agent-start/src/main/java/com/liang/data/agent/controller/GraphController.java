@@ -1,6 +1,7 @@
 package com.liang.data.agent.controller;
 
 import com.liang.data.agent.common.exception.ClientException;
+import com.liang.data.agent.common.enums.InteractionType;
 import com.liang.data.agent.service.agent.AgentService;
 import com.liang.data.agent.service.chat.ChatMessageService;
 import com.liang.data.agent.service.chat.ChatSessionService;
@@ -79,7 +80,11 @@ public class GraphController {
         }
 
         // 2. 保存用户消息（反馈请求时跳过，因为原始问题已在首次请求时保存）
-        boolean isFeedbackRequest = StringUtils.hasText(request.getHumanFeedbackContent());
+        InteractionType interactionType = InteractionType.fromCode(request.getInteractionType());
+        boolean isFeedbackRequest = StringUtils.hasText(request.getHumanFeedbackContent())
+                || interactionType == InteractionType.CLARIFICATION_ANSWER
+                || interactionType == InteractionType.CLARIFICATION_CONFIRM
+                || interactionType == InteractionType.HUMAN_PLAN_FEEDBACK;
         if (!isFeedbackRequest && StringUtils.hasText(request.getQuery())) {
             ChatMessageDTO userMsgDto = ChatMessageDTO.builder()
                     .role("user")
@@ -139,6 +144,7 @@ public class GraphController {
                             .build();
                     chatMessageService.saveMessageAsync(errorMsgDto, finalSessionId);
                 })
+                .onErrorResume(err -> Flux.just(formatSseData("系统繁忙，请稍后再试（" + safeMessage(err) + "）")))
                 .doOnCancel(() -> {
                     log.info("客户端断开连接, threadId: {}", finalSessionId);
                     graphService.stopStreamProcessing(finalSessionId);
@@ -151,5 +157,16 @@ public class GraphController {
     @GetMapping("/visualization")
     public String visualization() {
         return graphService.getGraphVisualization();
+    }
+
+    private String formatSseData(String message) {
+        return "data:" + message.replace("\r", " ").replace("\n", " ") + "\n\n";
+    }
+
+    private String safeMessage(Throwable throwable) {
+        if (throwable == null || !StringUtils.hasText(throwable.getMessage())) {
+            return "对话请求失败";
+        }
+        return throwable.getMessage();
     }
 }

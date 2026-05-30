@@ -102,4 +102,22 @@ public final class NodeOutputKey {
      * Python 分析节点输出
      */
     public static final String PYTHON_ANALYSIS_NODE_OUTPUT = "PYTHON_ANALYSIS_NODE_OUTPUT";
+
+    public static final String CLARIFICATION_REQUEST = "clarification_request";
+
+    public static final String CLARIFICATION_FEEDBACK_DATA = "clarification_feedback_data";
+
+    public static final String CLARIFICATION_NORMALIZED_OUTPUT = "clarification_normalized_output";
+
+    public static final String CLARIFICATION_CONFIRM_DATA = "clarification_confirm_data";
+
+    public static final String CLARIFICATION_EVIDENCE = "clarification_evidence";
+
+    public static final String CLARIFICATION_CONFIRMED = "clarification_confirmed";
+
+    public static final String MEMORY_CANDIDATE_OUTPUT = "memory_candidate_output";
+
+    public static final String MEMORY_CANDIDATE_ID = "memory_candidate_id";
+
+    public static final String MEMORY_SAVE_REQUIRED = "memory_save_required";
 }

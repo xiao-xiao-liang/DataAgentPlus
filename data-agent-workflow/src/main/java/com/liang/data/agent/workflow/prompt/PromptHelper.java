@@ -140,12 +140,37 @@ public final class PromptHelper {
         params.put("recalled_schema", schemaInfo);
         params.put("evidence", evidence != null ? evidence : "");
         params.put("multi_turn", multiTurn != null ? multiTurn : "(无)");
+        var converter = new BeanOutputConverter<>(FeasibilityAssessmentOutputDTO.class);
+        params.put("format", converter.getFormat());
         return PromptConstant.getFeasibilityAssessmentPromptTemplate().render(params);
     }
 
     /**
      * 构建混合选择器 Prompt (Schema 召回)
      */
+    public static String buildClarificationNormalizePrompt(String originalQuestion,
+                                                           String clarificationQuestion,
+                                                           String userAnswer,
+                                                           String evidence) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("original_question", StringUtils.defaultIfBlank(originalQuestion, ""));
+        params.put("clarification_question", StringUtils.defaultIfBlank(clarificationQuestion, ""));
+        params.put("user_answer", StringUtils.defaultIfBlank(userAnswer, ""));
+        params.put("evidence", StringUtils.defaultIfBlank(evidence, ""));
+        var converter = new BeanOutputConverter<>(ClarificationNormalizedDTO.class);
+        params.put("format", converter.getFormat());
+        return PromptConstant.getClarificationNormalizePromptTemplate().render(params);
+    }
+
+    public static String buildMemoryCandidatePrompt(String sourceQuestion, String clarificationEvidence) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("source_question", StringUtils.defaultIfBlank(sourceQuestion, ""));
+        params.put("clarification_evidence", StringUtils.defaultIfBlank(clarificationEvidence, ""));
+        var converter = new BeanOutputConverter<>(MemoryCandidateOutputDTO.class);
+        params.put("format", converter.getFormat());
+        return PromptConstant.getMemoryCandidatePromptTemplate().render(params);
+    }
+
     public static String buildMixSelectorPrompt(String evidence, String question, SchemaDTO schemaDTO, String advice) {
         String schemaInfo = buildMixMacSqlDbPrompt(schemaDTO, true);
         Map<String, Object> params = new HashMap<>();
@@ -388,4 +413,4 @@ public final class PromptHelper {
     private static final String DISPLAY_STYLE_FORMAT = """
             {"type": "图表类型(table/column/bar/line/pie)", "title": "图表标题", "x": "X轴字段名", "y": "Y轴字段名"}
             """;
-}
+}

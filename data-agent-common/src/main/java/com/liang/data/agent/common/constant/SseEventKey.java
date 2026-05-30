@@ -17,4 +17,10 @@ public final class SseEventKey {
      * SSE 错误事件
      */
     public static final String STREAM_EVENT_ERROR = "error";
+
+    public static final String CLARIFICATION_REQUEST = "clarification_request";
+
+    public static final String CLARIFICATION_CONFIRMATION = "clarification_confirmation";
+
+    public static final String MEMORY_CANDIDATE = "memory_candidate";
 }

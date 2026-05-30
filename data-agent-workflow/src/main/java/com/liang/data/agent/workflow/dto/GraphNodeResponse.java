@@ -42,6 +42,10 @@ public class GraphNodeResponse {
      */
     private String text;
 
+    private String eventType;
+
+    private Object payload;
+
     /**
      * 是否为错误响应
      */

@@ -40,6 +40,16 @@ public class GraphRequest {
     private String humanFeedbackContent;
 
     /**
+     * 交互类型：NEW_QUERY / CLARIFICATION_ANSWER / CLARIFICATION_CONFIRM / HUMAN_PLAN_FEEDBACK
+     */
+    private String interactionType;
+
+    /**
+     * 澄清回答、确认内容等交互正文。
+     */
+    private String interactionContent;
+
+    /**
      * 用户是否拒绝了计划
      */
     private boolean rejectedPlan;

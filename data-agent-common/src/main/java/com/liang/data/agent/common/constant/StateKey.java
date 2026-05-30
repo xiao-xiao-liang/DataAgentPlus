@@ -29,6 +29,7 @@ public final class StateKey {
      * 数据源 ID
      */
     public static final String DATASOURCE_ID = "datasource_id";
+    public static final String THREAD_ID = "thread_id";
     /**
      * 最终结果
      */
@@ -51,6 +52,10 @@ public final class StateKey {
     public static final String PYTHON_ANALYZE_NODE = "python_analyze";
     public static final String REPORT_GENERATOR_NODE = "report_generator";
     public static final String HUMAN_FEEDBACK_NODE = "human_feedback";
+    public static final String CLARIFICATION_ASK_NODE = "clarification_ask";
+    public static final String CLARIFICATION_NORMALIZE_NODE = "clarification_normalize";
+    public static final String CLARIFICATION_CONFIRM_NODE = "clarification_confirm";
+    public static final String MEMORY_CANDIDATE_NODE = "memory_candidate";
 
     /**
      * 多轮对话上下文

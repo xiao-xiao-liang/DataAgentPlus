@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
+import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.workflow.prompt.PromptConstant;
 import lombok.RequiredArgsConstructor;
@@ -17,36 +18,19 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * JSON 解析工具类，支持 LLM 自动修复格式错误的 JSON
- *
- * <p>工作流程:
- * 1. 先尝试直接解析
- * 2. 如果失败，移除 &lt;/think&gt; 标签后重试
- * 3. 如果仍失败，调用 LLM 修复 JSON 格式 (最多 3 次)
- * </p>
- *
- * <p>为什么需要 LLM 修复？因为大模型输出的 JSON 经常有:
- * - 多余的逗号 (trailing comma)
- * - 缺少引号
- * - 被 Markdown 代码块包裹
- * - 被 &lt;think&gt; 标签包裹 (DeepSeek 等模型)
- * </p>
+ * JSON parser with deterministic cleanup before falling back to LLM repair.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class JsonParseUtil {
 
-    private final LlmService llmService;
-
     private static final int MAX_RETRY_COUNT = 3;
     private static final String THINK_END_TAG = "</think>";
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    /**
-     * 尝试将 JSON 字符串转换为指定类型
-     */
+    private final LlmService llmService;
+
     public <T> T tryConvertToObject(String json, Class<T> clazz) {
         if (!StringUtils.hasText(json)) {
             throw new ServiceException("传入的JSON不能为空或者空字符串");
@@ -54,9 +38,6 @@ public class JsonParseUtil {
         return tryConvertToObjectInternal(json, (mapper, curJson) -> mapper.readValue(curJson, clazz));
     }
 
-    /**
-     * 尝试将 JSON 字符串转换为指定类型 (支持 TypeReference，如 List&lt;String&gt;)
-     */
     public <T> T tryConvertToObject(String json, TypeReference<T> typeReference) {
         if (!StringUtils.hasText(json)) {
             throw new ServiceException("传入的JSON不能为空或者空字符串");
@@ -66,20 +47,19 @@ public class JsonParseUtil {
 
     private <T> T tryConvertToObjectInternal(String json, JsonParserFunction<T> parser) {
         log.info("尝试解析 JSON: {}", json);
-        String curJson = removeThinkTags(json);
-        Exception lastException = null;
+        String curJson = normalizeJsonCandidate(json);
+        Exception lastException;
 
-        // 先尝试直接解析
         try {
             return parser.parse(OBJECT_MAPPER, curJson);
         } catch (JsonProcessingException e) {
+            lastException = e;
             log.warn("初次解析失败，准备调用 LLM 修复: {}", e.getMessage());
         }
 
-        // LLM 修复重试
         for (int i = 0; i < MAX_RETRY_COUNT; i++) {
             try {
-                curJson = callLlmToFix(curJson, Objects.nonNull(lastException) ? lastException.getMessage() : "Unknown error");
+                curJson = callLlmToFix(curJson, lastException.getMessage());
                 return parser.parse(OBJECT_MAPPER, curJson);
             } catch (JsonProcessingException e) {
                 lastException = e;
@@ -94,34 +74,88 @@ public class JsonParseUtil {
             String prompt = PromptConstant.getJsonFixPromptTemplate()
                     .render(Map.of("json_string", json, "error_message", errorMessage));
             Flux<ChatResponse> responseFlux = llmService.callUser(prompt);
-            String fixedJson = responseFlux.map(ChatResponse::getResults)
+            String fixedJson = responseFlux
+                    .map(ChatResponseUtil::getText)
                     .collect(StringBuilder::new, StringBuilder::append)
                     .map(StringBuilder::toString)
                     .block();
 
-            if (null == fixedJson) {
-                log.warn("LLM 修复返回 null，使用原始 JSON");
+            if (!StringUtils.hasText(fixedJson)) {
+                log.warn("LLM 修复返回空内容，使用原始 JSON");
                 return json;
             }
 
-            // 清理: 移除 think 标签 + 提取 Markdown 代码块
-            String cleanedJson = removeThinkTags(fixedJson);
-            cleanedJson = MarkdownParserUtil.extractRawText(cleanedJson);
-            return cleanedJson != null ? cleanedJson : json;
+            String cleanedJson = normalizeJsonCandidate(fixedJson);
+            return StringUtils.hasText(cleanedJson) ? cleanedJson : json;
         } catch (Exception e) {
             log.error("调用 LLM 修复 JSON 时发生异常", e);
             return json;
         }
     }
 
-    @FunctionalInterface
-    private interface JsonParserFunction<T> {
-        T parse(ObjectMapper mapper, String json) throws JsonProcessingException;
+    private String normalizeJsonCandidate(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        String cleaned = removeThinkTags(text);
+        cleaned = MarkdownParserUtil.extractRawText(cleaned).trim();
+        return extractBalancedJson(cleaned);
     }
 
-    /**
-     * 移除 &lt;/think&gt; 标签及其之前的所有内容
-     */
+    private String extractBalancedJson(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        int start = findFirstJsonStart(text);
+        if (start < 0) {
+            return text.trim();
+        }
+
+        char opening = text.charAt(start);
+        char closing = opening == '{' ? '}' : ']';
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+
+        for (int i = start; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (current == '\\') {
+                    escaped = true;
+                } else if (current == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (current == '"') {
+                inString = true;
+            } else if (current == opening) {
+                depth++;
+            } else if (current == closing) {
+                depth--;
+                if (depth == 0) {
+                    return text.substring(start, i + 1).trim();
+                }
+            }
+        }
+        return text.substring(start).trim();
+    }
+
+    private int findFirstJsonStart(String text) {
+        int objectStart = text.indexOf('{');
+        int arrayStart = text.indexOf('[');
+        if (objectStart < 0) {
+            return arrayStart;
+        }
+        if (arrayStart < 0) {
+            return objectStart;
+        }
+        return Math.min(objectStart, arrayStart);
+    }
+
     private String removeThinkTags(String text) {
         if (!StringUtils.hasText(text)) {
             return text;
@@ -131,5 +165,10 @@ public class JsonParseUtil {
             return text.substring(lastEndTagIndex + THINK_END_TAG.length()).trim();
         }
         return text.trim();
+    }
+
+    @FunctionalInterface
+    private interface JsonParserFunction<T> {
+        T parse(ObjectMapper mapper, String json) throws JsonProcessingException;
     }
 }
