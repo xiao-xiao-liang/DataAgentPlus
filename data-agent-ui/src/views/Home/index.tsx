@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass } from 'lucide-react';
+import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import clsx from 'clsx';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import { MOCK_PREVIEW_DATA, INITIAL_FILES } from '../DataCenter/mockData';
+import { buildPathWithAgentId } from '../../layout/agentRouting';
+import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 import { InteractiveReport } from './components/InteractiveReport';
 import { ClarificationCard } from './components/ClarificationCard';
 import { MemoryCandidateCard } from './components/MemoryCandidateCard';
 import { parseStreamingPlan } from './streamingPlan';
+import { getNextReportPanelState } from './reportPanelState';
+import { REPORT_PANEL_DEFAULT_WIDTH, clampReportPanelWidth } from './reportLayoutState';
 import {
   formatStructuredAnalysisOutput,
   extractExecutionPlanView,
@@ -41,7 +45,6 @@ interface Message {
 }
 
 type ChatMode = 'nl2sqlOnly' | 'humanReview' | null;
-
 
 interface ClarificationRequestPayload {
   question: string;
@@ -1552,7 +1555,6 @@ const getLatestMarkdownReportState = (messages: Message[]) => {
   return { exists: false, content: '' };
 };
 
-
 const createSseDataParser = (onData: (content: string) => void, onEvent?: (event: WorkflowEvent) => void) => {
   let dataLines: string[] = [];
 
@@ -1689,6 +1691,15 @@ const Home: React.FC = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const {
+    activeSessionTitle,
+    isSidebarCollapsed,
+    isSidebarVisible,
+    openSidebarPreview,
+    queueSidebarPreviewClose,
+    collapseSidebar,
+    expandSidebar,
+  } = useOutletContext<LayoutOutletContext>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -1748,6 +1759,9 @@ const Home: React.FC = () => {
   const [chatMode, setChatMode] = useState<ChatMode>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [reportContent, setReportContent] = useState('');
+  const [isReportManuallyCollapsed, setIsReportManuallyCollapsed] = useState(false);
+  const [reportPanelWidth, setReportPanelWidth] = useState(REPORT_PANEL_DEFAULT_WIDTH);
+  const [isReportResizing, setIsReportResizing] = useState(false);
 
   // 指定库表进行分析的弹窗状态
   const [isSelectDataOpen, setIsSelectDataOpen] = useState(false);
@@ -1763,13 +1777,21 @@ const Home: React.FC = () => {
     if (!latestReport.exists) {
       setReportContent('');
       setIsReportOpen(false);
+      setIsReportManuallyCollapsed(false);
       return;
     }
     if (latestReport.content !== reportContent) {
       setReportContent(latestReport.content);
     }
-    setIsReportOpen(true);
-  }, [messages, reportContent]);
+    const nextState = getNextReportPanelState({
+      hasReport: latestReport.exists,
+      previousContent: reportContent,
+      nextContent: latestReport.content,
+      isManuallyCollapsed: isReportManuallyCollapsed,
+    });
+    setIsReportOpen(nextState.isOpen);
+    setIsReportManuallyCollapsed(nextState.isManuallyCollapsed);
+  }, [messages, reportContent, isReportManuallyCollapsed]);
 
   useEffect(() => {
     if (!isChatState || !chatScrollRef.current) return;
@@ -1781,6 +1803,20 @@ const Home: React.FC = () => {
 
     return () => window.cancelAnimationFrame(rafId);
   }, [isChatState, isReportOpen, messages]);
+
+  const handleCollapseReport = () => {
+    setIsReportOpen(false);
+    setIsReportManuallyCollapsed(true);
+  };
+
+  const handleExpandReport = () => {
+    setIsReportOpen(true);
+    setIsReportManuallyCollapsed(false);
+  };
+
+  const handleReportPanelWidthChange = (nextWidth: number) => {
+    setReportPanelWidth(clampReportPanelWidth(nextWidth));
+  };
 
   // 挂载时如果 state 含有文件，自动关联
   useEffect(() => {
@@ -1819,6 +1855,7 @@ const Home: React.FC = () => {
       // 临时会话或者没有 sessionId 时，清空消息
       setReportContent('');
       setIsReportOpen(false);
+      setIsReportManuallyCollapsed(false);
       setMessages([]);
       return;
     }
@@ -1905,6 +1942,7 @@ const Home: React.FC = () => {
     setIsTyping(true);
     setReportContent('');
     setIsReportOpen(false);
+    setIsReportManuallyCollapsed(false);
 
     // 预填空白 AI message，让解析器在后续直接更新此 message 的 blocks
     const assistantMsg: Message = { 
@@ -2041,6 +2079,7 @@ const Home: React.FC = () => {
     setIsTyping(true);
     setReportContent('');
     setIsReportOpen(false);
+    setIsReportManuallyCollapsed(false);
     setMessages(prev => [
       ...prev,
       {
@@ -2295,13 +2334,65 @@ const Home: React.FC = () => {
       {/* 顶部导航栏 (landing-top-bar) */}
       <div data-animate="landing-top-bar" className="flex w-full items-center sticky top-0 z-30 flex-none h-12 px-3 bg-[#F6F6F6]/90 backdrop-blur-md border-b border-gray-100">
         <span data-testid="agent-selector" className="ml-2 flex-grow">
-          <button className="gap-2 whitespace-nowrap rounded-md py-2 justify-between h-7 w-auto border-0 bg-transparent px-2 text-sm font-normal text-gray-700 hover:bg-gray-200/50 flex items-center overflow-hidden" type="button">
-            <div className="flex flex-1 items-center gap-1 truncate text-gray-800">
-              <Atom className="w-4 h-4 text-gray-500" />
-              <span className="flex-1 truncate font-medium">{agentName}</span>
+          {isChatState ? (
+            <div className="flex h-7 items-center justify-between">
+              {isSidebarCollapsed ? (
+                <div className="flex min-w-0 items-center">
+                  <button
+                    type="button"
+                    onMouseEnter={openSidebarPreview}
+                    onMouseLeave={queueSidebarPreviewClose}
+                    onFocus={openSidebarPreview}
+                    onBlur={queueSidebarPreviewClose}
+                    onClick={expandSidebar}
+                    className={clsx(
+                      'group inline-flex size-9 items-center justify-center rounded-xl border p-0 text-[#0A0A0B] transition-colors',
+                      isSidebarVisible
+                        ? 'border-gray-200 bg-white text-gray-900 shadow-sm'
+                        : 'border-transparent bg-transparent hover:bg-gray-200/40'
+                    )}
+                    aria-label="展开边栏"
+                  >
+                    <span className="relative size-[18px]">
+                      <Menu className={clsx(
+                        'absolute inset-0 size-[18px] transition-opacity duration-150',
+                        isSidebarVisible ? 'opacity-0' : 'opacity-100 group-hover:opacity-0 group-focus-visible:opacity-0'
+                      )} />
+                      <ChevronsRight className={clsx(
+                        'absolute inset-0 size-[18px] transition-opacity duration-150',
+                        isSidebarVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'
+                      )} />
+                    </span>
+                  </button>
+                  <span className="ml-3 truncate text-[14px] font-normal leading-[21px] text-[#0A0A0B]">
+                    {activeSessionTitle}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <span className="truncate text-[14px] font-normal leading-[21px] text-[#0A0A0B]">
+                    {activeSessionTitle}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={collapseSidebar}
+                    className="inline-flex size-7 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#0A0A0B] transition-colors hover:bg-gray-200/40"
+                    aria-label="收起边栏"
+                  >
+                    <ChevronsLeft className="size-[18px]" />
+                  </button>
+                </>
+              )}
             </div>
-            <ChevronDown className="w-4 h-4 text-zinc-400 flex-none ml-1" />
-          </button>
+          ) : (
+            <button className="gap-2 whitespace-nowrap rounded-md py-2 justify-between h-7 w-auto border-0 bg-transparent px-2 text-sm font-normal text-gray-700 hover:bg-gray-200/50 flex items-center overflow-hidden" type="button">
+              <div className="flex flex-1 items-center gap-1 truncate text-gray-800">
+                <Atom className="w-4 h-4 text-gray-500" />
+                <span className="flex-1 truncate font-medium">{agentName}</span>
+              </div>
+              <ChevronDown className="w-4 h-4 text-zinc-400 flex-none ml-1" />
+            </button>
+          )}
         </span>
         
         {/* 清除/新对话按钮 (仅在对话状态下显示) */}
@@ -2310,8 +2401,9 @@ const Home: React.FC = () => {
             onClick={() => {
               setReportContent('');
               setIsReportOpen(false);
+              setIsReportManuallyCollapsed(false);
               setMessages([]);
-              navigate('/chat');
+              navigate(buildPathWithAgentId('/chat', agentId));
             }}
             className="text-xs text-gray-500 hover:text-gray-900 bg-white border border-gray-200 px-2.5 py-1 rounded-md shadow-sm mr-4 transition-colors font-medium cursor-pointer"
           >
@@ -2321,8 +2413,21 @@ const Home: React.FC = () => {
       </div>
       
       {/* 主视口大包裹器，配置开启报告时的左右平滑分栏 */}
-      <div className={clsx("flex flex-row w-full h-full relative overflow-hidden flex-1", isChatState ? "pb-36" : "")}>
-        <div ref={chatScrollRef} className="flex-1 flex flex-col h-full items-center overflow-y-auto relative min-w-0 transition-all duration-300">
+      <div className="flex flex-row w-full h-full relative overflow-hidden flex-1">
+        <div
+          className={clsx(
+            "relative flex h-full min-w-0 flex-col items-center overflow-hidden",
+            isReportResizing ? "transition-none" : "transition-[width] duration-300 ease-out"
+          )}
+          style={{ width: isChatState && isReportOpen ? `calc(100% - ${reportPanelWidth}px)` : '100%' }}
+        >
+          <div
+            ref={chatScrollRef}
+            className={clsx(
+              "flex flex-col h-full w-full items-center overflow-y-auto relative min-w-0",
+              isChatState ? "pb-36" : ""
+            )}
+          >
           
           {/* 🚀 消息流渲染 */}
           {isChatState ? (
@@ -2389,7 +2494,7 @@ const Home: React.FC = () => {
                           currentBlockCount={msg.blocks?.length || 0}
                         onOpenReport={(content) => {
                           setReportContent(content);
-                          setIsReportOpen(true);
+                          handleExpandReport();
                         }}
                       />
 
@@ -2519,7 +2624,7 @@ const Home: React.FC = () => {
                               取消
                             </button>
                             <button 
-                              onClick={() => setIsReportOpen(true)}
+                              onClick={handleExpandReport}
                               className="inline-flex h-10 items-center justify-center rounded-xl bg-black px-5 text-[16px] font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 cursor-pointer active:scale-95"
                             >
                               绘制网页
@@ -2589,20 +2694,23 @@ const Home: React.FC = () => {
           )}
 
           {/* 底部输入框外壳 */}
+          </div>
           <div 
             className={clsx(
-              "flex-none z-20 transition-all duration-300",
+              "z-20",
+              isReportResizing ? "transition-none" : "transition-[background-color,transform,width] duration-300 ease-out",
               isChatState 
                 ? (isReportOpen 
-                    ? "fixed bottom-0 left-[236px] w-[calc(100vw-236px-640px)] flex justify-center pb-6 pt-4 bg-[#F6F6F6]/95 backdrop-blur-xs px-4"
-                    : "fixed bottom-0 left-[236px] right-0 flex justify-center pb-6 pt-4 bg-gradient-to-t from-[#F6F6F6] via-[#F6F6F6] to-transparent"
+                    ? "absolute bottom-0 left-0 right-0 flex justify-center pb-6 pt-4 bg-[#F6F6F6]/95 backdrop-blur-xs px-4"
+                    : "absolute bottom-0 left-0 right-0 flex justify-center pb-6 pt-4 bg-gradient-to-t from-[#F6F6F6] via-[#F6F6F6] to-transparent px-4"
                   )
                 : "w-[680px] mb-6 mx-auto"
             )}
           >
             <div 
               className={clsx(
-                "group/composer flex flex-col items-start justify-center bg-[#ECEEF6] rounded-3xl p-1 z-10 shadow-sm transition-all duration-300 w-full"
+                "group/composer flex flex-col items-start justify-center bg-[#ECEEF6] rounded-3xl p-1 z-10 shadow-sm w-full",
+                isReportResizing ? "transition-none" : "transition-[max-width] duration-300 ease-out"
               )}
               style={{ maxWidth: isChatState ? '807.33px' : '680px' }}
             >
@@ -2849,7 +2957,7 @@ const Home: React.FC = () => {
                                           title="查看详情"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            navigate('/knowledge');
+                                            navigate(buildPathWithAgentId('/knowledge', agentId));
                                           }}
                                         >
                                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-eye size-3.5"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -2865,7 +2973,7 @@ const Home: React.FC = () => {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        navigate('/knowledge');
+                                        navigate(buildPathWithAgentId('/knowledge', agentId));
                                       }}
                                       className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors border-none bg-transparent cursor-pointer"
                                     >
@@ -3122,10 +3230,23 @@ const Home: React.FC = () => {
         </div>
 
         {/* 右侧报告栏：当前渲染 Markdown，后续承载 HTML 报告 */}
+        {!isReportOpen && reportContent.trim() && (
+          <button
+            type="button"
+            onClick={handleExpandReport}
+            className="absolute right-4 top-4 z-30 inline-flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+          >
+            <ChevronRight className="size-4" />
+            <span>展开报告</span>
+          </button>
+        )}
         <InteractiveReport
           isOpen={isReportOpen}
+          width={reportPanelWidth}
           markdownContent={reportContent}
-          onClose={() => setIsReportOpen(false)}
+          onClose={handleCollapseReport}
+          onWidthChange={handleReportPanelWidthChange}
+          onResizeStateChange={setIsReportResizing}
         />
       </div>
 
