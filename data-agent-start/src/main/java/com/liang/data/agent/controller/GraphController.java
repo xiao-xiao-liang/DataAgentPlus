@@ -79,16 +79,20 @@ public class GraphController {
             }
         }
 
-        // 2. 保存用户消息（反馈请求时跳过，因为原始问题已在首次请求时保存）
+        // 2. 保存用户消息（澄清答复需要落库，避免历史会话缺失用户补充内容）
         InteractionType interactionType = InteractionType.fromCode(request.getInteractionType());
-        boolean isFeedbackRequest = StringUtils.hasText(request.getHumanFeedbackContent())
-                || interactionType == InteractionType.CLARIFICATION_ANSWER
-                || interactionType == InteractionType.CLARIFICATION_CONFIRM
-                || interactionType == InteractionType.HUMAN_PLAN_FEEDBACK;
-        if (!isFeedbackRequest && StringUtils.hasText(request.getQuery())) {
+        String userMessageContent = null;
+        if (interactionType == InteractionType.CLARIFICATION_ANSWER || interactionType == InteractionType.CLARIFICATION_CONFIRM) {
+            userMessageContent = request.getInteractionContent();
+        } else if (!StringUtils.hasText(request.getHumanFeedbackContent())
+                && interactionType != InteractionType.HUMAN_PLAN_FEEDBACK
+                && StringUtils.hasText(request.getQuery())) {
+            userMessageContent = request.getQuery();
+        }
+        if (StringUtils.hasText(userMessageContent)) {
             ChatMessageDTO userMsgDto = ChatMessageDTO.builder()
                     .role("user")
-                    .content(request.getQuery())
+                    .content(userMessageContent)
                     .messageType("text")
                     .build();
             chatMessageService.saveMessage(userMsgDto, threadId);

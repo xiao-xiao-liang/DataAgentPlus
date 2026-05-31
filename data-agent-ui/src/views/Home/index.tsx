@@ -22,6 +22,7 @@ import {
   type CodeLanguage,
   type CodeToken,
 } from './workflowDisplay';
+import { splitWorkflowEvents, type WorkflowEvent } from './workflowEvents';
 
 // 消息 Block 数据结构
 interface MessageBlock {
@@ -41,12 +42,6 @@ interface Message {
 
 type ChatMode = 'nl2sqlOnly' | 'humanReview' | null;
 
-type WorkflowEventType = 'clarification_request' | 'clarification_confirmation' | 'memory_candidate';
-
-interface WorkflowEvent<T = any> {
-  eventType: WorkflowEventType;
-  payload: T;
-}
 
 interface ClarificationRequestPayload {
   question: string;
@@ -1557,29 +1552,6 @@ const getLatestMarkdownReportState = (messages: Message[]) => {
   return { exists: false, content: '' };
 };
 
-const EVENT_PREFIX = '@@DATA_AGENT_EVENT@@';
-const EVENT_SUFFIX = '@@END_DATA_AGENT_EVENT@@';
-
-const splitWorkflowEvents = (content: string): { visibleContent: string; events: WorkflowEvent[] } => {
-  const events: WorkflowEvent[] = [];
-  let visibleContent = content;
-  while (visibleContent.includes(EVENT_PREFIX) && visibleContent.includes(EVENT_SUFFIX)) {
-    const start = visibleContent.indexOf(EVENT_PREFIX);
-    const end = visibleContent.indexOf(EVENT_SUFFIX, start);
-    if (end < 0) break;
-    const jsonText = visibleContent.slice(start + EVENT_PREFIX.length, end);
-    try {
-      const parsed = JSON.parse(jsonText);
-      if (parsed.eventType && parsed.payload) {
-        events.push({ eventType: parsed.eventType, payload: parsed.payload });
-      }
-    } catch (error) {
-      console.warn('解析工作流事件失败', error);
-    }
-    visibleContent = visibleContent.slice(0, start) + visibleContent.slice(end + EVENT_SUFFIX.length);
-  }
-  return { visibleContent, events };
-};
 
 const createSseDataParser = (onData: (content: string) => void, onEvent?: (event: WorkflowEvent) => void) => {
   let dataLines: string[] = [];
@@ -1863,10 +1835,12 @@ const Home: React.FC = () => {
                 content: msg.content,
               };
             } else {
+              const { visibleContent, events } = splitWorkflowEvents(msg.content || '');
               return {
                 role: 'assistant',
                 content: '',
-                blocks: parseRawContent(msg.content || ''),
+                blocks: parseRawContent(visibleContent),
+                workflowEvents: events,
                 isComplete: true,
               };
             }
