@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { 
@@ -14,6 +14,8 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import clsx from 'clsx';
+import { CollapsedSidebarMenuButton } from '../../layout/CollapsedSidebarMenuButton';
+import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 
 // 引入子组件
 import { AddDataPanel } from './components/AddDataPanel';
@@ -43,6 +45,11 @@ const getDatabaseLogo = (type: string) => {
 export const DataCenter: React.FC = () => {
   const { database } = useParams();
   const navigate = useNavigate();
+  const {
+    isSidebarCollapsed,
+    isSidebarVisible,
+    expandSidebar,
+  } = useOutletContext<LayoutOutletContext>();
   const [datasources, setDatasources] = useState<DataSource[]>([]);
   const [files, setFiles] = useState<UploadedFile[]>(INITIAL_FILES);
 
@@ -255,22 +262,20 @@ export const DataCenter: React.FC = () => {
   return (
     <div className="relative m-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] rounded-lg border border-gray-200/80 shadow-sm bg-white overflow-hidden flex flex-col font-sans">
       
-      {/* 顶部绝对定位的隐藏操作栏，还原 DOM */}
-      <div className="flex items-center justify-between h-12 absolute left-0 top-0 w-12 z-20">
-        <div className="flex items-center">
-          <button className="p-1 mx-3 size-7 items-center justify-center hidden text-gray-500 hover:bg-gray-100 rounded-md">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg>
-          </button>
-        </div>
-      </div>
-
       <div className="flex h-full flex-1">
         {/* 左侧数据中心列表面板 (占比 30%，添加宽度限制) */}
         <div className="w-[30%] min-w-72.5 max-w-[38%] border-r border-gray-200/80 flex flex-col h-full p-3 pt-0 select-none relative bg-[#FAFAFA]">
           
           {/* 标题栏 */}
           <div className="z-1 flex h-12 items-center justify-between font-bold text-gray-800">
-            <span className="text-[14px]">数据中心</span>
+            <div className="flex min-w-0 items-center gap-3">
+              <CollapsedSidebarMenuButton
+                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarVisible={isSidebarVisible}
+                expandSidebar={expandSidebar}
+              />
+              <span className="truncate text-[14px]">数据中心</span>
+            </div>
             <div className="flex items-center gap-1.5">
               <button 
                 onClick={handleRefresh}
