@@ -18,6 +18,11 @@ const isTableLine = (line: string) => {
   return trimmed.startsWith('|') && trimmed.endsWith('|');
 };
 
+const isTableSeparatorLine = (line: string) => {
+  const trimmed = line.trim();
+  return /^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?$/.test(trimmed);
+};
+
 const isListItemLine = (line: string) => /^\s*(?:[-*+]|\d+\.)\s+/.test(line);
 
 const isIndentedListContinuation = (line: string) => /^\s{2,}\S/.test(line);
@@ -39,6 +44,29 @@ const unwrapOuterMarkdownFence = (value: string) => {
 
 const normalizeLooseEmphasis = (line: string) => {
   return line.replace(/(^|[^*])\*([^\n*]*?\S)\s+\*(?=[^*]|$)/g, '$1*$2*');
+};
+
+const shouldKeepBeforeTable = (line: string) => {
+  const trimmed = line.trim();
+  return trimmed === '' || isTableLine(trimmed) || isTableSeparatorLine(trimmed);
+};
+
+const separateTablesFromParagraphs = (lines: string[]) => {
+  const separated: string[] = [];
+
+  lines.forEach((line, index) => {
+    const previous = separated[separated.length - 1] || '';
+    const next = lines[index + 1] || '';
+    const startsTable = isTableLine(line) && isTableSeparatorLine(next);
+
+    if (startsTable && !shouldKeepBeforeTable(previous)) {
+      separated.push('');
+    }
+
+    separated.push(line);
+  });
+
+  return separated;
 };
 
 const normalizeMarkdownContent = (value: string) => {
@@ -65,12 +93,11 @@ const normalizeMarkdownContent = (value: string) => {
         .replace(/^(#{1,6})([^\s#])/g, '$1 $2')
         .replace(/^(\s*\d+\.)(\S)/g, '$1 $2')
         .replace(/^(\s*[-+])(\S)/g, '$1 $2')
-        .replace(/^(\s*\*)([*_`])/g, '$1 $2')
         .replace(/^(.+)$/, normalizeLooseEmphasis)
         .trimEnd();
     });
 
-  return compactListSeparators(lines)
+  return separateTablesFromParagraphs(compactListSeparators(lines))
     .join('\n')
     .trim();
 };
