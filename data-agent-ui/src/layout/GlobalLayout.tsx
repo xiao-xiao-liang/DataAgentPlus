@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { buildPathWithAgentId, resolveSessionAgentId } from './agentRouting';
+import { useCurrentAgentStore } from '../stores/currentAgent';
 import { 
   Database, 
   Book, 
@@ -47,6 +48,8 @@ const GlobalLayout: React.FC = () => {
   const SIDEBAR_EXPANDED_OFFSET = 236;
   const navigate = useNavigate();
   const location = useLocation();
+  const selectedAgentId = useCurrentAgentStore((state) => state.agentId);
+  const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
 
   const menuItems = [
     { key: '/data', icon: Database, label: '数据中心' },
@@ -73,15 +76,13 @@ const GlobalLayout: React.FC = () => {
   });
   const [isSidebarPreviewOpen, setIsSidebarPreviewOpen] = useState(false);
   const previewCloseTimerRef = useRef<number | null>(null);
-  const params = new URLSearchParams(location.search);
-  const agentId = params.get('agentId') || 'default';
 
   // 正则提取当前路由下的 sessionId
   const match = location.pathname.match(/^\/chat\/([^?/\s]+)/);
   const pathnameSessionId = match ? match[1] : null;
   const isChatSessionPage = Boolean(pathnameSessionId);
   const activeSession = sessions.find((session) => session.id === pathnameSessionId);
-  const currentAgentId = resolveSessionAgentId(activeSession?.agentId, agentId);
+  const currentAgentId = resolveSessionAgentId(activeSession?.agentId, selectedAgentId);
   const isSidebarVisible = !isSidebarCollapsed || isSidebarPreviewOpen;
   const activeSessionTitle = activeSession?.title || '新对话';
 
@@ -148,17 +149,24 @@ const GlobalLayout: React.FC = () => {
   };
 
   const fetchSessions = async () => {
-    let targetAgentId = agentId;
+    let targetAgentId = selectedAgentId;
     if (!targetAgentId || targetAgentId === 'default') {
       try {
         const listRes = await fetch('/api/agent/list').then(res => res.json());
         if (listRes.success && Array.isArray(listRes.data) && listRes.data.length > 0) {
-          targetAgentId = listRes.data[0].id.toString();
+          const firstAgent = listRes.data[0];
+          targetAgentId = firstAgent.id.toString();
+          setCurrentAgent({
+            agentId: targetAgentId,
+            agentName: firstAgent.name || 'Data Agent',
+          });
         } else {
           targetAgentId = '1';
+          setCurrentAgent({ agentId: targetAgentId, agentName: 'Data Agent' });
         }
-      } catch (e) {
+      } catch {
         targetAgentId = '1';
+        setCurrentAgent({ agentId: targetAgentId, agentName: 'Data Agent' });
       }
     }
 
@@ -177,10 +185,10 @@ const GlobalLayout: React.FC = () => {
       });
   };
 
-  // 依赖 agentId 和路由路径刷新会话列表
+  // 依赖当前智能体和路由路径刷新会话列表
   useEffect(() => {
     fetchSessions();
-  }, [agentId, location.pathname]);
+  }, [selectedAgentId, location.pathname]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -203,7 +211,7 @@ const GlobalLayout: React.FC = () => {
   };
 
   const handleShareSession = async (session: ChatSession) => {
-    const sessionAgentId = resolveSessionAgentId(session.agentId, agentId);
+    const sessionAgentId = resolveSessionAgentId(session.agentId, currentAgentId);
     const path = buildPathWithAgentId(`/chat/${session.id}`, sessionAgentId);
     const url = `${window.location.origin}${path}`;
     try {
@@ -287,7 +295,7 @@ const GlobalLayout: React.FC = () => {
       setOpenMenuSessionId(null);
       setPendingDeleteSession(null);
       if (pathnameSessionId === sessId) {
-        navigate(buildPathWithAgentId('/chat', currentAgentId));
+        navigate('/chat');
       } else {
         setSessions(prev => prev.filter(session => session.id !== sessId));
       }
@@ -354,7 +362,7 @@ const GlobalLayout: React.FC = () => {
               <div className="flex items-center gap-2">
                 <a 
                   href="/" 
-                  onClick={(e) => { e.preventDefault(); navigate(buildPathWithAgentId('/chat', currentAgentId)); }}
+                  onClick={(e) => { e.preventDefault(); navigate('/chat'); }}
                   className="relative rounded-full flex h-[26px] w-[26px] items-center overflow-visible flex-none"
                 >
                   <img 
@@ -384,7 +392,7 @@ const GlobalLayout: React.FC = () => {
             {/* 新任务按钮 (h-9 rounded-lg border bg-white, 包含 Ctrl+P 快捷键) */}
             <div className="relative my-4 flex items-center">
               <button 
-                onClick={() => navigate(buildPathWithAgentId('/chat', currentAgentId))}
+                onClick={() => navigate('/chat')}
                 className="group/create-btn z-10 h-9 w-full rounded-lg border border-gray-200 bg-white p-0 text-sm shadow-none hover:bg-gray-50 flex items-center transition-colors"
               >
                 <div className="flex h-full w-full items-center justify-between rounded-lg pl-[13px] pr-3 text-[#0A0A0B]">
@@ -408,7 +416,7 @@ const GlobalLayout: React.FC = () => {
                 return (
                   <button
                     key={item.key}
-                    onClick={() => navigate(buildPathWithAgentId(item.key, currentAgentId))}
+                    onClick={() => navigate(item.key)}
                     className={clsx(
                       "flex h-8 w-full cursor-pointer items-center justify-start gap-2 px-3 py-1.5 text-sm font-normal rounded-lg transition-colors group/menuItem",
                       isActive 
@@ -456,7 +464,8 @@ const GlobalLayout: React.FC = () => {
                         key={session.id}
                         onClick={() => {
                           if (!isRenaming) {
-                            navigate(buildPathWithAgentId(`/chat/${session.id}`, resolveSessionAgentId(session.agentId, currentAgentId)));
+                            setCurrentAgent({ agentId: resolveSessionAgentId(session.agentId, currentAgentId) });
+                            navigate(`/chat/${session.id}`);
                           }
                         }}
                         title={!isActive ? title : undefined}

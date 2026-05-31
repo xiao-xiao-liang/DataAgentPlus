@@ -10,7 +10,7 @@ import { KnowledgeDetail } from './components/KnowledgeDetail';
 import { KnowledgeCandidatePage } from './components/KnowledgeCandidatePage';
 import { CollapsedSidebarMenuButton } from '../../layout/CollapsedSidebarMenuButton';
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
-import { buildPathWithAgentId } from '../../layout/agentRouting';
+import { useCurrentAgentStore } from '../../stores/currentAgent';
 
 const LOCAL_STORAGE_KEY = 'data-agent-knowledge-bases';
 
@@ -31,8 +31,30 @@ export const KnowledgeCenter: React.FC = () => {
   const { knowledgeBaseId } = useParams<{ knowledgeBaseId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const agentId = new URLSearchParams(location.search).get('agentId') || '1';
+  const currentAgentId = useCurrentAgentStore((state) => state.agentId);
+  const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
+  const effectiveAgentId = currentAgentId && currentAgentId !== 'default' ? currentAgentId : '1';
   const isCandidatePage = location.pathname === '/knowledge/candidates';
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const queryAgentId = params.get('agentId');
+    if (!queryAgentId || queryAgentId === 'default') {
+      return;
+    }
+
+    setCurrentAgent({ agentId: queryAgentId });
+    params.delete('agentId');
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+        hash: location.hash,
+      },
+      { replace: true, state: location.state }
+    );
+  }, [location.hash, location.pathname, location.search, location.state, navigate, setCurrentAgent]);
 
   useEffect(() => {
     try {
@@ -50,11 +72,11 @@ export const KnowledgeCenter: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!agentId) return;
+    if (!effectiveAgentId) return;
 
     const loadCandidateCount = async () => {
       try {
-        const response = await fetch(`/api/v1/knowledge-candidates?agentId=${agentId}`);
+        const response = await fetch(`/api/v1/knowledge-candidates?agentId=${effectiveAgentId}`);
         const result = await response.json();
         setCandidateCount(Array.isArray(result.data) ? result.data.length : 0);
       } catch (error) {
@@ -64,7 +86,7 @@ export const KnowledgeCenter: React.FC = () => {
     };
 
     loadCandidateCount();
-  }, [agentId, location.pathname]);
+  }, [effectiveAgentId, location.pathname]);
 
   useEffect(() => {
     if (!toastMessage) return undefined;
@@ -126,7 +148,7 @@ export const KnowledgeCenter: React.FC = () => {
       saveToStorage(updated);
       showToast(`已删除知识库 "${targetKB.name}"`, 'success');
       if (knowledgeBaseId === id) {
-        navigate(buildPathWithAgentId('/knowledge', agentId));
+        navigate('/knowledge');
       }
     }
   };
@@ -205,11 +227,11 @@ export const KnowledgeCenter: React.FC = () => {
       </div>
 
       {isCandidatePage ? (
-        <KnowledgeCandidatePage agentId={agentId} onBack={() => navigate(buildPathWithAgentId('/knowledge', agentId))} showToast={showToast} />
+        <KnowledgeCandidatePage agentId={effectiveAgentId} onBack={() => navigate('/knowledge')} showToast={showToast} />
       ) : currentKB ? (
         <KnowledgeDetail
           kb={currentKB}
-          onBack={() => navigate(buildPathWithAgentId('/knowledge', agentId))}
+          onBack={() => navigate('/knowledge')}
           onUpdateKB={handleUpdateKB}
           showToast={(msg) => showToast(msg, 'success')}
         />
@@ -246,7 +268,7 @@ export const KnowledgeCenter: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => navigate(buildPathWithAgentId('/knowledge/candidates', agentId))}
+                onClick={() => navigate('/knowledge/candidates')}
                 className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-750 transition-colors hover:bg-gray-50"
               >
                 <span>候选知识</span>
@@ -283,8 +305,7 @@ export const KnowledgeCenter: React.FC = () => {
                 onSelect={(id) => {
                   const kb = knowledgeBases.find((item) => item.id === id);
                   if (kb) {
-                    const agentParam = agentId && agentId !== 'default' ? `&agentId=${agentId}` : '';
-                    navigate(`/knowledge/${kb.id}?name=${encodeURIComponent(kb.name)}${agentParam}`);
+                    navigate(`/knowledge/${kb.id}?name=${encodeURIComponent(kb.name)}`);
                   }
                 }}
                 onDelete={handleDeleteKB}

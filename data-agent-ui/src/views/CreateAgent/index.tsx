@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Settings2
 } from 'lucide-react';
+import { useCurrentAgentStore } from '../../stores/currentAgent';
 
 interface FormState {
   name: string;
@@ -88,6 +89,7 @@ const DETAIL_PANEL_CLASS =
 export const CreateAgent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
   const queryAgentId = useMemo(() => new URLSearchParams(location.search).get('id'), [location.search]);
   const querySection = useMemo(() => getAgentSectionFromSearch(location.search), [location.search]);
 
@@ -612,7 +614,7 @@ export const CreateAgent: React.FC = () => {
     }
   };
 
-  // 调试：保存并携带 agentId 跳转到 Chat
+  // 调试：保存并切换当前智能体后跳转到 Chat
   const handleDebug = async () => {
     if (!isFormValid) {
       navigateToSection('info');
@@ -625,7 +627,8 @@ export const CreateAgent: React.FC = () => {
     }
     const savedId = await handleSave(true);
     if (savedId) {
-      navigate(`/chat?agentId=${savedId}`);
+      setCurrentAgent({ agentId: String(savedId), agentName: form.name || '自定义智能体' });
+      navigate('/chat');
     }
   };
 

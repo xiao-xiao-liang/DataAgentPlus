@@ -7,8 +7,8 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import { MOCK_PREVIEW_DATA, INITIAL_FILES } from '../DataCenter/mockData';
-import { buildPathWithAgentId } from '../../layout/agentRouting';
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
+import { useCurrentAgentStore } from '../../stores/currentAgent';
 import { InteractiveReport } from './components/InteractiveReport';
 import { ClarificationCard } from './components/ClarificationCard';
 import { MemoryCandidateCard } from './components/MemoryCandidateCard';
@@ -1717,43 +1717,58 @@ const Home: React.FC = () => {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [memoryCandidateActions, setMemoryCandidateActions] = useState<Record<string, MemoryCandidateActionStatus>>({});
   
-  // 自定义智能体 ID 和名称状态
-  const [agentId, setAgentId] = useState<string>('default');
-  const [agentName, setAgentName] = useState<string>('Data Agent');
+  const agentId = useCurrentAgentStore((state) => state.agentId);
+  const agentName = useCurrentAgentStore((state) => state.agentName);
+  const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
+  const effectiveAgentId = agentId && agentId !== 'default' ? agentId : '1';
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const queryAgentId = params.get('agentId');
     if (queryAgentId && queryAgentId !== 'default') {
-      setAgentId(queryAgentId);
+      setCurrentAgent({ agentId: queryAgentId, agentName: '自定义智能体' });
       fetch(`/api/agent/${queryAgentId}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.data) {
-            setAgentName(data.data.name || '自定义智能体');
+            setCurrentAgent({
+              agentId: queryAgentId,
+              agentName: data.data.name || '自定义智能体',
+            });
           }
         })
-        .catch(() => setAgentName('自定义智能体'));
-    } else {
+        .catch(() => setCurrentAgent({ agentId: queryAgentId, agentName: '自定义智能体' }));
+
+      params.delete('agentId');
+      const nextSearch = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : '',
+          hash: location.hash,
+        },
+        { replace: true, state: location.state }
+      );
+    } else if (!agentId || agentId === 'default') {
       // 异步获取第一个已配置智能体，避免使用 'default' 导致接口 500/报错
       fetch('/api/agent/list')
         .then(res => res.json())
         .then(data => {
           if (data.success && Array.isArray(data.data) && data.data.length > 0) {
             const firstAgent = data.data[0];
-            setAgentId(firstAgent.id.toString());
-            setAgentName(firstAgent.name || 'Data Agent');
+            setCurrentAgent({
+              agentId: firstAgent.id.toString(),
+              agentName: firstAgent.name || 'Data Agent',
+            });
           } else {
-            setAgentId('1');
-            setAgentName('Data Agent');
+            setCurrentAgent({ agentId: '1', agentName: 'Data Agent' });
           }
         })
         .catch(() => {
-          setAgentId('1');
-          setAgentName('Data Agent');
+          setCurrentAgent({ agentId: '1', agentName: 'Data Agent' });
         });
     }
-  }, [location.search]);
+  }, [agentId, location.hash, location.pathname, location.search, location.state, navigate, setCurrentAgent]);
 
   // 后端模式：仅 NL2SQL 或人工审核
   const [chatMode, setChatMode] = useState<ChatMode>(null);
@@ -1957,7 +1972,7 @@ const Home: React.FC = () => {
     if (!currentSessionId || currentSessionId.startsWith('session_')) {
       isCreatingSessionRef.current = true;
       try {
-        const createRes = await fetch(`/api/agent/${agentId}/sessions`, {
+        const createRes = await fetch(`/api/agent/${effectiveAgentId}/sessions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1968,16 +1983,16 @@ const Home: React.FC = () => {
         if (createRes.success && createRes.data) {
           currentSessionId = createRes.data.id;
           // 用 replace: true 更新路由，避免在历史记录中留下 /chat 路由
-          navigate(`/chat/${currentSessionId}?agentId=${agentId}`, { replace: true });
+          navigate(`/chat/${currentSessionId}`, { replace: true });
         } else {
           // 备用方案，防止后端接口挂了导致无法聊天
           currentSessionId = 'session_' + Date.now();
-          navigate(`/chat/${currentSessionId}?agentId=${agentId}`, { replace: true });
+          navigate(`/chat/${currentSessionId}`, { replace: true });
         }
       } catch (error) {
         console.error("创建会话失败，使用临时会话ID", error);
         currentSessionId = 'session_' + Date.now();
-        navigate(`/chat/${currentSessionId}?agentId=${agentId}`, { replace: true });
+        navigate(`/chat/${currentSessionId}`, { replace: true });
       }
     }
 
@@ -2016,7 +2031,7 @@ const Home: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          agentId: agentId,
+          agentId: effectiveAgentId,
           threadId: currentSessionId,
           query: text,
           humanFeedback: chatMode === 'humanReview',
@@ -2124,7 +2139,7 @@ const Home: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          agentId,
+          agentId: effectiveAgentId,
           threadId: currentSessionId,
           query: '',
           humanFeedbackContent: approved ? '确认执行' : (feedbackContent || '请根据人工意见修改执行计划'),
@@ -2212,7 +2227,7 @@ const Home: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agentId,
+          agentId: effectiveAgentId,
           threadId: currentSessionId,
           query: '',
           interactionType,
@@ -2403,7 +2418,7 @@ const Home: React.FC = () => {
               setIsReportOpen(false);
               setIsReportManuallyCollapsed(false);
               setMessages([]);
-              navigate(buildPathWithAgentId('/chat', agentId));
+              navigate('/chat');
             }}
             className="text-xs text-gray-500 hover:text-gray-900 bg-white border border-gray-200 px-2.5 py-1 rounded-md shadow-sm mr-4 transition-colors font-medium cursor-pointer"
           >
@@ -2957,7 +2972,7 @@ const Home: React.FC = () => {
                                           title="查看详情"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            navigate(buildPathWithAgentId('/knowledge', agentId));
+                                            navigate('/knowledge');
                                           }}
                                         >
                                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-eye size-3.5"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -2973,7 +2988,7 @@ const Home: React.FC = () => {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        navigate(buildPathWithAgentId('/knowledge', agentId));
+                                        navigate('/knowledge');
                                       }}
                                       className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors border-none bg-transparent cursor-pointer"
                                     >

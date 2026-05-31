@@ -13,6 +13,7 @@ import {
   Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useCurrentAgentStore } from '../../stores/currentAgent';
 
 interface AgentVO {
   id: number;
@@ -35,6 +36,7 @@ const AVATAR_GRADIENTS = [
 
 export const CustomAgent: React.FC = () => {
   const navigate = useNavigate();
+  const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
   const [agents, setAgents] = useState<AgentVO[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,20 +126,20 @@ export const CustomAgent: React.FC = () => {
     switch (status) {
       case 'published':
         return (
-          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200/50 font-bold font-sans">
+          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs bg-emerald-50 text-emerald-600 border border-emerald-200/50 font-bold font-sans">
             已发布
           </span>
         );
       case 'offline':
         return (
-          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] bg-rose-50 text-rose-600 border border-rose-200/50 font-bold font-sans">
+          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs bg-rose-50 text-rose-600 border border-rose-200/50 font-bold font-sans">
             已下线
           </span>
         );
       case 'draft':
       default:
         return (
-          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] bg-gray-50 text-gray-600 border border-gray-200/50 font-bold font-sans">
+          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-xs bg-gray-50 text-gray-600 border border-gray-200/50 font-bold font-sans">
             草稿
           </span>
         );
@@ -270,7 +272,9 @@ export const CustomAgent: React.FC = () => {
                   return (
                     <div 
                       key={agent.id}
-                      onClick={() => navigate(`/chat?agentId=${agent.id}`)}
+                      onClick={() => {
+                        navigate(`/agent/create?id=${agent.id}`);
+                      }}
                       className="group relative h-[10rem] cursor-pointer rounded-xl border border-gray-200/80 bg-white p-[1px] transition-all hover:shadow-[0_0.25rem_0_rgba(102,127,255,0.15)] hover:-translate-y-[2px] duration-300 flex flex-col justify-between"
                     >
                       <div className="relative flex h-full w-full flex-col justify-between p-4 bg-white rounded-xl">
@@ -297,7 +301,10 @@ export const CustomAgent: React.FC = () => {
                               >
                                 {/* 对话项 */}
                                 <DropdownMenu.Item 
-                                  onClick={() => navigate(`/chat?agentId=${agent.id}`)}
+                                  onClick={() => {
+                                    setCurrentAgent({ agentId: String(agent.id), agentName: agent.name });
+                                    navigate('/chat');
+                                  }}
                                   className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-gray-700 rounded-md hover:bg-gray-100 focus:bg-gray-100 cursor-pointer outline-none transition-colors"
                                 >
                                   <MessageSquare className="size-3.5 text-gray-500" />
@@ -336,7 +343,7 @@ export const CustomAgent: React.FC = () => {
                             <div className={`size-8 rounded bg-gradient-to-br ${gradient} flex items-center justify-center text-white text-xs font-extrabold shadow-3xs shrink-0 select-none`}>
                               {agent.name ? agent.name.charAt(0).toUpperCase() : 'A'}
                             </div>
-                            <h3 className="truncate text-sm font-bold text-gray-800 leading-tight group-hover:underline">
+                            <h3 className="truncate text-sm font-bold text-gray-800 leading-tight">
                               {agent.name}
                             </h3>
                           </div>
@@ -346,7 +353,7 @@ export const CustomAgent: React.FC = () => {
                         </div>
 
                         {/* 卡片尾部元数据 */}
-                        <div className="text-gray-400 flex items-center gap-2 text-xs border-t border-gray-100/70 pt-2 font-mono">
+                        <div className="text-gray-400 flex items-center gap-2 text-sm border-t border-gray-100/70 pt-2 font-mono">
                           {renderStatusTag(agent.status)}
                           <span className="shrink-0 text-gray-200 font-sans">|</span>
                           <span className="truncate max-w-[80px]" title={`ID: ${agent.id}`}>

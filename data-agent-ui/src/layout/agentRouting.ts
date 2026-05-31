@@ -10,5 +10,14 @@ export const resolveSessionAgentId = (
 };
 
 export const buildPathWithAgentId = (path: string, agentId: string): string => {
-  return agentId && agentId !== 'default' ? `${path}?agentId=${agentId}` : path;
+  if (!agentId || agentId === 'default') {
+    return path;
+  }
+
+  if (!path.startsWith('/chat') && path !== '/knowledge/candidates') {
+    return path;
+  }
+
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}agentId=${agentId}`;
 };
