@@ -40,3 +40,17 @@ export interface KnowledgeCandidate {
   createTime?: string;
   updateTime?: string;
 }
+
+export interface KnowledgeCandidateExtraEntry {
+  label: string;
+  value: string;
+}
+
+export interface KnowledgeCandidateViewModel {
+  businessTerm: string;
+  description: string;
+  calculationRule: string;
+  synonyms: string[];
+  badges: string[];
+  extraEntries: KnowledgeCandidateExtraEntry[];
+}
