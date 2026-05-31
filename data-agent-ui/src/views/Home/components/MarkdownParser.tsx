@@ -32,8 +32,17 @@ const compactListSeparators = (lines: string[]) => {
   });
 };
 
+const unwrapOuterMarkdownFence = (value: string) => {
+  const match = value.trim().match(/^```(?:markdown|md)\s*\n([\s\S]*?)\n?```\s*$/i);
+  return match ? match[1] : value;
+};
+
+const normalizeLooseEmphasis = (line: string) => {
+  return line.replace(/(^|[^*])\*([^\n*]*?\S)\s+\*(?=[^*]|$)/g, '$1*$2*');
+};
+
 const normalizeMarkdownContent = (value: string) => {
-  const normalized = value
+  const normalized = unwrapOuterMarkdownFence(value)
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\\n/g, '\n');
@@ -55,7 +64,9 @@ const normalizeMarkdownContent = (value: string) => {
       return line
         .replace(/^(#{1,6})([^\s#])/g, '$1 $2')
         .replace(/^(\s*\d+\.)(\S)/g, '$1 $2')
-        .replace(/^(\s*[-*+])(\S)/g, '$1 $2')
+        .replace(/^(\s*[-+])(\S)/g, '$1 $2')
+        .replace(/^(\s*\*)([*_`])/g, '$1 $2')
+        .replace(/^(.+)$/, normalizeLooseEmphasis)
         .trimEnd();
     });
 

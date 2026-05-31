@@ -72,6 +72,15 @@ const chartThenStreamingTextB = `${reportMarkdown}
 
 First paragraph after chart with more streamed text`;
 
+const fencedMarkdownReport = `\`\`\`markdown
+# 系统链路核心瓶颈分析报告
+
+## 1. 执行摘要
+- **核心瓶颈节点**：retrieval-engine。
+\`\`\``;
+
+const spacedEmphasisMarkdown = `*报告生成时间：分析基于 14 条成功链路数据，建议在更大样本量下验证结论稳定性。 *`;
+
 const server = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -86,6 +95,8 @@ try {
   const brokenChartHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: brokenEchartsMarkdown }));
   const chartThenTextAHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: chartThenStreamingTextA }));
   const chartThenTextBHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: chartThenStreamingTextB }));
+  const fencedMarkdownReportHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: fencedMarkdownReport }));
+  const spacedEmphasisHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: spacedEmphasisMarkdown }));
 
   assert.match(html, /<h1[^>]*>Knowledge Report<\/h1>/);
   assert.match(html, /<h2[^>]*>1\. Summary<\/h2>/);
@@ -113,6 +124,12 @@ try {
   const chartKeyB = chartThenTextBHtml.match(/data-chart-key="([^"]+)"/)?.[1];
   assert.ok(chartKeyA);
   assert.equal(chartKeyA, chartKeyB);
+
+  assert.match(fencedMarkdownReportHtml, /<h1[^>]*>系统链路核心瓶颈分析报告<\/h1>/);
+  assert.match(fencedMarkdownReportHtml, /<h2[^>]*>1\. 执行摘要<\/h2>/);
+  assert.doesNotMatch(fencedMarkdownReportHtml, /代码片段|MARKDOWN|<pre/);
+
+  assert.match(spacedEmphasisHtml, /<em>报告生成时间：分析基于 14 条成功链路数据，建议在更大样本量下验证结论稳定性。<\/em>/);
 } finally {
   await server.close();
 }
