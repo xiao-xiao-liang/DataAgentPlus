@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import clsx from 'clsx';
@@ -64,6 +64,18 @@ interface MemoryCandidatePayload {
 }
 
 type MemoryCandidateActionStatus = 'idle' | 'pending' | 'submitted' | 'published' | 'ignored' | 'error';
+
+type ChatAgentOption = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+const DEFAULT_CHAT_AGENT_OPTION: ChatAgentOption = {
+  id: '1',
+  name: 'Data Agent',
+  description: '系统内置Data Agent',
+};
 
 const getPreviewData = (fileName: string) => {
   if (fileName.includes('餐厅')) return MOCK_PREVIEW_DATA.restaurant;
@@ -1721,6 +1733,9 @@ const Home: React.FC = () => {
   const agentName = useCurrentAgentStore((state) => state.agentName);
   const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
   const effectiveAgentId = agentId && agentId !== 'default' ? agentId : '1';
+  const [isAgentSwitcherOpen, setIsAgentSwitcherOpen] = useState(false);
+  const [agentSearchQuery, setAgentSearchQuery] = useState('');
+  const [agentOptions, setAgentOptions] = useState<ChatAgentOption[]>([DEFAULT_CHAT_AGENT_OPTION]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1769,6 +1784,51 @@ const Home: React.FC = () => {
         });
     }
   }, [agentId, location.hash, location.pathname, location.search, location.state, navigate, setCurrentAgent]);
+
+  useEffect(() => {
+    if (!isAgentSwitcherOpen) return;
+
+    fetch('/api/agent/list')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          const options = data.data.map((agent: any) => ({
+            id: String(agent.id),
+            name: agent.name || '未命名Agent',
+            description: agent.description || '暂无描述信息',
+          }));
+          setAgentOptions(options.length > 0 ? options : [DEFAULT_CHAT_AGENT_OPTION]);
+        }
+      })
+      .catch(error => {
+        console.error('加载智能体下拉列表失败', error);
+      });
+  }, [isAgentSwitcherOpen]);
+
+  const selectedAgentOption = useMemo(() => {
+    return agentOptions.find(agent => agent.id === effectiveAgentId) || {
+      id: effectiveAgentId,
+      name: agentName,
+      description: agentName === DEFAULT_CHAT_AGENT_OPTION.name ? DEFAULT_CHAT_AGENT_OPTION.description : '暂无描述信息',
+    };
+  }, [agentName, agentOptions, effectiveAgentId]);
+
+  const filteredAgentOptions = useMemo(() => {
+    const keyword = agentSearchQuery.trim().toLowerCase();
+    if (!keyword) {
+      return agentOptions;
+    }
+    return agentOptions.filter(agent =>
+      agent.name.toLowerCase().includes(keyword) ||
+      agent.description.toLowerCase().includes(keyword)
+    );
+  }, [agentOptions, agentSearchQuery]);
+
+  const handleSelectAgent = (agent: ChatAgentOption) => {
+    setCurrentAgent({ agentId: agent.id, agentName: agent.name });
+    setIsAgentSwitcherOpen(false);
+    navigate('/chat');
+  };
 
   // 后端模式：仅 NL2SQL 或人工审核
   const [chatMode, setChatMode] = useState<ChatMode>(null);
@@ -2400,13 +2460,84 @@ const Home: React.FC = () => {
               )}
             </div>
           ) : (
-            <button className="gap-2 whitespace-nowrap rounded-md py-2 justify-between h-7 w-auto border-0 bg-transparent px-2 text-sm font-normal text-gray-700 hover:bg-gray-200/50 flex items-center overflow-hidden" type="button">
-              <div className="flex flex-1 items-center gap-1 truncate text-gray-800">
-                <Atom className="w-4 h-4 text-gray-500" />
-                <span className="flex-1 truncate font-medium">{agentName}</span>
-              </div>
-              <ChevronDown className="w-4 h-4 text-zinc-400 flex-none ml-1" />
-            </button>
+            <DropdownMenu.Root
+              open={isAgentSwitcherOpen}
+              onOpenChange={(open) => {
+                setIsAgentSwitcherOpen(open);
+                if (open) {
+                  setAgentSearchQuery('');
+                }
+              }}
+            >
+              <DropdownMenu.Trigger asChild>
+                <button className="gap-2 whitespace-nowrap rounded-md py-2 justify-between h-7 w-auto border-0 bg-transparent px-2 text-sm font-normal text-gray-700 hover:bg-gray-200/50 flex items-center overflow-hidden" type="button">
+                  <div className="flex flex-1 items-center gap-1 truncate text-gray-800">
+                    <Atom className="w-4 h-4 text-gray-500" />
+                    <span className="flex-1 truncate font-medium">{selectedAgentOption.name}</span>
+                  </div>
+                  <ChevronDown className={clsx('w-4 h-4 text-zinc-400 flex-none ml-1 transition-transform duration-150', isAgentSwitcherOpen && 'rotate-180')} />
+                </button>
+              </DropdownMenu.Trigger>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="start"
+                  sideOffset={8}
+                  className="z-50 w-[400px] overflow-hidden rounded-lg border border-gray-200 bg-white p-0 font-sans shadow-[0_4px_6px_-1px_rgba(0,0,0,0.10),0_2px_4px_-2px_rgba(0,0,0,0.10)] outline-none animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="flex h-10 items-center gap-2 border-b border-gray-100 px-3">
+                    <Search className="size-4 shrink-0 text-gray-500" />
+                    <input
+                      value={agentSearchQuery}
+                      onChange={(event) => setAgentSearchQuery(event.target.value)}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      placeholder="搜索..."
+                      className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] font-normal leading-[21px] text-[#0A0A0B] outline-none placeholder:text-gray-400"
+                    />
+                  </div>
+
+                  <div className="max-h-[280px] overflow-y-auto p-1">
+                    {filteredAgentOptions.map((agent) => {
+                      const isSelected = agent.id === effectiveAgentId;
+                      return (
+                        <DropdownMenu.Item
+                          key={agent.id}
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            handleSelectAgent(agent);
+                          }}
+                          className={clsx(
+                            'flex h-[50px] cursor-pointer items-center justify-between rounded-md px-2 outline-none transition-colors',
+                            isSelected ? 'bg-[#F3F3F5]' : 'hover:bg-[#F7F7F8] focus:bg-[#F7F7F8]'
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-normal leading-[21px] text-[#0A0A0B]">
+                              {agent.name}
+                            </div>
+                            <div className="truncate text-[14px] font-normal leading-[21px] text-[#7B7F87]">
+                              {agent.description}
+                            </div>
+                          </div>
+                          {isSelected && <Check className="ml-3 size-4 shrink-0 text-black" />}
+                        </DropdownMenu.Item>
+                      );
+                    })}
+                  </div>
+
+                  <DropdownMenu.Item
+                    onSelect={() => {
+                      setIsAgentSwitcherOpen(false);
+                      navigate('/agent/create');
+                    }}
+                    className="flex h-9 cursor-pointer items-center gap-3 border-t border-gray-100 px-4 text-[14px] font-normal leading-[21px] text-[#0A0A0B] outline-none transition-colors hover:bg-[#F7F7F8] focus:bg-[#F7F7F8]"
+                  >
+                    <Plus className="size-4 text-[#0A0A0B]" />
+                    <span>创建自定义Agent</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           )}
         </span>
         
