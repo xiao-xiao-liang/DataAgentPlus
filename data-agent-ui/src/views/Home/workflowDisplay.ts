@@ -1,4 +1,6 @@
-export type CodeLanguage = 'sql' | 'python';
+import { parseStreamingPlan } from './streamingPlan';
+
+export type CodeLanguage = 'sql' | 'python' | 'json';
 
 export type CodeToken = {
   text: string;
@@ -75,7 +77,7 @@ const splitByPattern = (line: string, pattern: RegExp, type: CodeToken['type']):
 };
 
 const tokenizePlainSegment = (segment: string, language: CodeLanguage): CodeToken[] => {
-  const keywords = language === 'python' ? pythonKeywords : sqlKeywords;
+  const keywords = language === 'python' ? pythonKeywords : language === 'sql' ? sqlKeywords : new Set<string>();
   const tokens: CodeToken[] = [];
   const pattern = /([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[=+\-*/<>!]+|[()[\]{}.,:;])/g;
   let cursor = 0;
@@ -108,7 +110,7 @@ const tokenizePlainSegment = (segment: string, language: CodeLanguage): CodeToke
 };
 
 const tokenizeLine = (line: string, language: CodeLanguage): CodeToken[] => {
-  const commentIndex = language === 'python' ? line.indexOf('#') : line.indexOf('--');
+  const commentIndex = language === 'python' ? line.indexOf('#') : language === 'sql' ? line.indexOf('--') : -1;
   const source = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
   const comment = commentIndex >= 0 ? line.slice(commentIndex) : '';
   const stringParts = splitByPattern(source, /(["'`])(?:\\.|(?!\1).)*\1/g, 'string');
@@ -136,6 +138,53 @@ const parseJsonSafely = (value: string) => {
   }
 };
 
+const findJsonObjectCandidates = (value: string) => {
+  const candidates: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === '{') {
+      if (depth === 0) {
+        start = i;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        candidates.push(value.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return candidates;
+};
+
 export const isStructuredAnalysisOutput = (value: string) => {
   const parsed = parseJsonSafely(value);
   if (!parsed || typeof parsed !== 'object') return false;
@@ -155,21 +204,17 @@ export const isStructuredAnalysisOutput = (value: string) => {
   return !workflowJson;
 };
 
-export const extractExecutionPlanView = (value?: string): ExecutionPlanView | null => {
-  const parsed = parseJsonSafely(value || '');
-  if (!parsed || typeof parsed !== 'object') return null;
+const extractStructuredAnalysisJson = (value: string) => {
+  if (isStructuredAnalysisOutput(value)) {
+    return value.replace('$$$json', '').trim();
+  }
 
-  const plan = parsed as {
-    thought_process?: unknown;
-    execution_plan?: Array<{
-      step?: unknown;
-      tool_to_use?: unknown;
-      tool_parameters?: {
-        instruction?: unknown;
-        summary_and_recommendations?: unknown;
-      };
-    }>;
-  };
+  return findJsonObjectCandidates(value).find(isStructuredAnalysisOutput);
+};
+
+export const extractExecutionPlanView = (value?: string): ExecutionPlanView | null => {
+  const plan = parseStreamingPlan(value);
+  if (!plan) return null;
 
   const steps = Array.isArray(plan.execution_plan)
     ? plan.execution_plan
@@ -200,7 +245,16 @@ export const getPythonExecutionOutputBlock = (blocks: WorkflowDisplayBlock[]) =>
     block.type === 'json' && isStructuredAnalysisOutput(block.content)
   ));
 
-  return candidates[0];
+  if (candidates[0]) {
+    return candidates[0];
+  }
+
+  const textOutput = blocks.slice(searchStart)
+    .filter((block) => block.type === 'text' && isPythonExecutionResidue(block.content))
+    .map((block) => extractStructuredAnalysisJson(block.content))
+    .find((content): content is string => Boolean(content));
+
+  return textOutput ? { type: 'json', content: textOutput } : undefined;
 };
 
 export const isPythonExecutionResidue = (value: string) => {
@@ -217,7 +271,8 @@ export const isPythonExecutionResidue = (value: string) => {
     trimmed.includes('"most_time_consuming_node"') ||
     trimmed.includes('"details"') ||
     trimmed.includes('"node_group"') ||
-    trimmed.includes('"avg_duration_ms"');
+    trimmed.includes('"avg_duration_ms"') ||
+    Boolean(extractStructuredAnalysisJson(trimmed));
 
   return hasPythonLifecycleText && hasStructuredOutput;
 };

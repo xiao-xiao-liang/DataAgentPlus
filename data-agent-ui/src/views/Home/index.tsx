@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight, ListTodo, CornerDownRight, Square, Copy, WrapText } from 'lucide-react';
 import clsx from 'clsx';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -37,6 +37,7 @@ interface MessageBlock {
 interface Message {
   role: 'user' | 'assistant';
   content?: string;
+  humanFeedbackPlanPreview?: string;
   type?: 'text' | 'data';
   data?: any;
   blocks?: MessageBlock[];
@@ -61,6 +62,12 @@ interface MemoryCandidatePayload {
   title: string;
   normalizedContent: string;
   confidenceScore?: number;
+}
+
+interface WorkflowRunState {
+  status?: string;
+  resumable?: boolean;
+  interruptReason?: string;
 }
 
 type MemoryCandidateActionStatus = 'idle' | 'pending' | 'submitted' | 'published' | 'ignored' | 'error';
@@ -330,6 +337,21 @@ const parsePlanJson = (planJson?: string): Plan | null => {
   return parseStreamingPlan(planJson) as Plan | null;
 };
 
+const buildHumanFeedbackPlanPreview = (planJson?: string) => {
+  const plan = parsePlanJson(planJson);
+  const steps = plan?.execution_plan || [];
+  if (steps.length === 0) {
+    return planJson?.trim() || '';
+  }
+
+  return steps
+    .map((step) => {
+      const detail = step.tool_parameters?.instruction || step.tool_parameters?.summary_and_recommendations || step.tool_to_use || '执行计划步骤';
+      return `# ${step.step}. ${detail}`;
+    })
+    .join(' <br> ');
+};
+
 // ================= 子组件：SQL/Python 代码框 =================
 const tokenClassName: Record<CodeToken['type'], string> = {
   plain: 'text-gray-700',
@@ -340,10 +362,18 @@ const tokenClassName: Record<CodeToken['type'], string> = {
   operator: 'text-sky-700',
 };
 
-const CodeBlock: React.FC<{ language: CodeLanguage; code: string }> = ({ language, code }) => {
+const getCodeLanguageLabel = (language: CodeLanguage) => {
+  if (language === 'json') return 'JSON';
+  return language === 'python' ? 'Python' : 'SQL';
+};
+
+const CodeBlock: React.FC<{ language: CodeLanguage; code: string; defaultOpen?: boolean }> = ({ language, code, defaultOpen = false }) => {
   const [copied, setCopied] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [isWrapped, setIsWrapped] = useState(false);
   const displayCode = normalizeCodeForDisplay(code, language);
   const tokenLines = tokenizeCodeForDisplay(code, language);
+  const languageLabel = getCodeLanguageLabel(language);
   const handleCopy = () => {
     navigator.clipboard.writeText(displayCode);
     setCopied(true);
@@ -351,36 +381,74 @@ const CodeBlock: React.FC<{ language: CodeLanguage; code: string }> = ({ languag
   };
 
   return (
-    <div className="my-1 rounded-xl border border-gray-150 bg-[#FAFAFC] overflow-hidden w-full font-mono text-[12px] leading-relaxed select-text shadow-2xs">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100/60 border-b border-gray-150 select-none">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{language} 代码</span>
-        <button 
-          onClick={handleCopy}
-          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold border border-indigo-200 rounded px-2 py-0.5 hover:bg-indigo-50 cursor-pointer active:scale-95 transition-all"
+    <div className="my-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-[#F6F7F9] font-mono text-[12px] leading-relaxed shadow-2xs select-text">
+      <div className={clsx(
+        'flex min-h-12 items-center gap-3 px-3 py-2 select-none',
+        isOpen && 'border-b border-gray-200'
+      )}>
+        <button
+          type="button"
+          onClick={() => setIsOpen(prev => !prev)}
+          aria-expanded={isOpen}
+          className="inline-flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-gray-600 cursor-pointer"
         >
-          {copied ? "已复制" : "复制"}
+          {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+          <span className="truncate text-[13px] font-medium">代码块</span>
         </button>
+        <div className="ml-auto flex items-center gap-2 text-gray-500">
+          <span className="text-[13px] font-medium">{languageLabel}</span>
+          <span className="h-5 w-px bg-gray-300" />
+          <button
+            type="button"
+            onClick={() => setIsWrapped(prev => !prev)}
+            className={clsx(
+              'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
+              isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
+            )}
+            aria-pressed={isWrapped}
+            title="自动换行"
+          >
+            <WrapText className="size-4" />
+            <span>自动换行</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
+            title="复制代码"
+          >
+            <Copy className="size-4" />
+            <span>{copied ? "已复制" : "复制"}</span>
+          </button>
+        </div>
       </div>
-      <pre className="p-4 overflow-x-auto whitespace-pre">
-        <code>
-          {tokenLines.map((line, lineIndex) => (
-            <React.Fragment key={`line-${lineIndex}`}>
-              {line.map((token, tokenIndex) => (
-                <span key={`${lineIndex}-${tokenIndex}`} className={tokenClassName[token.type]}>
-                  {token.text}
-                </span>
-              ))}
-              {lineIndex < tokenLines.length - 1 && '\n'}
-            </React.Fragment>
-          ))}
-        </code>
-      </pre>
+      {isOpen && (
+        <pre className={clsx(
+          'max-h-[520px] overflow-auto p-4 text-[12px] leading-relaxed',
+          isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+        )}>
+          <code>
+            {tokenLines.map((line, lineIndex) => (
+              <React.Fragment key={`line-${lineIndex}`}>
+                {line.map((token, tokenIndex) => (
+                  <span key={`${lineIndex}-${tokenIndex}`} className={tokenClassName[token.type]}>
+                    {token.text}
+                  </span>
+                ))}
+                {lineIndex < tokenLines.length - 1 && '\n'}
+              </React.Fragment>
+            ))}
+          </code>
+        </pre>
+      )}
     </div>
   );
 };
 
 const StructuredAnalysisOutputBlock: React.FC<{ content: string }> = ({ content }) => {
   const [copied, setCopied] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isWrapped, setIsWrapped] = useState(false);
   const formatted = formatStructuredAnalysisOutput(content);
 
   const handleCopy = () => {
@@ -390,20 +458,55 @@ const StructuredAnalysisOutputBlock: React.FC<{ content: string }> = ({ content 
   };
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-gray-150 bg-white shadow-2xs">
-      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-2 select-none">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">分析引擎输出</span>
+    <div className="mt-3 w-full overflow-hidden rounded-lg border border-gray-200 bg-[#F6F7F9] font-mono text-[12px] leading-relaxed shadow-2xs select-text">
+      <div className={clsx(
+        'flex min-h-12 items-center gap-3 px-3 py-2 select-none',
+        isOpen && 'border-b border-gray-200'
+      )}>
         <button
           type="button"
-          onClick={handleCopy}
-          className="rounded border border-indigo-200 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-all hover:bg-indigo-50 hover:text-indigo-800 active:scale-95 cursor-pointer"
+          onClick={() => setIsOpen(prev => !prev)}
+          aria-expanded={isOpen}
+          className="inline-flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-gray-600 cursor-pointer"
         >
-          {copied ? '已复制' : '复制'}
+          {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+          <span className="truncate text-[13px] font-medium">代码块</span>
         </button>
+        <div className="ml-auto flex items-center gap-2 text-gray-500">
+          <span className="text-[13px] font-medium">JSON</span>
+          <span className="h-5 w-px bg-gray-300" />
+          <button
+            type="button"
+            onClick={() => setIsWrapped(prev => !prev)}
+            className={clsx(
+              'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
+              isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
+            )}
+            aria-pressed={isWrapped}
+            title="自动换行"
+          >
+            <WrapText className="size-4" />
+            <span>自动换行</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
+            title="复制代码"
+          >
+            <Copy className="size-4" />
+            <span>{copied ? '已复制' : '复制'}</span>
+          </button>
+        </div>
       </div>
-      <pre className="max-h-64 overflow-auto p-4 text-[12px] leading-relaxed text-gray-700 whitespace-pre-wrap">
-        {formatted}
-      </pre>
+      {isOpen && (
+        <pre className={clsx(
+          'max-h-[520px] overflow-auto p-4 text-[12px] leading-relaxed text-gray-700',
+          isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+        )}>
+          {formatted}
+        </pre>
+      )}
     </div>
   );
 };
@@ -1620,24 +1723,24 @@ const hasPendingHumanApproval = (blocks?: ContentBlock[] | MessageBlock[]) => {
 interface HumanApprovalPanelProps {
   planJson: string;
   disabled?: boolean;
+  approveDisabled?: boolean;
   onApprove: () => void;
-  onReject: (feedback: string) => void;
+  onEdit: (planPreview: string) => void;
 }
 
-const HumanApprovalPanel: React.FC<HumanApprovalPanelProps> = ({ planJson, disabled = false, onApprove, onReject }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [feedback, setFeedback] = useState('');
+const HumanApprovalPanel: React.FC<HumanApprovalPanelProps> = ({ planJson, disabled = false, approveDisabled = false, onApprove, onEdit }) => {
   const plan = parsePlanJson(planJson);
   const steps = plan?.execution_plan || [];
   const estimatedMinutes = Math.max(1, Math.ceil(steps.length * 1.8));
+  const planPreview = buildHumanFeedbackPlanPreview(planJson);
 
   return (
-    <div className="my-3 w-full max-w-[680px] select-none">
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-[14px] text-gray-800">
-            <span className="font-medium">计划完成，需确认是否执行</span>
-            <span className="rounded-full bg-[#EEEAFE] px-3 py-1 text-[12px] font-semibold text-[#5B55FF]">
+    <div className="my-3 w-full max-w-[640px] select-none">
+      <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white">
+        <div className="flex min-h-[45px] flex-wrap items-center justify-between gap-3 px-4 py-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-[14px] leading-7 text-[#0A0A0B]">
+            <span className="font-normal">计划完成，需确认是否执行</span>
+            <span className="rounded-full bg-[#EEEAFE] px-3 py-1 text-[12px] font-medium leading-5 text-[#5B55FF]">
               预计{estimatedMinutes}分钟
             </span>
           </div>
@@ -1645,42 +1748,21 @@ const HumanApprovalPanel: React.FC<HumanApprovalPanelProps> = ({ planJson, disab
             <button
               type="button"
               disabled={disabled}
-              onClick={() => setIsEditing(prev => !prev)}
-              className="inline-flex h-9 min-w-16 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-[14px] font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              onClick={() => onEdit(planPreview)}
+              className="inline-flex h-8 min-w-14 items-center justify-center rounded-[10px] border border-gray-200 bg-white px-3 text-[14px] leading-5 font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
             >
               修改
             </button>
             <button
               type="button"
-              disabled={disabled}
+              disabled={approveDisabled}
               onClick={onApprove}
-              className="inline-flex h-9 min-w-16 items-center justify-center rounded-xl border border-gray-900 bg-gray-950 px-4 text-[14px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              className="inline-flex h-8 min-w-14 items-center justify-center rounded-[10px] border border-[#151517] bg-[#151517] px-3 text-[14px] leading-5 font-medium text-[#FAFAFA] transition-colors hover:bg-[#202227] hover:border-[#202227] disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500 cursor-pointer"
             >
               确认
             </button>
           </div>
         </div>
-
-        {isEditing && (
-          <div className="border-t border-gray-100 bg-[#FAFAFC] px-5 py-4">
-            <textarea
-              value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
-              placeholder="写下你希望调整的统计口径、步骤或输出形式"
-              className="min-h-24 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] leading-6 text-gray-700 outline-none transition focus:border-[#5B55FF] focus:ring-2 focus:ring-[#5B55FF]/10"
-            />
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                disabled={disabled || !feedback.trim()}
-                onClick={() => onReject(feedback.trim())}
-                className="inline-flex h-9 items-center justify-center rounded-xl border border-[#5B55FF] bg-[#5B55FF] px-4 text-[13px] font-semibold text-white transition hover:bg-[#4B45E8] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                提交修改意见
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="mt-3 rounded-xl border border-[#B8C5FF] bg-[#F7F8FF] px-5 py-4 text-[14px] leading-7 text-[#53679A] shadow-xs">
@@ -1698,6 +1780,17 @@ const HumanApprovalPanel: React.FC<HumanApprovalPanelProps> = ({ planJson, disab
 
 
 
+const hasRenderableAssistantPayload = (message?: Message) => {
+  if (!message || message.role !== 'assistant') {
+    return false;
+  }
+  return Boolean(
+    (message.content || '').trim() ||
+    (message.blocks?.length ?? 0) > 0 ||
+    (message.workflowEvents?.length ?? 0) > 0
+  );
+};
+
 // ================= 主视图组件 Home =================
 const Home: React.FC = () => {
   const { sessionId } = useParams();
@@ -1713,12 +1806,15 @@ const Home: React.FC = () => {
     expandSidebar,
   } = useOutletContext<LayoutOutletContext>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const activeStreamAbortRef = useRef<AbortController | null>(null);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showSkillBanner, setShowSkillBanner] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState<any[]>([]);
   const [fullscreenPreviewFile, setFullscreenPreviewFile] = useState<any | null>(null);
@@ -1728,6 +1824,8 @@ const Home: React.FC = () => {
   const [mcpSearchQuery, setMcpSearchQuery] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [memoryCandidateActions, setMemoryCandidateActions] = useState<Record<string, MemoryCandidateActionStatus>>({});
+  const [interruptedRun, setInterruptedRun] = useState<WorkflowRunState | null>(null);
+  const [activeHumanFeedbackPlanPreview, setActiveHumanFeedbackPlanPreview] = useState('');
   
   const agentId = useCurrentAgentStore((state) => state.agentId);
   const agentName = useCurrentAgentStore((state) => state.agentName);
@@ -1736,6 +1834,32 @@ const Home: React.FC = () => {
   const [isAgentSwitcherOpen, setIsAgentSwitcherOpen] = useState(false);
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
   const [agentOptions, setAgentOptions] = useState<ChatAgentOption[]>([DEFAULT_CHAT_AGENT_OPTION]);
+
+  const hasPendingHumanReviewNotice = useMemo(() => {
+    return messages.some((msg, idx) => {
+      if (msg.role !== 'assistant' || !hasRenderableAssistantPayload(msg)) {
+        return false;
+      }
+
+      const feedbackAlreadyHandled = messages.slice(idx + 1).some((nextMsg) =>
+        nextMsg.role === 'assistant' &&
+        nextMsg.blocks?.some((block) => block.type === 'text' && block.content.includes('人工审核已'))
+      );
+
+      return hasPendingHumanApproval(msg.blocks) && !feedbackAlreadyHandled;
+    });
+  }, [messages]);
+
+  const handleStartHumanFeedbackEdit = (planPreview: string) => {
+    setActiveHumanFeedbackPlanPreview(planPreview);
+    setInputValue('');
+    window.setTimeout(() => composerTextareaRef.current?.focus(), 0);
+  };
+
+  const handleCancelHumanFeedbackEdit = () => {
+    setActiveHumanFeedbackPlanPreview('');
+    setInputValue('');
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1893,6 +2017,47 @@ const Home: React.FC = () => {
     setReportPanelWidth(clampReportPanelWidth(nextWidth));
   };
 
+  const beginStreamRequest = () => {
+    const abortController = new AbortController();
+    activeStreamAbortRef.current = abortController;
+    setIsGenerating(true);
+    return abortController;
+  };
+
+  const finishStreamRequest = (abortController: AbortController) => {
+    if (activeStreamAbortRef.current === abortController) {
+      activeStreamAbortRef.current = null;
+      setIsGenerating(false);
+    }
+  };
+
+  const isAbortError = (error: unknown) => {
+    return error instanceof Error && error.name === 'AbortError';
+  };
+
+  const markLastAssistantComplete = () => {
+    setMessages(prev => {
+      const nextMessages = [...prev];
+      const lastIdx = nextMessages.length - 1;
+      if (lastIdx >= 0 && nextMessages[lastIdx].role === 'assistant') {
+        nextMessages[lastIdx] = {
+          ...nextMessages[lastIdx],
+          isComplete: true,
+        };
+      }
+      return nextMessages;
+    });
+  };
+
+  const handleStopGenerating = () => {
+    activeStreamAbortRef.current?.abort();
+    activeStreamAbortRef.current = null;
+    setIsGenerating(false);
+    setIsTyping(false);
+    setFeedbackSubmitting(false);
+    markLastAssistantComplete();
+  };
+
   // 挂载时如果 state 含有文件，自动关联
   useEffect(() => {
     const state = location.state as any;
@@ -1932,6 +2097,8 @@ const Home: React.FC = () => {
       setIsReportOpen(false);
       setIsReportManuallyCollapsed(false);
       setMessages([]);
+      setInterruptedRun(null);
+      setActiveHumanFeedbackPlanPreview('');
       return;
     }
 
@@ -1966,6 +2133,16 @@ const Home: React.FC = () => {
         console.error("加载历史消息失败", err);
         setMessages([]);
       });
+    fetch(`/api/sessions/${sessionId}/workflow-run`)
+      .then(res => res.json())
+      .then(data => {
+        const run = data.success ? data.data : null;
+        setInterruptedRun(run?.resumable ? run : null);
+      })
+      .catch(err => {
+        console.error("加载工作流运行状态失败", err);
+        setInterruptedRun(null);
+      });
   }, [sessionId]);
 
   const demos = [
@@ -1978,16 +2155,6 @@ const Home: React.FC = () => {
   ];
 
   // ================= 核心流式发送逻辑 =================
-  const hasRenderableAssistantPayload = (message?: Message) => {
-    if (!message || message.role !== 'assistant') {
-      return false;
-    }
-    return Boolean(
-      (message.content || '').trim() ||
-      (message.blocks?.length ?? 0) > 0 ||
-      (message.workflowEvents?.length ?? 0) > 0
-    );
-  };
 
   const appendWorkflowEvent = (event: WorkflowEvent) => {
     setMessages(prev => {
@@ -2005,7 +2172,27 @@ const Home: React.FC = () => {
   };
 
   const handleSend = async (text: string) => {
+    if (isGenerating) {
+      handleStopGenerating();
+      return;
+    }
+
     if (!text.trim()) return;
+    const abortController = beginStreamRequest();
+
+    if (activeHumanFeedbackPlanPreview) {
+      const userMsg: Message = {
+        role: 'user',
+        content: text,
+        humanFeedbackPlanPreview: activeHumanFeedbackPlanPreview,
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setActiveHumanFeedbackPlanPreview('');
+      setInputValue('');
+      finishStreamRequest(abortController);
+      await handleHumanFeedback(false, text.trim());
+      return;
+    }
 
     // 先立即更新界面，提升用户体验 (UX)
     const userMsg: Message = { role: 'user', content: text };
@@ -2087,6 +2274,7 @@ const Home: React.FC = () => {
     try {
       const response = await fetch('/api/v1/graph/chat', {
         method: 'POST',
+        signal: abortController.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -2137,18 +2325,25 @@ const Home: React.FC = () => {
       markStreamComplete();
 
     } catch (e) {
+      if (isAbortError(e)) {
+        markStreamComplete();
+        return;
+      }
       console.error("对话流请求失败", e);
       setReportContent('');
       setIsReportOpen(false);
       accumulatedRaw = `系统繁忙，请稍后再试（${e instanceof Error ? e.message : '对话请求失败'}）`;
       updateBlocks(accumulatedRaw);
       markStreamComplete();
+    } finally {
+      finishStreamRequest(abortController);
     }
   };
 
   const handleHumanFeedback = async (approved: boolean, feedbackContent?: string) => {
     const currentSessionId = sessionId;
     if (!currentSessionId || currentSessionId.startsWith('session_') || feedbackSubmitting) return;
+    const abortController = beginStreamRequest();
 
     setFeedbackSubmitting(true);
     setIsTyping(true);
@@ -2157,6 +2352,10 @@ const Home: React.FC = () => {
     setIsReportManuallyCollapsed(false);
     setMessages(prev => [
       ...prev,
+      ...(approved ? [{
+        role: 'user' as const,
+        content: '开始任务',
+      }] : []),
       {
         role: 'assistant',
         blocks: [],
@@ -2195,6 +2394,7 @@ const Home: React.FC = () => {
     try {
       const response = await fetch('/api/v1/graph/chat', {
         method: 'POST',
+        signal: abortController.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -2202,6 +2402,7 @@ const Home: React.FC = () => {
           agentId: effectiveAgentId,
           threadId: currentSessionId,
           query: '',
+          interactionType: 'HUMAN_PLAN_FEEDBACK',
           humanFeedbackContent: approved ? '确认执行' : (feedbackContent || '请根据人工意见修改执行计划'),
           rejectedPlan: !approved,
           nl2sqlOnly: false,
@@ -2245,11 +2446,106 @@ const Home: React.FC = () => {
 
       markStreamComplete();
     } catch (error) {
+      if (isAbortError(error)) {
+        markStreamComplete();
+        return;
+      }
       accumulatedRaw += `系统繁忙，请稍后再试（${error instanceof Error ? error.message : '人工反馈提交失败'}）`;
       updateBlocks(accumulatedRaw);
       markStreamComplete();
     } finally {
+      finishStreamRequest(abortController);
       setFeedbackSubmitting(false);
+    }
+  };
+
+  const handleContinueAnalysis = async () => {
+    const currentSessionId = sessionId;
+    if (!currentSessionId || currentSessionId.startsWith('session_') || feedbackSubmitting) return;
+    const abortController = beginStreamRequest();
+
+    setInterruptedRun(null);
+    setFeedbackSubmitting(true);
+    setIsTyping(true);
+    setMessages(prev => [
+      ...prev,
+      { role: 'assistant', blocks: [], isComplete: false, workflowEvents: [] },
+    ]);
+
+    let accumulatedRaw = '';
+    const updateBlocks = (rawStr: string) => {
+      const parsedBlocks = parseRawContent(rawStr);
+      setMessages(prev => {
+        const nextMessages = [...prev];
+        const lastIdx = nextMessages.length - 1;
+        if (lastIdx >= 0 && nextMessages[lastIdx].role === 'assistant') {
+          nextMessages[lastIdx] = {
+            ...nextMessages[lastIdx],
+            blocks: parsedBlocks,
+          };
+        }
+        return nextMessages;
+      });
+    };
+
+    try {
+      const response = await fetch('/api/v1/graph/chat', {
+        method: 'POST',
+        signal: abortController.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: effectiveAgentId,
+          threadId: currentSessionId,
+          query: '',
+          interactionType: 'CONTINUE_ANALYSIS',
+          nl2sqlOnly: false,
+        }),
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      setIsTyping(false);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamBuffer = '';
+      const sseParser = createSseDataParser((chunk) => {
+        accumulatedRaw += chunk;
+        updateBlocks(accumulatedRaw);
+      }, appendWorkflowEvent);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.split('\n');
+        streamBuffer = lines.pop() || '';
+        for (const line of lines) {
+          sseParser.processLine(line);
+        }
+      }
+      if (streamBuffer) {
+        sseParser.processLine(streamBuffer);
+      }
+      sseParser.flush();
+    } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
+      accumulatedRaw += `系统繁忙，请稍后再试：${error instanceof Error ? error.message : '继续分析失败'}`;
+      updateBlocks(accumulatedRaw);
+    } finally {
+      finishStreamRequest(abortController);
+      setMessages(prev => {
+        const nextMessages = [...prev];
+        const lastIdx = nextMessages.length - 1;
+        if (lastIdx >= 0 && nextMessages[lastIdx].role === 'assistant') {
+          nextMessages[lastIdx] = { ...nextMessages[lastIdx], isComplete: true };
+        }
+        return nextMessages;
+      });
+      setFeedbackSubmitting(false);
+      setIsTyping(false);
     }
   };
 
@@ -2259,6 +2555,7 @@ const Home: React.FC = () => {
   ) => {
     const currentSessionId = sessionId;
     if (!currentSessionId || currentSessionId.startsWith('session_') || feedbackSubmitting) return;
+    const abortController = beginStreamRequest();
 
     setFeedbackSubmitting(true);
     setIsTyping(true);
@@ -2285,6 +2582,7 @@ const Home: React.FC = () => {
     try {
       const response = await fetch('/api/v1/graph/chat', {
         method: 'POST',
+        signal: abortController.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: effectiveAgentId,
@@ -2323,9 +2621,13 @@ const Home: React.FC = () => {
       }
       sseParser.flush();
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       accumulatedRaw += `系统繁忙，请稍后再试：${error instanceof Error ? error.message : '澄清提交失败'}`;
       updateBlocks(accumulatedRaw);
     } finally {
+      finishStreamRequest(abortController);
       setMessages(prev => {
         const nextMessages = [...prev];
         const lastIdx = nextMessages.length - 1;
@@ -2580,6 +2882,30 @@ const Home: React.FC = () => {
             <div className="w-full max-w-[800px] flex flex-col gap-6 pt-10 pb-16 px-1 flex-1">
               {messages.map((msg, idx) => {
                 if (msg.role === 'user') {
+                  if (msg.humanFeedbackPlanPreview) {
+                    return (
+                      <div
+                        key={idx}
+                        className="group grid w-full auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 py-4 animate-in fade-in slide-in-from-bottom-2 duration-300 select-text"
+                      >
+                        <div className="col-start-2 flex max-w-[80%] justify-self-end items-start overflow-hidden rounded-xl p-2 text-gray-500">
+                          <CornerDownRight className="mr-2 mt-0.5 size-4 shrink-0 text-gray-500" strokeWidth={2} />
+                          <div className="mr-2 line-clamp-3 flex-1 text-xs leading-5">
+                            {msg.humanFeedbackPlanPreview}
+                          </div>
+                        </div>
+                        <div className="col-start-2 row-start-2 max-w-[80%] justify-self-end bg-[#F1F1FE] rounded-lg px-3 py-2 text-[#0A0A0B] break-words text-sm font-normal leading-6 shadow-3xs">
+                          <p className="whitespace-pre-line m-0">{msg.content}</p>
+                        </div>
+                        <div className="col-start-2 row-start-3 text-right opacity-0 transition-opacity duration-150 group-hover:opacity-100 select-none">
+                          <span className="text-[11px] text-gray-400 font-medium">
+                            {new Date().toLocaleDateString('zh-CN')} {new Date().toLocaleTimeString('zh-CN', { hour12: false })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div 
                       key={idx} 
@@ -2701,8 +3027,9 @@ const Home: React.FC = () => {
                         <HumanApprovalPanel
                           planJson={approvalPlanJson}
                           disabled={feedbackSubmitting}
+                          approveDisabled={feedbackSubmitting || Boolean(activeHumanFeedbackPlanPreview)}
                           onApprove={() => handleHumanFeedback(true)}
-                          onReject={(feedback) => handleHumanFeedback(false, feedback)}
+                          onEdit={handleStartHumanFeedbackEdit}
                         />
                       )}
 
@@ -2757,26 +3084,30 @@ const Home: React.FC = () => {
 
                       {/* 流式完成且包含报告，渲染报告入口卡片 */}
                       {effectiveComplete && msg.blocks?.some(b => b.type === 'markdown-report') && (
-                        <div className="my-4 flex min-h-[68px] w-full max-w-[944px] items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-7 py-3 shadow-2xs select-none animate-in fade-in slide-in-from-top-1 duration-200">
-                          <div className="flex min-w-0 items-center gap-4">
-                            <Compass className="size-5 flex-none text-gray-700" />
-                            <span className="truncate text-[20px] font-normal text-gray-750">以交互式网页报告分享 Data Agent 的分析</span>
+                        <div className="my-3 w-full max-w-[640px] select-none animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="flex min-h-[45px] flex-wrap items-center justify-between gap-3 rounded-[10px] border border-gray-200 bg-white px-4 py-2">
+                            <div className="flex min-w-0 items-center gap-2 text-[14px] leading-7 text-[#0A0A0B]">
+                              <Compass className="size-4 flex-none text-gray-700" />
+                              <span className="truncate font-normal">以交互式网页报告分享 Data Agent 的分析</span>
                           </div>
                           <div className="flex items-center gap-2 flex-none">
                             <button 
+                              type="button"
                               onClick={() => alert('已取消')}
-                              className="inline-flex h-10 items-center justify-center rounded-xl border border-gray-200 bg-white px-5 text-[16px] font-normal text-gray-500 transition-colors hover:bg-gray-50 cursor-pointer active:scale-95"
+                              className="inline-flex h-8 min-w-14 items-center justify-center rounded-[10px] border border-gray-200 bg-white px-3 text-[14px] leading-5 font-medium text-gray-700 transition-colors hover:bg-gray-50 cursor-pointer"
                             >
                               取消
                             </button>
                             <button 
+                              type="button"
                               onClick={handleExpandReport}
-                              className="inline-flex h-10 items-center justify-center rounded-xl bg-black px-5 text-[16px] font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 cursor-pointer active:scale-95"
+                              className="inline-flex h-8 min-w-14 items-center justify-center rounded-[10px] border border-[#151517] bg-[#151517] px-3 text-[14px] leading-5 font-medium text-[#FAFAFA] transition-colors hover:bg-[#202227] hover:border-[#202227] cursor-pointer"
                             >
                               绘制网页
                             </button>
                           </div>
                         </div>
+                      </div>
                       )}
                     </div>
 
@@ -2843,7 +3174,7 @@ const Home: React.FC = () => {
           </div>
           <div 
             className={clsx(
-              "z-20",
+              "z-20 flex flex-col items-center",
               isReportResizing ? "transition-none" : "transition-[background-color,transform,width] duration-300 ease-out",
               isChatState 
                 ? (isReportOpen 
@@ -2853,6 +3184,38 @@ const Home: React.FC = () => {
                 : "w-[680px] mb-6 mx-auto"
             )}
           >
+            {isChatState && interruptedRun?.resumable && (
+              <div className="mb-4 w-full max-w-[800px] select-none">
+                <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white">
+                  <div className="flex min-h-[45px] flex-wrap items-center justify-between gap-3 px-6 py-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-[14px] leading-7 text-[#0A0A0B]">
+                      <span className="font-normal">上次会话异常中断，是否继续分析</span>
+                      {interruptedRun.interruptReason && (
+                        <span className="max-w-full truncate rounded-full bg-[#F3F4F6] px-3 py-1 text-[12px] font-medium leading-5 text-[#6B7280]">
+                          {interruptedRun.interruptReason}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleContinueAnalysis}
+                      disabled={feedbackSubmitting || isTyping}
+                      className="inline-flex items-center justify-center rounded-[10px] border border-[#151517] bg-[#151517] px-3 py-1 text-[14px] leading-5 font-medium text-[#FAFAFA] transition-colors hover:bg-[#202227] hover:border-[#202227] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                    >
+                      继续分析
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {isChatState && hasPendingHumanReviewNotice && (
+              <div className="mb-4 flex w-full justify-center select-none">
+                <div className="inline-flex h-9 items-center justify-center gap-2 rounded-[24px] border border-[#D9B54A] bg-white px-6 text-[14px] leading-5 font-normal text-[#3B3B3B]">
+                  <ListTodo className="size-4 shrink-0 text-[#B88A00]" strokeWidth={2} />
+                  <span>我将在你确认后继续</span>
+                </div>
+              </div>
+            )}
             <div 
               className={clsx(
                 "group/composer flex flex-col items-start justify-center bg-[#ECEEF6] rounded-3xl p-1 z-10 shadow-sm w-full",
@@ -2892,6 +3255,22 @@ const Home: React.FC = () => {
                   isChatState ? "px-5 pb-2 pt-4" : "p-5"
                 )}
               >
+                {activeHumanFeedbackPlanPreview && (
+                  <div className="mb-4 flex items-start overflow-hidden rounded-xl bg-[#F5F5F5] p-2">
+                    <CornerDownRight className="mr-2 mt-0.5 size-4 shrink-0 text-gray-400" strokeWidth={2} />
+                    <div className="mr-2 max-h-[4.5rem] flex-1 overflow-hidden text-xs leading-6 text-gray-500">
+                      {activeHumanFeedbackPlanPreview}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelHumanFeedbackEdit}
+                      className="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-800"
+                      aria-label="取消修改计划"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                )}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap items-center gap-3 mb-2 animate-in fade-in slide-in-from-top-1 duration-200 select-none">
                     {attachedFiles.map((file, fileIdx) => {
@@ -2974,7 +3353,8 @@ const Home: React.FC = () => {
             </div>
                 )}
                 <textarea 
-                  placeholder="通过下方指定一份数据并给我布置数据分析任务，'shift+enter'换行"
+                  ref={composerTextareaRef}
+                  placeholder={activeHumanFeedbackPlanPreview ? '写下你希望调整的统计口径、步骤或输出形式' : "通过下方指定一份数据并给我布置数据分析任务，'shift+enter'换行"}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => {
@@ -3306,10 +3686,16 @@ const Home: React.FC = () => {
 
                   <div className="flex flex-1 items-center justify-end">
                     <button 
-                      type="submit"
+                      type={isGenerating ? 'button' : 'submit'}
+                      onClick={isGenerating ? handleStopGenerating : undefined}
                       className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium size-7 cursor-pointer rounded-full p-0 bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+                      aria-label={isGenerating ? '停止生成' : '发送消息'}
                     >
-                      <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                      {isGenerating ? (
+                        <Square className="w-3 h-3 fill-current stroke-[2.5]" />
+                      ) : (
+                        <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                      )}
                     </button>
                   </div>
                 </div>

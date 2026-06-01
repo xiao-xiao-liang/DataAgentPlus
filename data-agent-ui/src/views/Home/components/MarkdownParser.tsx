@@ -406,7 +406,7 @@ export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ conte
                   return <EchartsBlock chartKey={`inline-${hashString(codeStr)}`} code={codeStr} />;
                 }
 
-                if (lang === 'python' || lang === 'sql') {
+                if (lang === 'python' || lang === 'sql' || lang === 'json') {
                   return <CodeBlock language={lang} code={codeStr} />;
                 }
 
