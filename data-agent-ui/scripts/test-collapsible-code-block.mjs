@@ -22,9 +22,11 @@ try {
   }));
 
   assert.match(html, /aria-expanded="false"/);
-  assert.match(html, /代码块/);
   assert.match(html, /Python/);
-  assert.match(html, /复制/);
+  assert.match(html, /日志/);
+  assert.doesNotMatch(html, /代码块/);
+  assert.doesNotMatch(html, /自动换行/);
+  assert.doesNotMatch(html, /复制/);
   assert.doesNotMatch(html, /print/);
 
   const expandedHtml = renderToStaticMarkup(React.createElement(CodeBlock, {
@@ -34,6 +36,8 @@ try {
   }));
 
   assert.match(expandedHtml, /aria-expanded="true"/);
+  assert.match(expandedHtml, /自动换行/);
+  assert.match(expandedHtml, /复制/);
   assert.match(expandedHtml, /print/);
 
   const jsonHtml = renderToStaticMarkup(React.createElement(CodeBlock, {
@@ -42,13 +46,14 @@ try {
   }));
 
   assert.match(jsonHtml, /JSON/);
+  assert.match(jsonHtml, /日志/);
   assert.match(jsonHtml, /aria-expanded="false"/);
   assert.doesNotMatch(jsonHtml, /&quot;ok&quot;/);
 
   assert.match(homeViewSource, /const \[isOpen,\s*setIsOpen\] = useState\(false\)/);
-  assert.match(homeViewSource, /<span className="text-\[13px\] font-medium">JSON<\/span>/);
-  assert.match(homeViewSource, /<span>自动换行<\/span>/);
-  assert.match(homeViewSource, /<span>\{copied \? '已复制' : '复制'\}<\/span>/);
+  assert.match(homeViewSource, /<span className="truncate text-\[12px\] font-medium">\{languageLabel\}<\/span>/);
+  assert.match(homeViewSource, />日志<\/span>/);
+  assert.doesNotMatch(homeViewSource, />代码块<\/span>/);
 } finally {
   await server.close();
 }

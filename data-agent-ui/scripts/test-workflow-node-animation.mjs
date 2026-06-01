@@ -19,3 +19,18 @@ assert.ok(
   !source.includes('hasBody && isOpen && ('),
   'WorkflowNodeCard body should stay mounted so collapse animation can play.'
 );
+
+assert.ok(
+  source.includes('rounded-[10px]') &&
+    source.includes('min-h-[68px]') &&
+    source.includes('px-4 py-3') &&
+    source.includes('max-w-[606.667px]'),
+  'WorkflowNodeCard should match the official compact card dimensions.'
+);
+
+assert.ok(
+  source.includes('group-hover:hidden') &&
+    source.includes('group-hover:block') &&
+    source.includes('ml-7 w-full overflow-hidden text-ellipsis whitespace-nowrap text-left text-xs'),
+  'WorkflowNodeCard should match the official icon hover and summary layout.'
+);

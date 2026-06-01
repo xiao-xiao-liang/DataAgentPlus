@@ -48,9 +48,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = React.memo(({ language, code,
   };
 
   return (
-    <div className="my-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-[#F6F7F9] font-mono text-[12px] leading-relaxed shadow-2xs select-text">
+    <div className="my-1 w-full overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#F6F7F9] font-sans text-[12px] leading-5 shadow-none select-text">
       <div className={clsx(
-        'flex min-h-12 items-center gap-3 px-3 py-2 select-none',
+        'flex min-h-9 items-center gap-2 px-3 py-1.5 select-none',
         isOpen && 'border-b border-gray-200'
       )}>
         <button
@@ -60,33 +60,37 @@ export const CodeBlock: React.FC<CodeBlockProps> = React.memo(({ language, code,
           className="inline-flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-gray-600 cursor-pointer"
         >
           {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-          <span className="truncate text-[13px] font-medium">代码块</span>
+          <span className="truncate text-[12px] font-medium">{languageLabel}</span>
         </button>
         <div className="ml-auto flex items-center gap-2 text-gray-500">
-          <span className="text-[13px] font-medium">{languageLabel}</span>
-          <span className="h-5 w-px bg-gray-300" />
-          <button
-            type="button"
-            onClick={() => setIsWrapped(prev => !prev)}
-            className={clsx(
-              'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
-              isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
-            )}
-            aria-pressed={isWrapped}
-            title="自动换行"
-          >
-            <WrapText className="size-4" />
-            <span>自动换行</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
-            title="复制代码"
-          >
-            <Copy className="size-4" />
-            <span>{copied ? "已复制" : "复制"}</span>
-          </button>
+          <span className="text-[12px] font-medium">日志</span>
+          {isOpen && (
+            <>
+              <span className="h-5 w-px bg-gray-300" />
+              <button
+                type="button"
+                onClick={() => setIsWrapped(prev => !prev)}
+                className={clsx(
+                  'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
+                  isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
+                )}
+                aria-pressed={isWrapped}
+                title="自动换行"
+              >
+                <WrapText className="size-4" />
+                <span>自动换行</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
+                title="复制代码"
+              >
+                <Copy className="size-4" />
+                <span>{copied ? "已复制" : "复制"}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
       {isOpen && (

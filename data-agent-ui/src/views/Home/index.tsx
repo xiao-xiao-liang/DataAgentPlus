@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight, ListTodo, CornerDownRight, Square, Copy, WrapText } from 'lucide-react';
+import { Settings2, ArrowUp, RefreshCcw, X, Plus, BookOpen, Atom, ChevronDown, Sheet, Maximize2, Upload, Plug, ChevronRight, Check, Sparkles, LineChart, Network, Clock, Code2, Database, FileText, Search, GitBranch, CircleHelp, Compass, Menu, ChevronsLeft, ChevronsRight, ListTodo, CornerDownRight, Square, Copy, WrapText, Eye } from 'lucide-react';
 import clsx from 'clsx';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -381,9 +381,9 @@ const CodeBlock: React.FC<{ language: CodeLanguage; code: string; defaultOpen?: 
   };
 
   return (
-    <div className="my-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-[#F6F7F9] font-mono text-[12px] leading-relaxed shadow-2xs select-text">
+    <div className="my-1 w-full overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#F6F7F9] font-sans text-[12px] leading-5 shadow-none select-text">
       <div className={clsx(
-        'flex min-h-12 items-center gap-3 px-3 py-2 select-none',
+        'flex min-h-9 items-center gap-2 px-3 py-1.5 select-none',
         isOpen && 'border-b border-gray-200'
       )}>
         <button
@@ -393,33 +393,37 @@ const CodeBlock: React.FC<{ language: CodeLanguage; code: string; defaultOpen?: 
           className="inline-flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-gray-600 cursor-pointer"
         >
           {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-          <span className="truncate text-[13px] font-medium">代码块</span>
+          <span className="truncate text-[12px] font-medium">{languageLabel}</span>
         </button>
         <div className="ml-auto flex items-center gap-2 text-gray-500">
-          <span className="text-[13px] font-medium">{languageLabel}</span>
-          <span className="h-5 w-px bg-gray-300" />
-          <button
-            type="button"
-            onClick={() => setIsWrapped(prev => !prev)}
-            className={clsx(
-              'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
-              isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
-            )}
-            aria-pressed={isWrapped}
-            title="自动换行"
-          >
-            <WrapText className="size-4" />
-            <span>自动换行</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
-            title="复制代码"
-          >
-            <Copy className="size-4" />
-            <span>{copied ? "已复制" : "复制"}</span>
-          </button>
+          <span className="text-[12px] font-medium">日志</span>
+          {isOpen && (
+            <>
+              <span className="h-5 w-px bg-gray-300" />
+              <button
+                type="button"
+                onClick={() => setIsWrapped(prev => !prev)}
+                className={clsx(
+                  'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
+                  isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
+                )}
+                aria-pressed={isWrapped}
+                title="自动换行"
+              >
+                <WrapText className="size-4" />
+                <span>自动换行</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
+                title="复制代码"
+              >
+                <Copy className="size-4" />
+                <span>{copied ? "已复制" : "复制"}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
       {isOpen && (
@@ -458,9 +462,9 @@ const StructuredAnalysisOutputBlock: React.FC<{ content: string }> = ({ content 
   };
 
   return (
-    <div className="mt-3 w-full overflow-hidden rounded-lg border border-gray-200 bg-[#F6F7F9] font-mono text-[12px] leading-relaxed shadow-2xs select-text">
+    <div className="mt-3 w-full overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#F6F7F9] font-sans text-[12px] leading-5 shadow-none select-text">
       <div className={clsx(
-        'flex min-h-12 items-center gap-3 px-3 py-2 select-none',
+        'flex min-h-9 items-center gap-2 px-3 py-1.5 select-none',
         isOpen && 'border-b border-gray-200'
       )}>
         <button
@@ -470,33 +474,37 @@ const StructuredAnalysisOutputBlock: React.FC<{ content: string }> = ({ content 
           className="inline-flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left text-gray-600 cursor-pointer"
         >
           {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-          <span className="truncate text-[13px] font-medium">代码块</span>
+          <span className="truncate text-[12px] font-medium">JSON</span>
         </button>
         <div className="ml-auto flex items-center gap-2 text-gray-500">
-          <span className="text-[13px] font-medium">JSON</span>
-          <span className="h-5 w-px bg-gray-300" />
-          <button
-            type="button"
-            onClick={() => setIsWrapped(prev => !prev)}
-            className={clsx(
-              'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
-              isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
-            )}
-            aria-pressed={isWrapped}
-            title="自动换行"
-          >
-            <WrapText className="size-4" />
-            <span>自动换行</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
-            title="复制代码"
-          >
-            <Copy className="size-4" />
-            <span>{copied ? '已复制' : '复制'}</span>
-          </button>
+          <span className="text-[12px] font-medium">日志</span>
+          {isOpen && (
+            <>
+              <span className="h-5 w-px bg-gray-300" />
+              <button
+                type="button"
+                onClick={() => setIsWrapped(prev => !prev)}
+                className={clsx(
+                  'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors cursor-pointer',
+                  isWrapped ? 'bg-white text-gray-800 shadow-2xs' : 'text-gray-500 hover:bg-white hover:text-gray-800'
+                )}
+                aria-pressed={isWrapped}
+                title="自动换行"
+              >
+                <WrapText className="size-4" />
+                <span>自动换行</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800 cursor-pointer"
+                title="复制代码"
+              >
+                <Copy className="size-4" />
+                <span>{copied ? '已复制' : '复制'}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
       {isOpen && (
@@ -968,6 +976,8 @@ interface WorkflowNodeCardProps {
   status?: WorkflowNodeStatus;
   icon?: React.ReactNode;
   defaultOpen?: boolean;
+  actionLabel?: string;
+  onActionClick?: () => void;
   children?: React.ReactNode;
 }
 
@@ -977,6 +987,8 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
   status = 'done',
   icon,
   defaultOpen = false,
+  actionLabel,
+  onActionClick,
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -987,38 +999,52 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
   }, [defaultOpen]);
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition-shadow duration-200 ease-out select-none">
+    <div data-status={status} className="group w-full overflow-hidden rounded-[10px] border border-[#E5E7EB] bg-white text-[#0A0A0B] shadow-none transition-colors duration-200 ease-out select-none">
       <button
         type="button"
+        data-state={isOpen ? 'open' : 'closed'}
         aria-expanded={hasBody ? isOpen : undefined}
         onClick={() => hasBody && setIsOpen(prev => !prev)}
-        className="flex min-h-12 w-full items-center gap-3 border-0 bg-white px-5 py-3 text-left transition-colors hover:bg-gray-50/70 cursor-pointer"
+        className="flex h-auto min-h-[68px] w-full flex-wrap items-center justify-start gap-2 rounded-[10px] border-0 bg-white px-4 py-3 text-left text-sm font-normal transition-colors hover:bg-[#F7F7F8] data-[state=open]:rounded-b-none cursor-pointer"
       >
-        <ChevronDown className={clsx('size-4 shrink-0 text-gray-500 transition-transform duration-200 ease-out', isOpen && 'rotate-180', !hasBody && 'opacity-40')} />
-        <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-gray-50 text-gray-500">
-          {icon || <Clock className="size-3.5" />}
+        <span className={clsx('mr-1 grid size-4 min-w-4 shrink-0 place-items-center text-[#71717A] [&_svg]:!size-4', hasBody && (isOpen ? 'hidden' : 'group-hover:hidden'))}>
+          {icon || <Clock className="!size-4" />}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[15px] font-semibold text-gray-850">{title}</span>
-            <span className={clsx(
-              'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-              status === 'done' && 'bg-emerald-50 text-emerald-600',
-              status === 'active' && 'bg-[#EEEAFE] text-[#5B55FF]',
-              status === 'pending' && 'bg-gray-100 text-gray-400',
-            )}>
-              {status === 'done' ? '已完成' : status === 'active' ? '执行中' : '待执行'}
+        {hasBody && (
+          <ChevronDown className={clsx('mr-1 !size-4 min-w-4 shrink-0 text-[#0A0A0B] transition-all duration-200 ease-out', isOpen ? 'block rotate-180' : 'hidden group-hover:block')} />
+        )}
+        <span className="min-w-0 truncate text-[14px] font-bold leading-5 text-[#0A0A0B]">{title}</span>
+        {onActionClick && (
+          <span className="ml-auto flex w-auto items-center gap-2 text-[#71717A]">
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={actionLabel || '查看'}
+              onClick={(event) => {
+                event.stopPropagation();
+                onActionClick();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onActionClick();
+                }
+              }}
+              className="m-0 inline-flex h-5 w-full items-center justify-center rounded-xl bg-inherit p-0 transition-colors hover:bg-[#F4F4F5] hover:text-[#0A0A0B]"
+            >
+              <Eye className="size-4" />
             </span>
-          </div>
-          {summary && (
-            <p className={clsx(
-              'm-0 overflow-hidden truncate text-[13px] leading-5 text-gray-500 transition-[max-height,opacity,margin] duration-200 ease-out motion-reduce:transition-none',
-              isOpen ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-5 opacity-100',
-            )}>
-              {summary}
-            </p>
-          )}
-        </div>
+          </span>
+        )}
+        {summary && (
+          <p className={clsx(
+            'ml-7 w-full overflow-hidden text-ellipsis whitespace-nowrap text-left text-xs leading-5 text-[#8E8E93] transition-[max-height,opacity,margin] duration-200 ease-out motion-reduce:transition-none',
+            isOpen ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-5 opacity-100',
+          )}>
+            {summary}
+          </p>
+        )}
       </button>
       {hasBody && (
         <div
@@ -1029,8 +1055,8 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
           )}
         >
           <div className={clsx(
-            'min-h-0 overflow-hidden border-t border-gray-100 bg-[#FAFAFC] px-5 select-text transition-[padding] duration-200 ease-out motion-reduce:transition-none',
-            isOpen ? 'py-4' : 'py-0',
+            'min-h-0 overflow-hidden bg-white px-4 select-text transition-[padding] duration-200 ease-out motion-reduce:transition-none',
+            isOpen ? 'border-t border-[#E5E7EB] py-3' : 'border-t-0 py-0',
           )}>
             {children}
           </div>
@@ -1219,7 +1245,7 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
   const pythonStageShouldOpen = (Boolean(pythonBlock) || hasPythonExecutionOutput || pythonLogs.length > 0) && !hasReportOutput;
 
   return (
-    <div className="my-3 flex w-full max-w-[680px] flex-col gap-2.5">
+    <div className="my-3 flex w-full max-w-[606.667px] flex-col gap-3">
       {intentLogs.length > 0 && (
         <WorkflowNodeCard
           title="理解用户需求"
@@ -1357,6 +1383,8 @@ const WorkflowNodeStack: React.FC<WorkflowNodeStackProps> = ({
           status={isComplete ? 'done' : 'active'}
           icon={<FileText className="size-3.5" />}
           defaultOpen={hasReportOutput}
+          actionLabel="查看报告"
+          onActionClick={() => onOpenReport(getMarkdownReportBlock([reportBlock]))}
         >
           <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
             <div className="min-w-0">
