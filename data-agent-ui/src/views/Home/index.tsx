@@ -987,13 +987,14 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
   }, [defaultOpen]);
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs select-none">
+    <div className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition-shadow duration-200 ease-out select-none">
       <button
         type="button"
+        aria-expanded={hasBody ? isOpen : undefined}
         onClick={() => hasBody && setIsOpen(prev => !prev)}
         className="flex min-h-12 w-full items-center gap-3 border-0 bg-white px-5 py-3 text-left transition-colors hover:bg-gray-50/70 cursor-pointer"
       >
-        <ChevronDown className={clsx('size-4 shrink-0 text-gray-500 transition-transform', isOpen && 'rotate-180', !hasBody && 'opacity-40')} />
+        <ChevronDown className={clsx('size-4 shrink-0 text-gray-500 transition-transform duration-200 ease-out', isOpen && 'rotate-180', !hasBody && 'opacity-40')} />
         <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-gray-50 text-gray-500">
           {icon || <Clock className="size-3.5" />}
         </span>
@@ -1009,14 +1010,30 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
               {status === 'done' ? '已完成' : status === 'active' ? '执行中' : '待执行'}
             </span>
           </div>
-          {!isOpen && summary && (
-            <p className="m-0 mt-1 truncate text-[13px] leading-5 text-gray-500">{summary}</p>
+          {summary && (
+            <p className={clsx(
+              'm-0 overflow-hidden truncate text-[13px] leading-5 text-gray-500 transition-[max-height,opacity,margin] duration-200 ease-out motion-reduce:transition-none',
+              isOpen ? 'mt-0 max-h-0 opacity-0' : 'mt-1 max-h-5 opacity-100',
+            )}>
+              {summary}
+            </p>
           )}
         </div>
       </button>
-      {hasBody && isOpen && (
-        <div className="border-t border-gray-100 bg-[#FAFAFC] px-5 py-4 select-text">
-          {children}
+      {hasBody && (
+        <div
+          aria-hidden={!isOpen}
+          className={clsx(
+            'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+            isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none',
+          )}
+        >
+          <div className={clsx(
+            'min-h-0 overflow-hidden border-t border-gray-100 bg-[#FAFAFC] px-5 select-text transition-[padding] duration-200 ease-out motion-reduce:transition-none',
+            isOpen ? 'py-4' : 'py-0',
+          )}>
+            {children}
+          </div>
         </div>
       )}
     </div>
