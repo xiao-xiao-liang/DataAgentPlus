@@ -92,7 +92,7 @@ public class PythonGenerateNode implements NodeAction {
                             TextType.PYTHON.getStartSign().length(),
                             aiResponse.length() - TextType.PYTHON.getEndSign().length());
                     aiResponse = MarkdownParserUtil.extractRawText(aiResponse);
-                    log.info("生成的 Python 代码:\n{}", aiResponse);
+                    log.debug("生成的 Python 代码:\n{}", aiResponse);
                     // 仅保存代码，不再此处修改重试次数，次数修改已归并到执行器节点
                     return Map.of(PYTHON_GENERATE_NODE_OUTPUT, aiResponse);
                 },
