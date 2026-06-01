@@ -1,6 +1,7 @@
 package com.liang.data.agent.service.chat.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.dal.entity.ChatMessageEntity;
@@ -52,6 +53,39 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         chatMessageMapper.insert(entity);
         log.info("Saved message: {} for session: {}", entity.getId(), sessionId);
         return convertToVO(entity);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ChatMessageVO saveOrUpdateStreamingAssistantMessage(String sessionId, String content, String messageType, boolean complete) {
+        ChatMessageEntity latestStreamingMessage = chatMessageMapper.selectOne(
+                new LambdaQueryWrapper<ChatMessageEntity>()
+                        .eq(ChatMessageEntity::getSessionId, sessionId)
+                        .eq(ChatMessageEntity::getRole, "assistant")
+                        .eq(ChatMessageEntity::getMessageType, "streaming")
+                        .orderByDesc(ChatMessageEntity::getId)
+                        .last("LIMIT 1")
+        );
+
+        String nextMessageType = complete ? "text" : messageType;
+        if (latestStreamingMessage == null) {
+            ChatMessageDTO dto = ChatMessageDTO.builder()
+                    .role("assistant")
+                    .content(content)
+                    .messageType(nextMessageType)
+                    .build();
+            return saveMessage(dto, sessionId);
+        }
+
+        LambdaUpdateWrapper<ChatMessageEntity> wrapper = new LambdaUpdateWrapper<ChatMessageEntity>()
+                .eq(ChatMessageEntity::getId, latestStreamingMessage.getId())
+                .set(ChatMessageEntity::getContent, content)
+                .set(ChatMessageEntity::getMessageType, nextMessageType);
+        chatMessageMapper.update(null, wrapper);
+        latestStreamingMessage.setContent(content);
+        latestStreamingMessage.setMessageType(nextMessageType);
+        log.info("更新流式消息: {} for session: {}", latestStreamingMessage.getId(), sessionId);
+        return convertToVO(latestStreamingMessage);
     }
 
     @Override

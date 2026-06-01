@@ -28,6 +28,19 @@ public interface ChatMessageService {
     ChatMessageVO saveMessage(ChatMessageDTO dto, String sessionId);
 
     /**
+     * 保存或更新流式 assistant 消息。
+     *
+     * <p>同一轮分析过程中持续更新最近一条 streaming 消息，避免连接异常断开后前端已展示内容丢失。</p>
+     *
+     * @param sessionId   会话 ID
+     * @param content     已累计的 assistant 输出
+     * @param messageType 消息类型
+     * @param complete    是否已完成
+     * @return 保存后的消息 VO
+     */
+    ChatMessageVO saveOrUpdateStreamingAssistantMessage(String sessionId, String content, String messageType, boolean complete);
+
+    /**
      * 异步保存消息（保护 WebFlux 核心线程不被传统 JDBC 阻塞）
      *
      * @param dto       消息 DTO

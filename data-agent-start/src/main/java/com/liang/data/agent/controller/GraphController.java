@@ -8,8 +8,10 @@ import com.liang.data.agent.service.chat.ChatSessionService;
 import com.liang.data.agent.service.chat.SessionTitleService;
 import com.liang.data.agent.service.chat.dto.ChatMessageDTO;
 import com.liang.data.agent.service.chat.vo.ChatSessionVO;
+import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.dto.GraphRequest;
 import com.liang.data.agent.workflow.service.GraphService;
+import com.liang.data.agent.workflow.service.WorkflowRunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -35,6 +37,7 @@ public class GraphController {
     private final ChatMessageService chatMessageService;
     private final SessionTitleService sessionTitleService;
     private final AgentService agentService;
+    private final WorkflowRunService workflowRunService;
 
     /**
      * 核心 SSE 流式对话接口
@@ -81,8 +84,22 @@ public class GraphController {
 
         // 2. 保存用户消息（澄清答复需要落库，避免历史会话缺失用户补充内容）
         InteractionType interactionType = InteractionType.fromCode(request.getInteractionType());
+        if (interactionType == InteractionType.NEW_QUERY && StringUtils.hasText(request.getHumanFeedbackContent())) {
+            interactionType = InteractionType.HUMAN_PLAN_FEEDBACK;
+        }
+        if (interactionType == InteractionType.NEW_QUERY) {
+            workflowRunService.startRun(threadId, agentIdInt, request.getQuery());
+        }
         String userMessageContent = null;
-        if (interactionType == InteractionType.CLARIFICATION_ANSWER || interactionType == InteractionType.CLARIFICATION_CONFIRM) {
+        if (interactionType == InteractionType.HUMAN_PLAN_FEEDBACK
+                && request.isRejectedPlan()
+                && StringUtils.hasText(request.getHumanFeedbackContent())) {
+            userMessageContent = request.getHumanFeedbackContent();
+        } else if (interactionType == InteractionType.HUMAN_PLAN_FEEDBACK
+                && !request.isRejectedPlan()) {
+            userMessageContent = "开始任务";
+        } else if (interactionType == InteractionType.CLARIFICATION_ANSWER
+                || interactionType == InteractionType.CLARIFICATION_CONFIRM) {
             userMessageContent = request.getInteractionContent();
         } else if (!StringUtils.hasText(request.getHumanFeedbackContent())
                 && interactionType != InteractionType.HUMAN_PLAN_FEEDBACK
@@ -105,7 +122,7 @@ public class GraphController {
         }
 
         // 4. 调用工作流引擎获取流式输出
-        Flux<String> streamFlux = graphService.chat(request, multiTurnContext);
+        Flux<GraphStreamChunk> streamFlux = graphService.chatStream(request, multiTurnContext);
 
         // 5. 还原 AI 输出，并在流结束时使用 Spring 异步离线落库，防止阻塞 WebFlux Netty 核心线程
         final String finalSessionId = threadId;
@@ -113,21 +130,38 @@ public class GraphController {
         final boolean triggerTitleGen = isNewSession;
         
         StringBuilder accumulatedResponse = new StringBuilder();
+        StringBuilder completedNodeResponse = new StringBuilder();
 
         return streamFlux
-                .doOnNext(accumulatedResponse::append)
+                .doOnNext(event -> {
+                    if (event.hasContent()) {
+                        accumulatedResponse.append(event.content());
+                    }
+                    if (event.nodeCompleted() && !accumulatedResponse.isEmpty()) {
+                        chatMessageService.saveOrUpdateStreamingAssistantMessage(
+                                finalSessionId,
+                                accumulatedResponse.toString(),
+                                "streaming",
+                                false
+                        );
+                        completedNodeResponse.setLength(0);
+                        completedNodeResponse.append(accumulatedResponse);
+                    }
+                })
+                .filter(GraphStreamChunk::hasContent)
+                .map(GraphStreamChunk::content)
                 .doOnComplete(() -> {
                     String fullResponse = accumulatedResponse.toString();
-                    log.info("Graph stream interaction completed for session: {}, response length: {}", 
-                            finalSessionId, fullResponse.length());
+                    log.info("会话 {} 的图流交互已完成，响应长度: {}", finalSessionId, fullResponse.length());
 
                     // 构建 AI 的回复 DTO 并异步落库
-                    ChatMessageDTO assistantMsgDto = ChatMessageDTO.builder()
-                            .role("assistant")
-                            .content(fullResponse)
-                            .messageType("text")
-                            .build();
-                    chatMessageService.saveMessageAsync(assistantMsgDto, finalSessionId);
+                    chatMessageService.saveOrUpdateStreamingAssistantMessage(
+                            finalSessionId,
+                            fullResponse,
+                            "text",
+                            true
+                    );
+                    workflowRunService.markCompleted(finalSessionId);
 
                     // 更新会话更新时间
                     chatSessionService.updateSessionTime(finalSessionId);
@@ -138,7 +172,7 @@ public class GraphController {
                     }
                 })
                 .doOnError(err -> {
-                    log.error("Error occurred during graph stream for session: {}", finalSessionId, err);
+                    log.error("会话 {} 在图流处理过程中发生错误", finalSessionId, err);
                     
                     // 异步保存错误消息，防止会话流程直接挂起
                     ChatMessageDTO errorMsgDto = ChatMessageDTO.builder()
@@ -147,10 +181,20 @@ public class GraphController {
                             .messageType("error")
                             .build();
                     chatMessageService.saveMessageAsync(errorMsgDto, finalSessionId);
+                    workflowRunService.markFailed(finalSessionId, safeMessage(err));
                 })
                 .onErrorResume(err -> Flux.just(formatSseData("系统繁忙，请稍后再试（" + safeMessage(err) + "）")))
                 .doOnCancel(() -> {
                     log.info("客户端断开连接, threadId: {}", finalSessionId);
+                    if (!completedNodeResponse.isEmpty()) {
+                        chatMessageService.saveOrUpdateStreamingAssistantMessage(
+                                finalSessionId,
+                                completedNodeResponse.toString(),
+                                "text",
+                                true
+                        );
+                    }
+                    workflowRunService.markInterrupted(finalSessionId, "客户端连接断开");
                     graphService.stopStreamProcessing(finalSessionId);
                 });
     }
