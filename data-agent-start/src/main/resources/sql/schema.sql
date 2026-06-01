@@ -298,6 +298,31 @@ CREATE TABLE IF NOT EXISTS chat_message
   DEFAULT CHARSET = utf8mb4 COMMENT = '聊天消息表';
 
 -- ----------------------------
+-- 11.1. 工作流运行快照表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS chat_workflow_run
+(
+    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '运行记录主键',
+    session_id          VARCHAR(36)  NOT NULL COMMENT '会话ID',
+    agent_id            INT          DEFAULT NULL COMMENT '智能体ID',
+    query               TEXT COMMENT '用户原始问题',
+    status              VARCHAR(32)  NOT NULL DEFAULT 'running' COMMENT '运行状态：running、interrupted、completed、failed',
+    last_node_name      VARCHAR(128) DEFAULT NULL COMMENT '最近完成的节点名称',
+    next_node_name      VARCHAR(128) DEFAULT NULL COMMENT '下一节点名称',
+    checkpoint_id       VARCHAR(64)  DEFAULT NULL COMMENT '图框架checkpoint ID',
+    state_snapshot      JSON COMMENT '最近一次图状态快照',
+    accumulated_content MEDIUMTEXT COMMENT '当前已累计输出内容',
+    interrupt_reason    VARCHAR(512) DEFAULT NULL COMMENT '中断或失败原因',
+    create_time         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_status (status),
+    INDEX idx_update_time (update_time)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT = '工作流运行快照表';
+
+-- ----------------------------
 -- 12. 用户 Prompt 配置表
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS user_prompt_config

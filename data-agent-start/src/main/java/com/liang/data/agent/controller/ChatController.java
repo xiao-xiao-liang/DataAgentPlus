@@ -9,6 +9,8 @@ import com.liang.data.agent.service.chat.dto.ChatMessageDTO;
 import com.liang.data.agent.service.chat.util.ReportTemplateUtil;
 import com.liang.data.agent.service.chat.vo.ChatMessageVO;
 import com.liang.data.agent.service.chat.vo.ChatSessionVO;
+import com.liang.data.agent.workflow.service.WorkflowRunService;
+import com.liang.data.agent.workflow.vo.WorkflowRunVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +39,7 @@ public class ChatController {
     private final ChatMessageService chatMessageService;
     private final SessionTitleService sessionTitleService;
     private final ReportTemplateUtil reportTemplateUtil;
+    private final WorkflowRunService workflowRunService;
 
     /**
      * 获取指定智能体的所有聊天会话
@@ -96,6 +99,17 @@ public class ChatController {
     public Result<List<ChatMessageVO>> getSessionMessages(@PathVariable(value = "sessionId") String sessionId) {
         List<ChatMessageVO> messages = chatMessageService.findBySessionId(sessionId);
         return Results.success(messages);
+    }
+
+    /**
+     * 获取会话最近一次工作流运行状态。
+     *
+     * @param sessionId 会话 ID
+     * @return 工作流运行状态
+     */
+    @GetMapping("/sessions/{sessionId}/workflow-run")
+    public Result<WorkflowRunVO> getSessionWorkflowRun(@PathVariable(value = "sessionId") String sessionId) {
+        return Results.success(workflowRunService.findLatest(sessionId));
     }
 
     /**
