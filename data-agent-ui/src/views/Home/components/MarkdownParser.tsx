@@ -364,7 +364,7 @@ export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ conte
                 <ul className="list-disc pl-5 my-1.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium [&_ul]:my-1 [&_ul]:space-y-0.5 [&_ol]:my-1 [&_ol]:space-y-0.5">{children}</ul>
               ),
               ol: ({ children }) => (
-                <ol className="list-decimal pl-5 my-1.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium [&_ul]:my-1 [&_ul]:space-y-0.5 [&_ol]:my-1 [&_ol]:space-y-0.5">{children}</ol>
+                <ol className="markdown-ordered-list list-none pl-0 my-1.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium [&_ul]:my-1 [&_ul]:space-y-0.5 [&_ol]:my-1 [&_ol]:space-y-0.5">{children}</ol>
               ),
               li: ({ children }) => (
                 <li className="leading-relaxed">{renderListItemChildren(children)}</li>

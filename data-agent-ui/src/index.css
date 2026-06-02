@@ -105,4 +105,22 @@ body {
   animation: contentShow 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.markdown-ordered-list {
+  counter-reset: markdown-ordered-list;
+}
 
+.markdown-ordered-list > li {
+  counter-increment: markdown-ordered-list;
+  padding-left: 1.25rem;
+  position: relative;
+}
+
+.markdown-ordered-list > li::before {
+  color: currentColor;
+  content: counter(markdown-ordered-list) ".";
+  font-weight: 600;
+  left: 0;
+  position: absolute;
+  text-align: right;
+  width: 1rem;
+}
