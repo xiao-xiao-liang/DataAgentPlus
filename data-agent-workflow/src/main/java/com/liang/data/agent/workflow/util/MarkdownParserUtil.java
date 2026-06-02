@@ -22,6 +22,48 @@ public final class MarkdownParserUtil {
     }
 
     /**
+     * 去除整篇 Markdown 报告最外层的 markdown/md 代码块包裹。
+     *
+     * <p>仅当文本整体以 markdown 或 md 代码块开始，并以相同长度反引号独占行结束时才处理，
+     * 避免误删报告内部的 SQL、ECharts 等代码块。</p>
+     *
+     * @param markdownReport 可能被最外层 Markdown 代码块包裹的报告文本
+     * @return 去除外层包裹后的报告文本；不匹配时返回原文
+     */
+    public static String unwrapOuterMarkdownFence(String markdownReport) {
+        if (markdownReport == null || markdownReport.isBlank()) {
+            return markdownReport;
+        }
+
+        String trimmed = markdownReport.strip();
+        int firstLineEnd = indexOfLineEnd(trimmed);
+        if (firstLineEnd < 0) {
+            return markdownReport;
+        }
+
+        String firstLine = trimmed.substring(0, firstLineEnd).stripTrailing();
+        int delimiterLength = countLeadingBackticks(firstLine);
+        if (delimiterLength < 3) {
+            return markdownReport;
+        }
+
+        String language = firstLine.substring(delimiterLength).trim();
+        if (!"markdown".equalsIgnoreCase(language) && !"md".equalsIgnoreCase(language)) {
+            return markdownReport;
+        }
+
+        int lastLineStart = trimmed.lastIndexOf('\n') + 1;
+        String lastLine = trimmed.substring(lastLineStart).trim();
+        if (!lastLine.equals("`".repeat(delimiterLength))) {
+            return markdownReport;
+        }
+
+        int contentStart = skipLineBreak(trimmed, firstLineEnd);
+        int contentEnd = trimTrailingLineBreak(trimmed, lastLineStart);
+        return trimmed.substring(contentStart, contentEnd);
+    }
+
+    /**
      * 提取 Markdown 代码块中的原始文本 (保留换行)
      *
      * <p>支持 3 个及以上反引号的代码块，自动跳过语言标识行 (如 ```json)</p>
@@ -69,5 +111,44 @@ public final class MarkdownParserUtil {
         }
 
         return markdownCode.substring(contentStart, endIndex);
+    }
+
+    private static int indexOfLineEnd(String value) {
+        int crIndex = value.indexOf('\r');
+        int lfIndex = value.indexOf('\n');
+        if (crIndex < 0) {
+            return lfIndex;
+        }
+        if (lfIndex < 0) {
+            return crIndex;
+        }
+        return Math.min(crIndex, lfIndex);
+    }
+
+    private static int countLeadingBackticks(String value) {
+        int count = 0;
+        while (count < value.length() && value.charAt(count) == '`') {
+            count++;
+        }
+        return count;
+    }
+
+    private static int skipLineBreak(String value, int index) {
+        int current = index;
+        if (current < value.length() && value.charAt(current) == '\r') {
+            current++;
+        }
+        if (current < value.length() && value.charAt(current) == '\n') {
+            current++;
+        }
+        return current;
+    }
+
+    private static int trimTrailingLineBreak(String value, int index) {
+        int current = index;
+        while (current > 0 && (value.charAt(current - 1) == '\n' || value.charAt(current - 1) == '\r')) {
+            current--;
+        }
+        return current;
     }
 }

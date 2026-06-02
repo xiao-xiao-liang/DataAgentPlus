@@ -11,6 +11,7 @@ import com.liang.data.agent.workflow.dto.planner.ExecutionStep;
 import com.liang.data.agent.workflow.dto.planner.Plan;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
+import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
 import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.liang.data.agent.common.constant.ControlFlowKey.PLAN_CURRENT_STEP;
@@ -89,6 +91,7 @@ public class ReportGeneratorNode implements NodeAction {
         
         Flux<ChatResponse> reportFlux = llmService.callUser(reportPrompt);
         TextType reportType = TextType.MARK_DOWN;
+        Flux<ChatResponse> cleanedReportFlux = createCleanedReportFlux(reportFlux);
 
         // 5. 组合流式响应并设置状态清理
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
@@ -108,11 +111,24 @@ public class ReportGeneratorNode implements NodeAction {
                 },
                 Flux.concat(
                         Flux.just(ChatResponseUtil.createPureResponse(reportType.getStartSign())),
-                        reportFlux,
+                        cleanedReportFlux,
                         Flux.just(ChatResponseUtil.createPureResponse(reportType.getEndSign()))
                 )
         );
 
         return Map.of(RESULT, generator);
+    }
+
+    private Flux<ChatResponse> createCleanedReportFlux(Flux<ChatResponse> reportFlux) {
+        return reportFlux.collectList()
+                .flatMapMany(responses -> Flux.just(ChatResponseUtil.createPureResponse(cleanReportContent(responses))));
+    }
+
+    private String cleanReportContent(List<ChatResponse> responses) {
+        StringBuilder reportContent = new StringBuilder();
+        for (ChatResponse response : responses) {
+            reportContent.append(ChatResponseUtil.getText(response));
+        }
+        return MarkdownParserUtil.unwrapOuterMarkdownFence(reportContent.toString());
     }
 }
