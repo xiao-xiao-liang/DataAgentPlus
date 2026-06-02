@@ -10,6 +10,7 @@ import { MOCK_PREVIEW_DATA, INITIAL_FILES } from '../DataCenter/mockData';
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 import { useCurrentAgentStore } from '../../stores/currentAgent';
 import { InteractiveReport } from './components/InteractiveReport';
+import { MarkdownParser } from './components/MarkdownParser';
 import { ClarificationCard } from './components/ClarificationCard';
 import { MemoryCandidateCard } from './components/MemoryCandidateCard';
 import { parseStreamingPlan } from './streamingPlan';
@@ -1438,6 +1439,18 @@ const isStructuredWorkflowResidue = (text: string) => {
   return false;
 };
 
+const looksLikeMarkdownDocument = (text: string) => {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return (
+    /(^|\n)\s{0,3}#{1,6}\s*\S/.test(normalized) ||
+    /(^|\n)\s{0,3}[-*+]\s*\S/.test(normalized) ||
+    /(^|\n)\s{0,3}\d+\.\s+\S/.test(normalized) ||
+    /(^|\n)\s{0,3}[-*_]{3,}\s*(?=\n|$)/.test(normalized) ||
+    /(^|\n)\s{0,3}```/.test(normalized) ||
+    /(^|\n)\s*\|.+\|\s*(?=\n|$)/.test(normalized)
+  );
+};
+
 const ProcessedTextBlock: React.FC<{ text: string; isComplete?: boolean; query?: string }> = ({ text, isComplete = false, query = "" }) => {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -1583,6 +1596,14 @@ const ProcessedTextBlock: React.FC<{ text: string; isComplete?: boolean; query?:
       <div className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-150 rounded-lg px-2.5 py-1 text-[11px] text-gray-500 font-semibold my-1 select-none">
         <Sparkles className="size-3 text-indigo-500 animate-pulse" />
         <span>{display}</span>
+      </div>
+    );
+  }
+
+  if (looksLikeMarkdownDocument(display)) {
+    return (
+      <div className="my-1 w-full max-w-[640px] text-gray-750">
+        <MarkdownParser content={display} />
       </div>
     );
   }

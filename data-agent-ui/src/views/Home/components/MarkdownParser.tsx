@@ -357,14 +357,17 @@ export const MarkdownParser: React.FC<MarkdownParserProps> = React.memo(({ conte
               p: ({ children }) => (
                 <p className="text-xs text-gray-650 leading-relaxed font-medium my-1.5 whitespace-pre-wrap">{children}</p>
               ),
+              hr: () => (
+                <hr className="my-3 border-0 border-t border-gray-200" />
+              ),
               ul: ({ children }) => (
-                <ul className="list-disc pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ul>
+                <ul className="list-disc pl-5 my-1.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium [&_ul]:my-1 [&_ul]:space-y-0.5 [&_ol]:my-1 [&_ol]:space-y-0.5">{children}</ul>
               ),
               ol: ({ children }) => (
-                <ol className="list-decimal pl-5 my-2.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium">{children}</ol>
+                <ol className="list-decimal pl-5 my-1.5 space-y-1 text-xs text-gray-655 leading-relaxed font-medium [&_ul]:my-1 [&_ul]:space-y-0.5 [&_ol]:my-1 [&_ol]:space-y-0.5">{children}</ol>
               ),
               li: ({ children }) => (
-                <li className="leading-relaxed whitespace-pre-wrap">{renderListItemChildren(children)}</li>
+                <li className="leading-relaxed">{renderListItemChildren(children)}</li>
               ),
               a: ({ href, children }) => (
                 <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-650 hover:underline font-bold">{children}</a>

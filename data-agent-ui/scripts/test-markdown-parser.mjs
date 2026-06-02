@@ -90,6 +90,25 @@ const tableAfterBoldLabelMarkdown = `### 3.1 数据查询
 | retrieval-engine        | RETRIEVE         | 91335.7500      | 420723          |
 | intent-resolve          | INTENT           | 45937.0714      | 297022          |`;
 
+const thematicBreakThenHeadingMarkdown = `### 4.3 会话时长特征
+- 平均时长 \`6.5小时\` 显著偏高，这可能是以下原因导致：
+  - **长连接/挂机**：用户在 \`2026-03\` 进行的 \`4\` 次会话可能为持续性测试会话，未及时关闭。
+  - **“最后消息时间”滞后**：\`last_time\` 字段的更新逻辑可能存在延迟。
+
+---
+
+## 5. 图表可视化分析
+由于系统仅包含 \`2026-03\` 一个维度的有效数据，无法绘制反映“变化趋势”的折线图或柱状图。`;
+
+const stuckHeadingAndListMarkdown = `图1：全生命周期数据量极低，仅有4次记录
+---
+##6. 建议与后续行动
+基于“零趋势、孤点数据”的现状，给出以下冷启动建议：
+###6.1 数据完整性排查（最高优先级）
+当前 \`5月、6月\` 无数据，与用户预期严重不符，建议立即排查：
+-**埋点与逻辑检查**：确认 \`create_time\` 字段是否按预期写入，排查系统时间是否被人为回滚或修改。
+- **数据清除策略**：核对是否存在自动化脚本误判，将 \`2026-05\` 的数据物理删除或标记为 \`deleted=1\`。`;
+
 const server = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -107,6 +126,8 @@ try {
   const fencedMarkdownReportHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: fencedMarkdownReport }));
   const spacedEmphasisHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: spacedEmphasisMarkdown }));
   const tableAfterBoldLabelHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: tableAfterBoldLabelMarkdown }));
+  const thematicBreakThenHeadingHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: thematicBreakThenHeadingMarkdown }));
+  const stuckHeadingAndListHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: stuckHeadingAndListMarkdown }));
 
   assert.match(html, /<h1[^>]*>Knowledge Report<\/h1>/);
   assert.match(html, /<h2[^>]*>1\. Summary<\/h2>/);
@@ -144,6 +165,20 @@ try {
   assert.match(tableAfterBoldLabelHtml, /<th[^>]*>node_name<\/th>/);
   assert.match(tableAfterBoldLabelHtml, /<td[^>]*>retrieval-engine<\/td>/);
   assert.doesNotMatch(tableAfterBoldLabelHtml, /\| node_name/);
+
+  assert.match(thematicBreakThenHeadingHtml, /<hr[^>]*>/);
+  assert.match(thematicBreakThenHeadingHtml, /<h2[^>]*>5\. 图表可视化分析<\/h2>/);
+  assert.match(thematicBreakThenHeadingHtml, /<ul class="[^"]*my-1\.5[^"]*">/);
+  assert.match(thematicBreakThenHeadingHtml, /<ul class="[^"]*\[&amp;_ul\]:my-1[^"]*">/);
+  assert.doesNotMatch(thematicBreakThenHeadingHtml, /<li class="[^"]*whitespace-pre-wrap[^"]*">/);
+  assert.doesNotMatch(thematicBreakThenHeadingHtml, /##5\. 图表可视化分析/);
+
+  assert.match(stuckHeadingAndListHtml, /<hr[^>]*>/);
+  assert.match(stuckHeadingAndListHtml, /<h2[^>]*>6\. 建议与后续行动<\/h2>/);
+  assert.match(stuckHeadingAndListHtml, /<h3[^>]*>6\.1 数据完整性排查（最高优先级）<\/h3>/);
+  assert.match(stuckHeadingAndListHtml, /<ul/);
+  assert.match(stuckHeadingAndListHtml, /<strong>埋点与逻辑检查<\/strong>/);
+  assert.doesNotMatch(stuckHeadingAndListHtml, /###6\.1|-\*\*埋点/);
 } finally {
   await server.close();
 }
