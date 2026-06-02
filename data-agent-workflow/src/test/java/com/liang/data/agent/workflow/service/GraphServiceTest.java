@@ -1,12 +1,14 @@
 package com.liang.data.agent.workflow.service;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
+import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.workflow.dto.GraphRequest;
@@ -59,6 +61,15 @@ class GraphServiceTest {
         assertTrue(compiledGraph.compileConfig.interruptsBefore().contains(HUMAN_FEEDBACK_NODE));
         assertTrue(compiledGraph.compileConfig.interruptsAfter().contains(CLARIFICATION_ASK_NODE));
         assertTrue(compiledGraph.compileConfig.interruptsAfter().contains(CLARIFICATION_NORMALIZE_NODE));
+    }
+
+    @Test
+    void shouldUseConfiguredCheckpointSaverWhenProvided() {
+        BaseCheckpointSaver checkpointSaver = mock(BaseCheckpointSaver.class);
+
+        CompileConfig compileConfig = GraphService.buildCompileConfig(checkpointSaver);
+
+        assertTrue(compileConfig.checkpointSaver().isPresent());
     }
 
     @Test

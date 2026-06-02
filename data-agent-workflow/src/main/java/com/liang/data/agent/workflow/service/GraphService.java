@@ -5,14 +5,19 @@ import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.GraphRepresentation;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.common.enums.InteractionType;
+import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntent;
+import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntentResult;
 import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.dto.GraphRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -47,30 +52,50 @@ public class GraphService {
     private final StateGraph nl2sqlGraph;
     private final CompiledGraph compiledGraph;
     private final WorkflowRunService workflowRunService;
+    private final HumanFeedbackIntentService humanFeedbackIntentService;
 
     private final ConcurrentHashMap<String, StreamContext> streamContextMap = new ConcurrentHashMap<>();
 
     public GraphService(StateGraph nl2sqlGraph) {
-        this(nl2sqlGraph, WorkflowRunService.noop());
+        this(nl2sqlGraph, WorkflowRunService.noop(), HumanFeedbackIntentService.withoutModel(), (BaseCheckpointSaver) null);
     }
 
     @Autowired
-    public GraphService(StateGraph nl2sqlGraph, WorkflowRunService workflowRunService) {
+    public GraphService(StateGraph nl2sqlGraph,
+                        WorkflowRunService workflowRunService,
+                        HumanFeedbackIntentService humanFeedbackIntentService,
+                        ObjectProvider<BaseCheckpointSaver> checkpointSaverProvider) {
+        this(nl2sqlGraph, workflowRunService, humanFeedbackIntentService,
+                checkpointSaverProvider != null ? checkpointSaverProvider.getIfAvailable() : null);
+    }
+
+    GraphService(StateGraph nl2sqlGraph,
+                 WorkflowRunService workflowRunService,
+                 HumanFeedbackIntentService humanFeedbackIntentService,
+                 BaseCheckpointSaver checkpointSaver) {
         this.nl2sqlGraph = nl2sqlGraph;
         this.workflowRunService = workflowRunService;
+        this.humanFeedbackIntentService = humanFeedbackIntentService != null
+                ? humanFeedbackIntentService
+                : HumanFeedbackIntentService.withoutModel();
         try {
-            this.compiledGraph = nl2sqlGraph.compile(
-                    CompileConfig.builder()
-                            .interruptBefore(CLARIFICATION_NORMALIZE_NODE, CLARIFICATION_CONFIRM_NODE, HUMAN_FEEDBACK_NODE)
-                            .interruptAfter(CLARIFICATION_ASK_NODE, CLARIFICATION_NORMALIZE_NODE)
-                            .build()
-            );
+            this.compiledGraph = nl2sqlGraph.compile(buildCompileConfig(checkpointSaver));
             log.info("工作流预编译完成，中断点: {}, {}, {}",
                     CLARIFICATION_NORMALIZE_NODE, CLARIFICATION_CONFIRM_NODE, HUMAN_FEEDBACK_NODE);
         } catch (GraphStateException e) {
             log.error("工作流预编译失败", e);
             throw new IllegalStateException("工作流预编译失败", e);
         }
+    }
+
+    static CompileConfig buildCompileConfig(BaseCheckpointSaver checkpointSaver) {
+        CompileConfig.Builder builder = CompileConfig.builder()
+                .interruptBefore(CLARIFICATION_NORMALIZE_NODE, CLARIFICATION_CONFIRM_NODE, HUMAN_FEEDBACK_NODE)
+                .interruptAfter(CLARIFICATION_ASK_NODE, CLARIFICATION_NORMALIZE_NODE);
+        if (checkpointSaver != null) {
+            builder.saverConfig(SaverConfig.builder().register(checkpointSaver).build());
+        }
+        return builder.build();
     }
 
     public Flux<String> chat(GraphRequest request, String multiTurnContext) {
@@ -148,14 +173,32 @@ public class GraphService {
 
     private Flux<GraphStreamChunk> handleHumanFeedback(GraphRequest request, String multiTurnContext) {
         String threadId = request.getThreadId();
-        Map<String, Object> feedbackData = Map.of(
-                "feedback", !request.isRejectedPlan(),
-                "feedback_content", request.getHumanFeedbackContent()
-        );
+        String feedbackContent = request.getHumanFeedbackContent() != null ? request.getHumanFeedbackContent() : "";
+        boolean approved = resolveHumanFeedbackApproved(request, feedbackContent);
+        Map<String, Object> feedbackData = new HashMap<>();
+        feedbackData.put("feedback", approved);
+        feedbackData.put("feedback_content", feedbackContent);
         Map<String, Object> stateUpdate = new HashMap<>();
         stateUpdate.put(HUMAN_FEEDBACK_DATA, feedbackData);
         stateUpdate.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
         return resume(threadId, stateUpdate, "人工反馈恢复", feedbackData);
+    }
+
+    private boolean resolveHumanFeedbackApproved(GraphRequest request, String feedbackContent) {
+        if (!request.isRejectedPlan()) {
+            return true;
+        }
+
+        HumanFeedbackIntentResult intentResult = humanFeedbackIntentService.classify(feedbackContent);
+        if (intentResult.getIntent() == HumanFeedbackIntent.APPROVE) {
+            log.info("人工反馈文本识别为确认意图，按审核通过处理 - threadId: {}, confidence: {}, content: {}",
+                    request.getThreadId(), intentResult.getConfidence(), feedbackContent);
+            return true;
+        }
+
+        log.info("人工反馈文本未识别为确认意图，按驳回修改处理 - threadId: {}, intent: {}, confidence: {}, reason: {}",
+                request.getThreadId(), intentResult.getIntent(), intentResult.getConfidence(), intentResult.getReason());
+        return false;
     }
 
     private Flux<GraphStreamChunk> resume(String threadId, Map<String, Object> stateUpdate, String label) {

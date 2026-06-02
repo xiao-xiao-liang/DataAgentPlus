@@ -4,6 +4,9 @@ import com.alibaba.cloud.ai.graph.GraphRepresentation;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.mysql.CreateOption;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.mysql.MysqlSaver;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.liang.data.agent.workflow.dispatcher.*;
 import com.liang.data.agent.workflow.node.*;
@@ -14,6 +17,8 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.sql.DataSource;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
@@ -31,6 +36,23 @@ import static com.liang.data.agent.common.constant.StateKey.*;
 @Slf4j
 @Configuration
 public class WorkflowConfiguration {
+
+    /**
+     * 创建工作流 checkpoint 持久化存储。
+     *
+     * <p>图恢复依赖框架 checkpoint，仅保存业务快照不足以跨进程恢复；
+     * 使用 MySQL 存储后，服务重启后仍可从人工审核等中断点继续执行。</p>
+     *
+     * @param dataSource 应用数据源
+     * @return 工作流 checkpoint 存储器
+     */
+    @Bean
+    public BaseCheckpointSaver workflowCheckpointSaver(DataSource dataSource) {
+        return MysqlSaver.builder()
+                .dataSource(dataSource)
+                .createOption(CreateOption.CREATE_IF_NOT_EXISTS)
+                .build();
+    }
 
     @Bean
     public StateGraph nl2sqlGraph(NodeBeanUtil nodeBeanUtil) throws GraphStateException {
