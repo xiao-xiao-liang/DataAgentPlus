@@ -40,9 +40,9 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
 
-        // 提示：此处设置 allowIO(IOAccess.NONE) 来确保沙箱的安全，防止生成的脚本对宿主机进行文件读取或越权
+        // 提示：此处关闭宿主访问与 IO 能力，防止生成脚本读取宿主文件或通过 JVM 越权
         try (Context context = Context.newBuilder("python")
-                .allowHostAccess(HostAccess.ALL)
+                .allowHostAccess(secureHostAccess())
                 .allowIO(IOAccess.NONE)
                 .allowNativeAccess(false)
                 .option("engine.WarnInterpreterOnly", "false")
@@ -73,5 +73,9 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
             String errorMsg = stderr.isEmpty() ? e.getMessage() : stderr + "\n" + e.getMessage();
             return TaskResponse.failure("", errorMsg, timeMs);
         }
+    }
+
+    static HostAccess secureHostAccess() {
+        return HostAccess.NONE;
     }
 }
