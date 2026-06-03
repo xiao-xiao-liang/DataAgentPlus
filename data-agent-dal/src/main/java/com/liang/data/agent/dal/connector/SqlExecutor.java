@@ -1,7 +1,7 @@
 package com.liang.data.agent.dal.connector;
 
 import com.liang.data.agent.dal.connector.bo.ResultSetBO;
-import org.apache.commons.lang3.StringUtils;
+import com.liang.data.agent.dal.connector.dialect.DatabaseDialect;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -31,19 +31,17 @@ public class SqlExecutor {
      *
      * @param conn 数据库连接 (由调用方负责关闭)
      * @param schema     数据库名/Schema名
+     * @param dialect    数据库方言
      * @param sql        要执行的 SQL
      * @return 结构化结果
      */
-    public static ResultSetBO execute(Connection conn, String schema, String sql) throws SQLException {
+    public static ResultSetBO execute(Connection conn, String schema, DatabaseDialect dialect, String sql) throws SQLException {
+        dialect.switchSchema(conn, schema);
+
         // 创建 Statement
         try (Statement statement = conn.createStatement()) {
             statement.setMaxRows(RESULT_SET_LIMIT);
             statement.setQueryTimeout(STATEMENT_TIMEOUT);
-            
-            // 切换到目标数据库
-            if (StringUtils.isNotBlank(schema)) {
-                conn.setCatalog(schema);
-            }
 
             try (ResultSet rs = statement.executeQuery(sql)) {
                 return ResultSetBO.of(rs);

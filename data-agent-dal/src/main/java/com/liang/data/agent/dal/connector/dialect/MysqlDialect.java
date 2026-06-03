@@ -14,6 +14,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * MySQL 数据库方言实现
+ *
+ * <p>负责构建 MySQL 连接信息、元数据查询以及查询执行前的 Schema 安全切换。</p>
+ */
 @Component
 public class MysqlDialect implements DatabaseDialect {
 
@@ -44,6 +49,14 @@ public class MysqlDialect implements DatabaseDialect {
     @Override
     public String validationQuery() {
         return DB_TYPE.getValidationQuery();
+    }
+
+    @Override
+    public String buildSwitchSchemaSql(String schema) {
+        if (StringUtils.isBlank(schema)) {
+            return "";
+        }
+        return "USE `" + schema.replace("`", "``") + "`";
     }
 
     @Override

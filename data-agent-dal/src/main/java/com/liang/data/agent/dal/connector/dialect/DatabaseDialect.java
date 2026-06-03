@@ -4,9 +4,11 @@ import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.ForeignKeyInfoBO;
 import com.liang.data.agent.dal.connector.bo.TableInfoBO;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 /**
@@ -26,6 +28,31 @@ public interface DatabaseDialect {
 
     /** 连接验证 SQL */
     String validationQuery();
+
+    /**
+     * 构建切换 Schema 的 SQL。
+     *
+     * <p>不同数据库的 Schema/Catalog 切换语法不同，默认返回空字符串表示无需执行切换。</p>
+     */
+    default String buildSwitchSchemaSql(String schema) {
+        return "";
+    }
+
+    /**
+     * 按当前方言安全切换 Schema。
+     *
+     * @param conn 数据库连接
+     * @param schema 目标 Schema
+     */
+    default void switchSchema(Connection conn, String schema) throws SQLException {
+        String sql = buildSwitchSchemaSql(schema);
+        if (StringUtils.isBlank(sql)) {
+            return;
+        }
+        try (Statement statement = conn.createStatement()) {
+            statement.execute(sql);
+        }
+    }
 
     List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException;
 

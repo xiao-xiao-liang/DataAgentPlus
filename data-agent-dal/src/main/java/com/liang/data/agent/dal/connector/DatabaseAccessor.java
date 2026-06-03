@@ -3,6 +3,7 @@ package com.liang.data.agent.dal.connector;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.bo.*;
+import com.liang.data.agent.dal.connector.dialect.DatabaseDialect;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -58,8 +59,8 @@ public class DatabaseAccessor {
 
     public ResultSetBO executeSql(DbConfigBO config, String sql) {
         try (Connection conn = dataSourceManager.getConnection(config)) {
-            // 注意：未来可以在 Dialect 中包装 executeSql 增强安全性
-            return SqlExecutor.execute(conn, config.schema(), sql);
+            DatabaseDialect dialect = dataSourceManager.getDialect(config.type());
+            return SqlExecutor.execute(conn, config.schema(), dialect, sql);
         } catch (SQLException e) {
             log.error("执行 SQL 失败: sql={}, error={}", sql, e.getMessage());
             throw new ServiceException("执行 SQL 失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);
