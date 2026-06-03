@@ -37,13 +37,14 @@ public class SqlExecutor {
      */
     public static ResultSetBO execute(Connection conn, String schema, DatabaseDialect dialect, String sql) throws SQLException {
         dialect.switchSchema(conn, schema);
+        String preparedSql = dialect.prepareQuerySql(sql);
 
         // 创建 Statement
         try (Statement statement = conn.createStatement()) {
             statement.setMaxRows(RESULT_SET_LIMIT);
             statement.setQueryTimeout(STATEMENT_TIMEOUT);
 
-            try (ResultSet rs = statement.executeQuery(sql)) {
+            try (ResultSet rs = statement.executeQuery(preparedSql)) {
                 return ResultSetBO.of(rs);
             }
         }

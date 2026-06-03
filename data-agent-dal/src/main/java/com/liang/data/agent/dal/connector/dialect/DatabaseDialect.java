@@ -54,6 +54,15 @@ public interface DatabaseDialect {
         }
     }
 
+    /**
+     * 执行前准备查询 SQL。
+     *
+     * <p>方言可在此完成语法审计、分页改写等执行前安全处理。</p>
+     */
+    default String prepareQuerySql(String sql) {
+        return sql;
+    }
+
     List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException;
 
     List<ColumnInfoBO> showColumns(Connection conn, String schema, String table) throws SQLException;

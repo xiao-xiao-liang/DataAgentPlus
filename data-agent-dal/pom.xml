@@ -30,6 +30,13 @@
             <artifactId>druid-spring-boot-3-starter</artifactId>
         </dependency>
 
+        <!-- Druid SQL 解析器 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <version>${druid.version}</version>
+        </dependency>
+
         <!-- JDBC -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
