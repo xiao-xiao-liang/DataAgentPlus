@@ -26,6 +26,11 @@ public class DataAgentProperties {
     private VectorStoreProperties vectorStore = new VectorStoreProperties();
 
     /**
+     * 连接池配置
+     */
+    private PoolProperties pool = new PoolProperties();
+
+    /**
      * SQL 执行失败最大重试次数
      */
     private int maxSqlRetryCount = 10;
@@ -107,5 +112,29 @@ public class DataAgentProperties {
          * 是否启用混合搜索 (Milvus + ES)
          */
         private boolean enableHybridSearch = false;
+    }
+
+    @Getter
+    @Setter
+    public static class PoolProperties {
+        /**
+         * 初始化连接数
+         */
+        private int initialSize = 5;
+
+        /**
+         * 最小空闲连接数
+         */
+        private int minIdle = 5;
+
+        /**
+         * 最大活跃连接数
+         */
+        private int maxActive = 20;
+
+        /**
+         * 获取连接最大等待时间 (毫秒)
+         */
+        private long maxWait = 10_000L;
     }
 }

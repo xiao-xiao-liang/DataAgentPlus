@@ -1,6 +1,7 @@
 package com.liang.data.agent.dal.connector;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
@@ -30,9 +31,12 @@ public class DataSourceManager implements DisposableBean {
     // 支持的所有方言
     private final Map<String, DatabaseDialect> dialects;
 
-    public DataSourceManager(List<DatabaseDialect> dialectList) {
+    private final DataAgentProperties properties;
+
+    public DataSourceManager(List<DatabaseDialect> dialectList, DataAgentProperties properties) {
         this.dialects = dialectList.stream()
                 .collect(Collectors.toMap(d -> d.type().toLowerCase(), d -> d));
+        this.properties = properties;
     }
 
     /**
@@ -118,10 +122,7 @@ public class DataSourceManager implements DisposableBean {
             ds.setPassword(config.password());
             ds.setDriverClassName(dialect.driver());
 
-            ds.setInitialSize(5);
-            ds.setMinIdle(5);
-            ds.setMaxActive(20);
-            ds.setMaxWait(10_000);
+            applyPoolProperties(ds, properties.getPool());
 
             ds.setTestOnBorrow(false);
             ds.setTestWhileIdle(true);
@@ -138,6 +139,13 @@ public class DataSourceManager implements DisposableBean {
         } catch (SQLException e) {
             throw new ServiceException("创建数据源连接池失败, url=" + config.url(), e, BaseErrorCode.SERVICE_ERROR);
         }
+    }
+
+    static void applyPoolProperties(DruidDataSource ds, DataAgentProperties.PoolProperties poolProperties) {
+        ds.setInitialSize(poolProperties.getInitialSize());
+        ds.setMinIdle(poolProperties.getMinIdle());
+        ds.setMaxActive(poolProperties.getMaxActive());
+        ds.setMaxWait(poolProperties.getMaxWait());
     }
 
     @Override
