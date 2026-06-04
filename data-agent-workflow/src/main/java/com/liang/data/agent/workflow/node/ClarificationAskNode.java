@@ -64,7 +64,7 @@ public class ClarificationAskNode implements NodeAction {
             String canonicalQuery = query == null ? "" : query.getCanonicalQuery();
             request.setReason("当前问题没有召回到可用的数据表，需要补充业务对象、系统模块、表/字段线索或指标口径后重新检索 Schema。");
             request.setMissingTerm(canonicalQuery);
-            request.setQuestion("我没有在当前数据源中检索到能支撑「" + canonicalQuery + "」的数据表。请补充一下它对应的业务对象、系统模块、表名/字段名线索，或说明“核心瓶颈”按耗时、错误率还是调用次数来衡量。");
+            request.setQuestion("我没有在当前数据源中检索到能支撑「" + canonicalQuery + "」的数据表。请补充一下它对应的业务对象、系统模块、表名/字段名线索，或说明相关指标口径。");
             request.setSuggestedMemoryType("BUSINESS_KNOWLEDGE");
             request.setMemoryWorthSaving(true);
             request.setAffectsSchemaRecall(true);
