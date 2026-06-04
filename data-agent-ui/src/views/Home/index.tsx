@@ -13,6 +13,7 @@ import { InteractiveReport } from './components/InteractiveReport';
 import { MarkdownParser } from './components/MarkdownParser';
 import { ClarificationCard } from './components/ClarificationCard';
 import { MemoryCandidateCard } from './components/MemoryCandidateCard';
+import { BackendErrorNotice } from './components/BackendErrorNotice';
 import { parseStreamingPlan } from './streamingPlan';
 import { getNextReportPanelState } from './reportPanelState';
 import { REPORT_PANEL_DEFAULT_WIDTH, clampReportPanelWidth } from './reportLayoutState';
@@ -1471,6 +1472,10 @@ const ProcessedTextBlock: React.FC<{ text: string; isComplete?: boolean; query?:
 
   // 0. 异常防御：捕获后端节点执行抛出的错误堆栈或 Exception 信息
   const lowerText = trimmed.toLowerCase();
+  const isBackendException = lowerText.includes('exception') || lowerText.includes('error:') || lowerText.includes('failed') || trimmed.includes('失败') || trimmed.includes('报错');
+  if (isBackendException) {
+    return <BackendErrorNotice content={trimmed} />;
+  }
   const isException = lowerText.includes('exception') || lowerText.includes('error:') || lowerText.includes('报错') || lowerText.includes('failed');
   if (isException) {
     const handleCopyError = () => {

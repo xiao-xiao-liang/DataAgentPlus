@@ -26,10 +26,12 @@ try {
     onPublish: () => {},
   }));
 
+  assert.match(html, /候选业务知识/);
   assert.match(html, /活跃用户/);
-  assert.match(html, /最近 7 天有登录行为的用户/);
-  assert.match(html, /COUNT\(DISTINCT user_id\)/);
-  assert.match(html, /AU/);
+  assert.match(html, /保存为候选知识/);
+  assert.match(html, /直接发布/);
+  assert.doesNotMatch(html, /最近 7 天有登录行为的用户/);
+  assert.doesNotMatch(html, /COUNT\(DISTINCT user_id\)/);
   assert.doesNotMatch(html, /businessTerm/);
   assert.doesNotMatch(html, /calculationRule/);
   assert.doesNotMatch(html, /\{&quot;/);

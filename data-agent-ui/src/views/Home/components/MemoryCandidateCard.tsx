@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
-import { BookmarkPlus, CheckCircle2, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { BookmarkPlus, CheckCircle2, ChevronRight, X } from 'lucide-react';
+import clsx from 'clsx';
 
 type MemoryCandidateActionStatus = 'idle' | 'pending' | 'submitted' | 'published' | 'ignored' | 'error';
 
@@ -54,6 +55,7 @@ export const MemoryCandidateCard: React.FC<MemoryCandidateCardProps> = ({
   onSave,
   onPublish,
 }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const normalized = useMemo(() => parseNormalizedContent(content), [content]);
   const isPending = actionStatus === 'pending';
   const isSettled = actionStatus === 'submitted' || actionStatus === 'published' || actionStatus === 'ignored';
@@ -69,12 +71,22 @@ export const MemoryCandidateCard: React.FC<MemoryCandidateCardProps> = ({
   }[actionStatus];
 
   return (
-    <div className="my-3 w-full max-w-[680px] rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-950">
-        <BookmarkPlus className="size-4" />
-        {title}
+    <div className="my-2 w-full max-w-[680px] rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-emerald-950">
+        <BookmarkPlus className="size-4 shrink-0" />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 border-none bg-transparent p-0 text-left text-sm font-semibold text-emerald-950 cursor-pointer"
+        >
+          <ChevronRight className={clsx('size-3.5 shrink-0 text-emerald-700 transition-transform', isOpen && 'rotate-90')} />
+          <span className="shrink-0">{title}</span>
+          {normalized?.businessTerm && (
+            <span className="min-w-0 truncate text-xs font-medium text-emerald-700">{normalized.businessTerm}</span>
+          )}
+        </button>
       </div>
-      <div className="mt-2 rounded-md bg-white px-3 py-2 text-sm leading-6 text-gray-700">
+      {isOpen && <div className="mt-2 rounded-md bg-white px-3 py-2 text-sm leading-6 text-gray-700">
         {normalized ? (
           <div className="space-y-2">
             {normalized.businessTerm && (
@@ -113,7 +125,7 @@ export const MemoryCandidateCard: React.FC<MemoryCandidateCardProps> = ({
         ) : (
           <div className="whitespace-pre-wrap">{content}</div>
         )}
-      </div>
+      </div>}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <span className="min-h-5 text-xs text-emerald-800">{statusText}</span>
         <div className="flex flex-wrap justify-end gap-2">
