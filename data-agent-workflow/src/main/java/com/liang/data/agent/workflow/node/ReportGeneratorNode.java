@@ -20,9 +20,9 @@ import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static com.liang.data.agent.common.constant.ControlFlowKey.PLAN_CURRENT_STEP;
@@ -120,15 +120,68 @@ public class ReportGeneratorNode implements NodeAction {
     }
 
     private Flux<ChatResponse> createCleanedReportFlux(Flux<ChatResponse> reportFlux) {
-        return reportFlux.collectList()
-                .flatMapMany(responses -> Flux.just(ChatResponseUtil.createPureResponse(cleanReportContent(responses))));
+        return Flux.defer(() -> {
+            StreamingReportCleaner cleaner = new StreamingReportCleaner();
+            return reportFlux
+                    .map(ChatResponseUtil::getText)
+                    .concatWith(Mono.just(StreamingReportCleaner.END_OF_STREAM))
+                    .handle((text, sink) -> {
+                        String cleaned = cleaner.clean(text);
+                        if (!cleaned.isEmpty()) {
+                            sink.next(ChatResponseUtil.createPureResponse(cleaned));
+                        }
+                    });
+        });
     }
 
-    private String cleanReportContent(List<ChatResponse> responses) {
-        StringBuilder reportContent = new StringBuilder();
-        for (ChatResponse response : responses) {
-            reportContent.append(ChatResponseUtil.getText(response));
+    /**
+     * 流式报告清理器，用于在不阻塞模型输出的前提下剥离最外层 markdown 代码块。
+     */
+    private static final class StreamingReportCleaner {
+
+        private static final String END_OF_STREAM = "\u0000_END_OF_REPORT_STREAM_\u0000";
+
+        private final StringBuilder prefixBuffer = new StringBuilder();
+        private boolean prefixResolved;
+
+        private String clean(String text) {
+            if (END_OF_STREAM.equals(text)) {
+                if (!prefixResolved) {
+                    prefixResolved = true;
+                    return MarkdownParserUtil.unwrapOuterMarkdownFence(prefixBuffer.toString());
+                }
+                return "";
+            }
+
+            if (prefixResolved) {
+                return text;
+            }
+
+            prefixBuffer.append(text);
+            String buffered = prefixBuffer.toString();
+            String stripped = buffered.stripLeading();
+            if (stripped.startsWith("```markdown\n")) {
+                prefixResolved = true;
+                return stripped.substring("```markdown\n".length());
+            }
+            if (stripped.startsWith("```markdown\r\n")) {
+                prefixResolved = true;
+                return stripped.substring("```markdown\r\n".length());
+            }
+            if (stripped.startsWith("```md\n")) {
+                prefixResolved = true;
+                return stripped.substring("```md\n".length());
+            }
+            if (stripped.startsWith("```md\r\n")) {
+                prefixResolved = true;
+                return stripped.substring("```md\r\n".length());
+            }
+            if (stripped.startsWith("```markdown") || stripped.startsWith("```md")) {
+                return "";
+            }
+
+            prefixResolved = true;
+            return buffered;
         }
-        return MarkdownParserUtil.unwrapOuterMarkdownFence(reportContent.toString());
     }
 }

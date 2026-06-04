@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.model.ChatResponse;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -108,6 +110,30 @@ class ReportGeneratorNodeTest {
         assertThat(streamedContent).doesNotContain("$$$markdown-report```markdown");
         assertThat(streamedContent).contains("```sql");
         assertThat(streamedContent).contains("```echarts");
+    }
+
+    @Test
+    void shouldStreamReportChunkBeforeModelResponseCompletes() throws Exception {
+        LlmService llmService = mock(LlmService.class);
+        when(llmService.callUser(anyString()))
+                .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("第一段"))
+                        .concatWith(Mono.delay(Duration.ofSeconds(5))
+                                .map(ignored -> ChatResponseUtil.createPureResponse("第二段"))));
+
+        Map<String, Object> result = new ReportGeneratorNode(llmService).apply(createReportState());
+
+        @SuppressWarnings("unchecked")
+        Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator =
+                (Flux<GraphResponse<StreamingOutput<ChatResponse>>>) result.get(RESULT);
+        String firstReportChunk = generator
+                .filter(response -> !response.isDone())
+                .map(response -> response.getOutput().join().chunk())
+                .skipUntil(chunk -> chunk.contains("$$$markdown-report"))
+                .skip(1)
+                .filter(chunk -> !chunk.contains("$$$/markdown-report"))
+                .blockFirst(Duration.ofMillis(500));
+
+        assertThat(firstReportChunk).isEqualTo("第一段");
     }
 
     private OverAllState createReportState() {
