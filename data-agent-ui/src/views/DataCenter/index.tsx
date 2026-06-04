@@ -68,6 +68,9 @@ export const DataCenter: React.FC = () => {
             port: ds.port,
             database: ds.databaseName || '',
             username: ds.username,
+            connectionUrl: ds.connectionUrl || '',
+            testStatus: ds.testStatus || 'unknown',
+            description: ds.description || '',
             status: ds.status === 'active' ? 'online' : 'offline',
             createdAt: ds.createTime ? ds.createTime.replace('T', ' ').substring(0, 19) : '',
             // 缓存已选表，在后端表关系建立前提供良好的体验
@@ -210,14 +213,15 @@ export const DataCenter: React.FC = () => {
     type: 'LOCAL_UPLOAD' | 'OSS_FILE' | 'RDS_DB' | 'POLAR_DB' | 'ANALYTIC_DB' | 'DMS_INSTANCE';
     fileName?: string;
     tempId?: string;
-    selectedTables?: string[];
     dbForm?: {
+      type: 'mysql' | 'postgresql';
       name: string;
       host: string;
       port: string;
       database: string;
       username: string;
       password?: string;
+      description?: string;
       importedTables?: string[];
     };
   }) => {
@@ -238,15 +242,11 @@ export const DataCenter: React.FC = () => {
     } else if (data.type === 'RDS_DB' || data.type === 'POLAR_DB' || data.type === 'ANALYTIC_DB') {
       // 如果存在静默创建保存好的 tempId
       if (data.tempId) {
-        // 保存选中的表关系到本地 LocalStorage 供后续使用
-        if (data.selectedTables) {
-          localStorage.setItem(`ds_imported_${data.tempId}`, JSON.stringify(data.selectedTables));
-        }
         // 重新拉取后端最新数据源列表
         await fetchDatasources();
         // 切换 Tab 以让用户在左侧看到新加的数据库连接
         setActiveTab('RDS');
-        setToastMessage('数据库连接成功，可以继续添加');
+        setToastMessage('数据源保存成功，可在自定义Agent中绑定');
         // 强行改变 key，重置 AddDataPanel 面板的输入和测试连接状态
         setAddPanelKey(prev => prev + 1);
       } else {

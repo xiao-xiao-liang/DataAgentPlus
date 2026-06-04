@@ -6,6 +6,9 @@ export interface DataSource {
   port: number;
   database: string;
   username: string;
+  connectionUrl?: string;
+  testStatus?: 'success' | 'failed' | 'unknown';
+  description?: string;
   status: 'online' | 'offline';
   createdAt: string;
   importedTables?: string[];

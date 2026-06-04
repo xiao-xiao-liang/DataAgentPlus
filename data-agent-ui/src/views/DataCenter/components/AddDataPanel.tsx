@@ -8,7 +8,9 @@ import {
   Upload, 
   Loader2, 
   CheckCircle2, 
-  ChevronsUpDown 
+  AlertCircle,
+  ChevronsUpDown,
+  ShieldCheck
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -16,20 +18,31 @@ import clsx from 'clsx';
 import mysqlLogo from '../../../assets/logos/mysql.svg';
 import postgresqlLogo from '../../../assets/logos/postgresql.svg';
 
+type DatabaseEngineType = 'mysql' | 'postgresql';
+
+const DATABASE_DEFAULT_PORTS: Record<DatabaseEngineType, number> = {
+  mysql: 3306,
+  postgresql: 5432
+};
+
+const getDefaultDatabasePort = (type: DatabaseEngineType) => DATABASE_DEFAULT_PORTS[type];
+const getDefaultDatabasePortText = (type: DatabaseEngineType) => String(getDefaultDatabasePort(type));
+
 interface AddDataPanelProps {
   onCancel: () => void;
   onConfirm: (data: {
     type: 'LOCAL_UPLOAD' | 'OSS_FILE' | 'RDS_DB' | 'POLAR_DB' | 'ANALYTIC_DB' | 'DMS_INSTANCE';
     fileName?: string;
     tempId?: string;
-    selectedTables?: string[];
     dbForm?: {
+      type: DatabaseEngineType;
       name: string;
       host: string;
       port: string;
       database: string;
       username: string;
       password?: string;
+      description?: string;
       importedTables?: string[];
     };
   }) => void;
@@ -49,21 +62,19 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
   // 关系型数据库通用表单状态
   const [dbForm, setDbForm] = useState({
     name: '',
-    type: 'mysql' as 'mysql' | 'postgresql',
+    type: 'mysql' as DatabaseEngineType,
     host: '',
-    port: '3306',
+    port: getDefaultDatabasePortText('mysql'),
     username: '',
     password: '',
     database: '',
-    selectedTables: [] as string[]
+    description: ''
   });
 
   const [dbConnected, setDbConnected] = useState(false);
   const [tempId, setTempId] = useState<string | null>(null); // 保存静默创建保存成功后的临时数据源 ID
-  const [tablesList, setTablesList] = useState<string[]>([]); // 数据库中的物理表名列表
-  const [tableSearchQuery, setTableSearchQuery] = useState('');
-  const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [testMessage, setTestMessage] = useState<string>('');
 
   // 标识是否已最终点下确认，防 Unmount 卸载时误删
   const hasConfirmedRef = React.useRef(false);
@@ -75,31 +86,31 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
         name: '',
         type: 'mysql',
         host: '',
-        port: '3306',
+        port: getDefaultDatabasePortText('mysql'),
         username: '',
         password: '',
         database: '',
-        selectedTables: []
+        description: ''
       });
       setDbConnected(false);
       setTempId(null);
-      setTablesList([]);
       setTestStatus('idle');
+      setTestMessage('');
     } else if (selectedAddType === 'POLAR_DB') {
       setDbForm({
         name: '',
         type: 'postgresql',
         host: '',
-        port: '5432',
+        port: getDefaultDatabasePortText('postgresql'),
         username: '',
         password: '',
         database: '',
-        selectedTables: []
+        description: ''
       });
       setDbConnected(false);
       setTempId(null);
-      setTablesList([]);
       setTestStatus('idle');
+      setTestMessage('');
     }
   }, [selectedAddType]);
 
@@ -136,20 +147,23 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
 
   // 真正对接后端：测试并静默创建数据源 (方案一)
   const handleTestConnection = async () => {
-    if (!dbForm.name || !dbForm.host || !dbForm.port || !dbForm.username || !dbForm.password) {
-      alert('请填齐必选配置（数据源别名、Host、端口、账号、密码）');
+    if (!dbForm.name || !dbForm.host || !dbForm.port || !dbForm.database || !dbForm.username || !dbForm.password) {
+      setTestStatus('failed');
+      setTestMessage('请填齐必选配置（数据源别名、默认库名、Host、端口、账号、密码）');
       return;
     }
     setTestStatus('testing');
+    setTestMessage('正在测试连接并保存数据源配置...');
 
     const reqBody = {
       name: dbForm.name,
       type: dbForm.type,
       host: dbForm.host,
-      port: parseInt(dbForm.port) || 3306,
+      port: Number.parseInt(dbForm.port, 10) || getDefaultDatabasePort(dbForm.type),
       databaseName: dbForm.database || '', // 测试时数据库名若空后端可使用默认连接
       username: dbForm.username,
-      password: dbForm.password
+      password: dbForm.password,
+      description: dbForm.description.trim()
     };
 
     try {
@@ -181,32 +195,24 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
               const newId = String(createResult.data);
               setTempId(newId);
 
-              // 3. 拉取该物理数据库的表列表以供级联勾选
-              const tablesResponse = await fetch(`/api/datasource/${newId}/tables`);
-              if (tablesResponse.ok) {
-                const tablesResult = await tablesResponse.json();
-                if (tablesResult.code === '0') {
-                  const tbls = (tablesResult.data || []).map((t: any) => t.tableName);
-                  setTablesList(tbls);
-                  setTestStatus('success');
-                  setDbConnected(true);
-                  return;
-                }
-              }
+              setTestStatus('success');
+              setTestMessage('连接成功，数据源已保存。表范围请在“自定义Agent”的数据环境中按 Agent 配置。');
+              setDbConnected(true);
+              return;
             }
           }
         }
 
         // 失败回显
         setTestStatus('failed');
-        alert(result.data || result.message || '连接失败，请检查数据库配置、安全组或账号密码是否正确');
+        setTestMessage(result.data || result.message || '连接失败，请检查数据库配置、安全组或账号密码是否正确');
       } else {
         setTestStatus('failed');
-        alert(`接口响应异常: HTTP ${response.status}`);
+        setTestMessage(`接口响应异常: HTTP ${response.status}`);
       }
     } catch (e: any) {
       setTestStatus('failed');
-      alert(`网络请求失败: ${e.message || '未知错误'}`);
+      setTestMessage(`网络请求失败: ${e.message || '未知错误'}`);
     }
   };
 
@@ -234,8 +240,7 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
         // 未连通时不可直接点确认提交
         return true;
       }
-      // 连通解锁后，必须指定要导入的库名且勾选了至少一张表
-      return !dbForm.database || dbForm.selectedTables.length === 0;
+      return !dbForm.database;
     }
     return false;
   }, [selectedAddType, fileName, isUploading, dbConnected, dbForm]);
@@ -248,14 +253,15 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
       onConfirm({
         type: selectedAddType,
         tempId: tempId || undefined,
-        selectedTables: dbForm.selectedTables,
         dbForm: {
+          type: dbForm.type,
           name: dbForm.name,
           host: dbForm.host,
           port: dbForm.port,
           database: dbForm.database,
           username: dbForm.username,
-          password: dbForm.password
+          password: dbForm.password,
+          description: dbForm.description.trim()
         }
       });
       return;
@@ -266,6 +272,12 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
       dbForm: undefined
     });
   };
+
+  const databaseLabel = dbForm.type === 'postgresql' ? '默认 Schema/Database' : '默认 Database 库名';
+  const databasePlaceholder = dbForm.type === 'postgresql' ? '例如: public 或 analytics' : '例如: restaurant_db';
+  const hostPlaceholder = dbForm.type === 'postgresql'
+    ? 'pg.example.com'
+    : 'rm-bp123456.mysql.rds.aliyuncs.com';
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-3 duration-300">
@@ -547,81 +559,112 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
           </div>
         ) : (selectedAddType === 'RDS_DB' || selectedAddType === 'POLAR_DB' || selectedAddType === 'ANALYTIC_DB') ? (
           /* ===================== 统一关系型数据库连接配置 (MySQL & PostgreSQL) ===================== */
-          <div className="space-y-5 max-w-3xl border border-gray-100 rounded-lg p-6 bg-[#FAFAFA]/50 animate-in fade-in duration-200">
-            <div className="text-sm font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-2">
-              {selectedAddType === 'RDS_DB' ? 'MySQL' : selectedAddType === 'POLAR_DB' ? 'PostgreSQL' : 'AnalyticDB'} 数据源配置
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm animate-in fade-in duration-200">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-xs">
+                  {dbForm.type === 'postgresql' ? (
+                    <img src={postgresqlLogo} className="h-6 w-6 object-contain" alt="PostgreSQL" />
+                  ) : (
+                    <img src={mysqlLogo} className="h-6 w-6 object-contain" alt="MySQL" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-base font-bold text-slate-900">
+                    {selectedAddType === 'RDS_DB' ? 'MySQL' : selectedAddType === 'POLAR_DB' ? 'PostgreSQL' : 'AnalyticDB'} 数据源配置
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    保存可复用的数据源连接，Agent 绑定与表范围请在自定义 Agent 中配置。
+                  </div>
+                </div>
+              </div>
+              {dbConnected && (
+                <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700">
+                  <ShieldCheck className="h-4 w-4" />
+                  已保存
+                </div>
+              )}
             </div>
 
-            {/* 别名与库名 */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">数据源别名 <span className="text-red-500">*</span></label>
-                <input 
-                  disabled={dbConnected}
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
-                  placeholder="例如: Prod_Sales_DB"
-                  value={dbForm.name}
-                  onChange={(e) => setDbForm(prev => ({ ...prev, name: e.target.value }))}
-                />
+            <div className="space-y-5 p-6">
+              <div className="grid grid-cols-2 gap-5 text-sm">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-bold text-slate-700">数据源别名 <span className="text-red-500">*</span></label>
+                  <input 
+                    disabled={dbConnected}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
+                    placeholder="例如: Prod_Sales_DB"
+                    value={dbForm.name}
+                    onChange={(e) => setDbForm(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-bold text-slate-700">{databaseLabel} <span className="text-red-500">*</span></label>
+                  <input 
+                    disabled={dbConnected}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
+                    placeholder={databasePlaceholder}
+                    value={dbForm.database}
+                    onChange={(e) => setDbForm(prev => ({ ...prev, database: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">默认Database库名 <span className="text-red-500">*</span></label>
-                <input 
-                  disabled={dbConnected}
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
-                  placeholder="例如: restaurant_db"
-                  value={dbForm.database}
-                  onChange={(e) => setDbForm(prev => ({ ...prev, database: e.target.value }))}
-                />
-              </div>
-            </div>
 
-            {/* Host与Port */}
-            <div className="grid grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-4 gap-5 text-sm">
               <div className="flex flex-col gap-1.5 col-span-3">
-                <label className="font-bold text-gray-600">Host主机地址 <span className="text-red-500">*</span></label>
+                <label className="font-bold text-slate-700">Host主机地址 <span className="text-red-500">*</span></label>
                 <input 
                   disabled={dbConnected}
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
-                  placeholder="rm-bp123456.mysql.rds.aliyuncs.com"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
+                  placeholder={hostPlaceholder}
                   value={dbForm.host}
                   onChange={(e) => setDbForm(prev => ({ ...prev, host: e.target.value }))}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">端口号 <span className="text-red-500">*</span></label>
+                <label className="font-bold text-slate-700">端口号 <span className="text-red-500">*</span></label>
                 <input 
                   disabled={dbConnected}
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
                   value={dbForm.port}
                   onChange={(e) => setDbForm(prev => ({ ...prev, port: e.target.value }))}
                 />
               </div>
             </div>
 
-            {/* 账号与密码 */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-5 text-sm">
               <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">数据库用户名 <span className="text-red-500">*</span></label>
+                <label className="font-bold text-slate-700">数据库用户名 <span className="text-red-500">*</span></label>
                 <input 
                   disabled={dbConnected}
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
                   placeholder="username"
                   value={dbForm.username}
                   onChange={(e) => setDbForm(prev => ({ ...prev, username: e.target.value }))}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">密码 <span className="text-red-500">*</span></label>
+                <label className="font-bold text-slate-700">密码 <span className="text-red-500">*</span></label>
                 <input 
                   disabled={dbConnected}
                   type="password"
-                  className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400 disabled:bg-gray-100/60 disabled:text-gray-450 disabled:cursor-not-allowed" 
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400" 
                   placeholder="password"
                   value={dbForm.password}
                   onChange={(e) => setDbForm(prev => ({ ...prev, password: e.target.value }))}
                 />
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 text-sm">
+              <label className="font-bold text-slate-700">数据源描述</label>
+              <textarea
+                disabled={dbConnected}
+                className="min-h-18 w-full resize-y rounded-lg border border-slate-200 bg-slate-50/40 px-3 py-2 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#3A78F2] focus:bg-white focus:outline-none focus:ring-3 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                placeholder="例如: 地铁运行轨迹 PostgreSQL 数据源"
+                value={dbForm.description}
+                onChange={(e) => setDbForm(prev => ({ ...prev, description: e.target.value.slice(0, 200) }))}
+              />
             </div>
 
             {/* 测试连接按钮 */}
@@ -631,167 +674,43 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
                   type="button"
                   onClick={handleTestConnection}
                   disabled={testStatus === 'testing'}
-                  className="px-3.5 h-8 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-[#3A78F2] text-sm font-semibold rounded-md transition-all cursor-pointer disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-[#3A78F2] transition-all hover:bg-blue-100 cursor-pointer disabled:opacity-50"
                 >
+                  {testStatus === 'testing' && <Loader2 className="h-4 w-4 animate-spin" />}
                   {testStatus === 'testing' ? '正在建立连接...' : '测试连接'}
                 </button>
-                {testStatus === 'failed' && (
-                  <span className="text-xs text-red-500 font-semibold animate-in fade-in">连接测试失败，请检查配置</span>
-                )}
               </div>
             )}
 
             {/* 连接反馈提示 */}
             {testStatus !== 'idle' && (
               <div className={clsx(
-                "p-2.5 rounded-lg flex items-center gap-2 border text-sm animate-in slide-in-from-top-1 duration-200",
+                "p-2.5 rounded-lg flex items-start gap-2 border text-sm leading-5 animate-in slide-in-from-top-1 duration-200",
                 testStatus === 'testing' && "bg-gray-50 border-gray-200 text-gray-600",
                 testStatus === 'success' && "bg-green-50 border-green-200 text-green-700",
-                testStatus === 'failed' && "bg-red-50 border-red-200 text-red-750/80"
+                testStatus === 'failed' && "bg-red-50 border-red-200 text-red-700"
               )}>
                 {testStatus === 'testing' && (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    <span>正在尝试建立测试 TCP 连接并静默创建元数据...</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
                   </>
                 )}
                 {testStatus === 'success' && (
                   <>
-                    <CheckCircle2 className="w-4 h-4 text-green-500 animate-bounce" />
-                    <span>连接成功！已从物理库拉取表列表，请选择要导入的表。</span>
+                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
+                  </>
+                )}
+                {testStatus === 'failed' && testMessage && (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
                   </>
                 )}
               </div>
             )}
-
-            {/* ===================== 级联解锁表多选区域 ===================== */}
-            {dbConnected && (
-              <div className="space-y-4 pt-3 border-t border-gray-200/60 animate-in fade-in slide-in-from-top-2 duration-300">
-                
-                {/* 表多选 */}
-                <div className="flex flex-col gap-1.5 text-sm">
-                  <label className="font-bold text-gray-600 select-none">
-                    <span className="text-red-500 mr-1">*</span>选择导入的表 (多选)
-                  </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsTableDropdownOpen(!isTableDropdownOpen)}
-                      className="w-full border rounded-md px-3 py-1.5 text-left font-medium text-sm flex items-center justify-between min-h-9 transition-all relative cursor-pointer bg-white border-gray-200 text-gray-700 hover:border-gray-300 focus:outline-none focus:border-[#3A78F2]"
-                    >
-                      <span className="truncate pr-6 select-none">
-                        {dbForm.selectedTables.length === 0 
-                          ? "请勾选参与 Agent 分析的表..." 
-                          : `已选中 ${dbForm.selectedTables.length} 张数据表`}
-                      </span>
-                      <ChevronsUpDown className="w-4 h-4 text-gray-400 opacity-60 absolute right-2.5 top-2.5" />
-                    </button>
-
-                    {/* 表下拉浮层 */}
-                    {isTableDropdownOpen && (
-                      <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3.5 flex flex-col gap-2.5 max-h-72 overflow-hidden animate-in fade-in duration-100">
-                        {/* 搜索框 */}
-                        <div className="relative flex items-center">
-                          <input
-                            type="text"
-                            value={tableSearchQuery}
-                            onChange={(e) => setTableSearchQuery(e.target.value)}
-                            placeholder="输入过滤表名..."
-                            className="w-full border border-gray-200 px-3 py-1.5 pl-8 text-xs rounded-md h-8 focus:outline-none focus:border-[#3A78F2]"
-                          />
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-                        </div>
-
-                        {/* 全选操作 */}
-                        <div className="flex items-center justify-between text-xs border-b border-gray-100 pb-2">
-                          <span className="text-gray-400 font-medium">可选列表 ({tablesList.length})</span>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setDbForm(prev => ({ ...prev, selectedTables: [...tablesList] }))}
-                              className="text-[#3A78F2] hover:underline font-semibold cursor-pointer border-0 bg-transparent"
-                            >
-                              全选
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDbForm(prev => ({ ...prev, selectedTables: [] }))}
-                              className="text-gray-400 hover:text-gray-600 font-semibold cursor-pointer border-0 bg-transparent"
-                            >
-                              清空
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* 可选表渲染 */}
-                        <div className="flex-1 overflow-y-auto space-y-1.5 max-h-44 pr-1">
-                          {tablesList
-                            .filter(t => t.toLowerCase().includes(tableSearchQuery.toLowerCase()))
-                            .map(table => (
-                              <label 
-                                key={table} 
-                                className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs font-semibold text-gray-650"
-                              >
-                                <input 
-                                  type="checkbox"
-                                  checked={dbForm.selectedTables.includes(table)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setDbForm(prev => ({
-                                        ...prev,
-                                        selectedTables: [...prev.selectedTables, table]
-                                      }));
-                                    } else {
-                                      setDbForm(prev => ({
-                                        ...prev,
-                                        selectedTables: prev.selectedTables.filter(t => t !== table)
-                                      }));
-                                    }
-                                  }}
-                                  className="accent-[#3A78F2] cursor-pointer"
-                                />
-                                <span className="font-mono text-gray-700">{table}</span>
-                              </label>
-                            ))}
-                          {tablesList.filter(t => t.toLowerCase().includes(tableSearchQuery.toLowerCase())).length === 0 && (
-                            <div className="text-center py-4 text-gray-400 text-xs">无匹配的数据表</div>
-                          )}
-                        </div>
-
-                        {/* 确认关闭 */}
-                        <div className="flex justify-end pt-2 border-t border-gray-150 flex-none select-none">
-                          <button
-                            type="button"
-                            onClick={() => setIsTableDropdownOpen(false)}
-                            className="px-3 py-1 bg-[#2D336B] hover:bg-[#1E2248] text-white text-xs font-semibold rounded cursor-pointer"
-                          >
-                            完成选择
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 已选表 Tag 列表 */}
-                {dbForm.selectedTables.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2 bg-gray-50 border border-gray-200/50 p-2.5 rounded-lg">
-                    {dbForm.selectedTables.map(t => (
-                      <div key={t} className="flex items-center gap-1.5 bg-white border border-gray-200/80 px-2 py-0.5 rounded text-xs font-semibold text-gray-600 animate-in fade-in zoom-in-95 duration-100">
-                        <span className="font-mono">{t}</span>
-                        <button
-                          type="button"
-                          onClick={() => setDbForm(prev => ({ ...prev, selectedTables: prev.selectedTables.filter(tb => tb !== t) }))}
-                          className="text-gray-400 hover:text-red-500 font-bold transition-colors cursor-pointer border-0 bg-transparent text-sm leading-none"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         ) : (
           /* ===================== 数据库连接配置 (其他) ===================== */
@@ -809,10 +728,10 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-gray-600">默认Database库名 <span className="text-red-500">*</span></label>
+                <label className="font-bold text-gray-600">{databaseLabel} <span className="text-red-500">*</span></label>
                 <input 
                   className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400" 
-                  placeholder="例如: restaurant_db"
+                  placeholder={databasePlaceholder}
                   value={dbForm.database}
                   onChange={(e) => setDbForm(prev => ({ ...prev, database: e.target.value }))}
                 />
@@ -824,7 +743,7 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
                 <label className="font-bold text-gray-600">Host主机地址 <span className="text-red-500">*</span></label>
                 <input 
                   className="border border-gray-200 px-3 py-2 rounded-md focus:outline-none focus:border-[#3A78F2] h-9 w-full bg-white font-medium text-sm transition-all placeholder:text-gray-400" 
-                  placeholder="rm-bp123456.mysql.rds.aliyuncs.com"
+                  placeholder={hostPlaceholder}
                   value={dbForm.host}
                   onChange={(e) => setDbForm(prev => ({ ...prev, host: e.target.value }))}
                 />
@@ -864,21 +783,27 @@ export const AddDataPanel: React.FC<AddDataPanelProps> = ({ onCancel, onConfirm,
             {/* 测试连接模拟显示 */}
             {testStatus !== 'idle' && (
               <div className={clsx(
-                "p-2.5 rounded-lg flex items-center gap-2 border text-sm animate-in slide-in-from-top-1 duration-200",
+                "p-2.5 rounded-lg flex items-start gap-2 border text-sm leading-5 animate-in slide-in-from-top-1 duration-200",
                 testStatus === 'testing' && "bg-gray-50 border-gray-200 text-gray-600",
                 testStatus === 'success' && "bg-green-50 border-green-200 text-green-700",
                 testStatus === 'failed' && "bg-red-50 border-red-200 text-red-700"
               )}>
                 {testStatus === 'testing' && (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    <span>正在尝试建立测试 TCP 连接...</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
                   </>
                 )}
                 {testStatus === 'success' && (
                   <>
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    <span>连接测试成功！</span>
+                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
+                  </>
+                )}
+                {testStatus === 'failed' && testMessage && (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-none mt-0.5" />
+                    <span className="min-w-0 break-words">{testMessage}</span>
                   </>
                 )}
               </div>
