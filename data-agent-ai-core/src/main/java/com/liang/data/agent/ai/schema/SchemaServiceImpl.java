@@ -250,7 +250,13 @@ public class SchemaServiceImpl implements SchemaService {
      */
     private Document buildTableDocument(Integer agentId, Integer datasourceId, String tableName, String comment,
                                         List<ColumnInfoBO> columns, Map<String, List<String>> foreignKeyMap) {
-        String content = String.format("表名: %s, 描述: %s", tableName, comment);
+        String columnSummary = columns.stream()
+                .map(col -> String.format("%s(%s): %s",
+                        col.columnName(),
+                        col.dataType(),
+                        Optional.ofNullable(col.comment()).orElse("")))
+                .collect(Collectors.joining("；"));
+        String content = String.format("表名: %s, 描述: %s, 字段: %s", tableName, comment, columnSummary);
 
         String primaryKeys = columns.stream()
                 .filter(ColumnInfoBO::primaryKey)
