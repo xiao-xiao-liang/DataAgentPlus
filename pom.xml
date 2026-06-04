@@ -42,6 +42,7 @@
 
         <!-- 数据库驱动 -->
         <mysql.version>8.4.0</mysql.version>
+        <postgresql.version>42.7.4</postgresql.version>
 
         <!-- 向量库 & 检索 -->
         <milvus-java-sdk.version>2.5.4</milvus-java-sdk.version>
@@ -52,6 +53,7 @@
 
         <!-- 工具库 -->
         <lombok.version>1.18.42</lombok.version>
+        <guava.version>33.5.0-jre</guava.version>
         <commons-lang3.version>3.17.0</commons-lang3.version>
         <commons-io.version>2.18.0</commons-io.version>
         <commons-collections4.version>4.5.0-M3</commons-collections4.version>
@@ -147,6 +149,16 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>druid-spring-boot-3-starter</artifactId>
                 <version>${druid.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
             </dependency>
 
             <!-- ==================== Docker Java ==================== -->

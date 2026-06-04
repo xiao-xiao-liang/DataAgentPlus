@@ -34,6 +34,31 @@ public enum BaseErrorCode implements IErrorCode {
      */
     SERVICE_TIMEOUT_ERROR("B000100", "系统执行超时"),
 
+    /**
+     * 数据源连接失败
+     */
+    DATASOURCE_CONNECTION_FAILED("B010001", "数据源连接失败"),
+
+    /**
+     * 数据源认证失败
+     */
+    DATASOURCE_AUTH_FAILED("B010002", "数据源用户名或密码错误"),
+
+    /**
+     * 数据源数据库不存在
+     */
+    DATASOURCE_DATABASE_NOT_FOUND("B010003", "数据源数据库不存在"),
+
+    /**
+     * 数据源 Schema 不存在
+     */
+    DATASOURCE_SCHEMA_NOT_FOUND("B010004", "数据源 Schema 不存在"),
+
+    /**
+     * 数据源权限不足
+     */
+    DATASOURCE_PERMISSION_DENIED("B010005", "数据源权限不足"),
+
     // ========== C 类错误：第三方服务错误 ==========
 
     /**

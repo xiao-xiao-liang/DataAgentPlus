@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 数据库方言接口
@@ -28,6 +29,19 @@ public interface DatabaseDialect {
 
     /** 连接验证 SQL */
     String validationQuery();
+
+    /**
+     * 连接成功后的业务校验。
+     *
+     * <p>用于检查默认 database/schema/catalog 是否存在。默认不做额外校验。</p>
+     *
+     * @param conn 数据库连接
+     * @param config 数据源连接配置
+     * @return 校验失败时返回可展示的中文提示，校验通过返回空
+     */
+    default Optional<String> validateConnected(Connection conn, DbConfigBO config) throws SQLException {
+        return Optional.empty();
+    }
 
     /**
      * 构建切换 Schema 的 SQL。

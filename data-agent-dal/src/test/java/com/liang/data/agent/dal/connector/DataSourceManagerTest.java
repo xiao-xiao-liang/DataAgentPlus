@@ -30,4 +30,5 @@ class DataSourceManagerTest {
         assertThat(dataSource.getMaxActive()).isEqualTo(12);
         assertThat(dataSource.getMaxWait()).isEqualTo(5_000L);
     }
+
 }

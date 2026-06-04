@@ -3,6 +3,8 @@ package com.liang.data.agent.dal.connector;
 import com.alibaba.druid.pool.DruidDataSource;
 import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
+import com.liang.data.agent.common.errorcode.DatasourceConnectionError;
+import com.liang.data.agent.common.errorcode.DatasourceConnectionErrorResolver;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.dialect.DatabaseDialect;
@@ -57,10 +59,12 @@ public class DataSourceManager implements DisposableBean {
         DatabaseDialect dialect = getDialect(config.type());
         String url = dialect.buildJdbcUrl(config);
         try (Connection conn = DriverManager.getConnection(url, config.username(), config.password())) {
-            return null; // 成功返回 null
+            return dialect.validateConnected(conn, config).orElse(null);
         } catch (SQLException e) {
-            log.error("连接测试失败。url: {}, sqlState: {}, message: {}", url, e.getSQLState(), e.getMessage());
-            return e.getMessage();
+            DatasourceConnectionError error = DatasourceConnectionErrorResolver.resolve(config.type(), e);
+            log.error("连接测试失败。url: {}, sqlState: {}, errorCode: {}, message: {}",
+                    url, e.getSQLState(), error.errorCode().code(), error.message());
+            return error.message();
         }
     }
 

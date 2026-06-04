@@ -19,7 +19,12 @@ import com.liang.data.agent.dal.connector.bo.TableInfoBO;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -27,14 +32,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * MySQL 数据库方言实现
+ * PostgreSQL 数据库方言实现
  *
- * <p>负责构建 MySQL 连接信息、元数据查询以及查询执行前的 Schema 安全切换。</p>
+ * <p>负责 PostgreSQL 连接信息、元数据查询、安全 Schema 切换和查询执行前 SQL 审计。</p>
  */
 @Component
-public class MysqlDialect implements DatabaseDialect {
+public class PgDialect implements DatabaseDialect {
 
-    private static final DatabaseTypeEnum DB_TYPE = DatabaseTypeEnum.MYSQL;
+    private static final DatabaseTypeEnum DB_TYPE = DatabaseTypeEnum.POSTGRESQL;
     private static final int SAMPLE_LIMIT = 10;
     private static final int DEFAULT_QUERY_LIMIT = 100;
 
@@ -50,13 +55,10 @@ public class MysqlDialect implements DatabaseDialect {
 
     @Override
     public String buildJdbcUrl(DbConfigBO config) {
-        // 如果外部传了完整的 url，直接使用；否则根据配置拼接
         if (StringUtils.isNotBlank(config.url())) {
             return config.url();
         }
-        return String.format("jdbc:mysql://%s/%s?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true",
-                "localhost:3306", // 暂时由于 DbConfigBO 没有 host/port 参数，如果 URL 为空则给个默认值。实际上 config 里的 url 是完整的。
-                config.schema());
+        return String.format("jdbc:postgresql://%s/%s", "localhost:5432", config.schema());
     }
 
     @Override
@@ -69,7 +71,7 @@ public class MysqlDialect implements DatabaseDialect {
         if (StringUtils.isBlank(config.schema())) {
             return Optional.empty();
         }
-        try (PreparedStatement statement = conn.prepareStatement(buildDatabaseValidationSql())) {
+        try (PreparedStatement statement = conn.prepareStatement(buildSchemaValidationSql())) {
             statement.setString(1, config.schema());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (resultSet.next()) {
@@ -77,15 +79,15 @@ public class MysqlDialect implements DatabaseDialect {
                 }
             }
         }
-        return Optional.of("连接成功，但 MySQL 数据库不存在，请检查数据库名称: " + config.schema());
+        return Optional.of("连接成功，但 PostgreSQL Schema 不存在，请检查 Schema 配置: " + config.schema());
     }
 
     /**
-     * 构建 MySQL 数据库存在性校验 SQL。
+     * 构建 PostgreSQL Schema 存在性校验 SQL。
      *
-     * @return 数据库校验 SQL
+     * @return Schema 校验 SQL
      */
-    String buildDatabaseValidationSql() {
+    String buildSchemaValidationSql() {
         return "SELECT 1 FROM information_schema.schemata WHERE schema_name = ? LIMIT 1";
     }
 
@@ -94,7 +96,7 @@ public class MysqlDialect implements DatabaseDialect {
         if (StringUtils.isBlank(schema)) {
             return "";
         }
-        return "USE `" + schema.replace("`", "``") + "`";
+        return "SET search_path TO \"" + schema.replace("\"", "\"\"") + "\"";
     }
 
     @Override
@@ -109,7 +111,7 @@ public class MysqlDialect implements DatabaseDialect {
     private SQLSelectStatement auditSelectQuery(String sql) {
         List<SQLStatement> statements;
         try {
-            statements = SQLUtils.parseStatements(sql, DbType.mysql);
+            statements = SQLUtils.parseStatements(sql, DbType.postgresql);
         } catch (ParserException e) {
             throw new ServiceException("SQL 语法解析失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);
         }
@@ -149,36 +151,32 @@ public class MysqlDialect implements DatabaseDialect {
     @Override
     public List<TableInfoBO> showTables(Connection conn, String schema, String pattern) throws SQLException {
         List<TableInfoBO> tables = new ArrayList<>();
-
-        // 如果外部没传 pattern 或者传了空字符串，统一转换为 "%" 以查询所有表
         pattern = StringUtils.defaultIfBlank(pattern, "%");
 
         DatabaseMetaData metaData = conn.getMetaData();
-        try (ResultSet rs = metaData.getTables(schema, null, pattern, new String[]{"TABLE"})) {
+        try (ResultSet rs = metaData.getTables(null, schema, pattern, new String[]{"TABLE"})) {
             while (rs.next()) {
-                String tableName = rs.getString("TABLE_NAME");
-                String comment = rs.getString("REMARKS");
-                tables.add(new TableInfoBO(tableName, comment));
+                tables.add(new TableInfoBO(
+                        rs.getString("TABLE_NAME"),
+                        rs.getString("REMARKS")
+                ));
             }
         }
-
         return tables;
     }
 
     @Override
     public List<ColumnInfoBO> showColumns(Connection conn, String schema, String table) throws SQLException {
         List<ColumnInfoBO> columns = new ArrayList<>();
-
-        // 先查主键, 用 Set 存起来, 后面判断某个字段是不是主键
         Set<String> primaryKeys = new HashSet<>();
-        try (ResultSet pkRs = conn.getMetaData().getPrimaryKeys(schema, null, table)) {
+
+        try (ResultSet pkRs = conn.getMetaData().getPrimaryKeys(null, schema, table)) {
             while (pkRs.next()) {
                 primaryKeys.add(pkRs.getString("COLUMN_NAME"));
             }
         }
 
-        DatabaseMetaData metaData = conn.getMetaData();
-        try (ResultSet rs = metaData.getColumns(schema, null, table, "%")) {
+        try (ResultSet rs = conn.getMetaData().getColumns(null, schema, table, "%")) {
             while (rs.next()) {
                 String columnName = rs.getString("COLUMN_NAME");
                 String dataType = rs.getString("TYPE_NAME");
@@ -186,19 +184,15 @@ public class MysqlDialect implements DatabaseDialect {
                 String comment = rs.getString("REMARKS");
                 int nullable = rs.getInt("NULLABLE");
 
-                // 拼接完整类型, 如 "VARCHAR(255)"
-                String fullType = String.format("%s(%d)", dataType, columnSize);
-
                 columns.add(new ColumnInfoBO(
                         columnName,
-                        fullType,
+                        buildFullType(dataType, columnSize),
                         comment,
                         nullable == DatabaseMetaData.columnNullable,
                         primaryKeys.contains(columnName)
                 ));
             }
         }
-
         return columns;
     }
 
@@ -207,37 +201,45 @@ public class MysqlDialect implements DatabaseDialect {
         List<ForeignKeyInfoBO> foreignKeys = new ArrayList<>();
 
         for (String table : tables) {
-            try (ResultSet rs = conn.getMetaData().getImportedKeys(schema, null, table)) {
+            try (ResultSet rs = conn.getMetaData().getImportedKeys(null, schema, table)) {
                 while (rs.next()) {
                     foreignKeys.add(new ForeignKeyInfoBO(
-                            rs.getString("FKTABLE_NAME"), // 当前表 (FK 所在的表)
-                            rs.getString("FKCOLUMN_NAME"), // 当前表的 FK 字段
-                            rs.getString("PKTABLE_NAME"), // 关联的表 (PK 所在的表)
-                            rs.getString("PKCOLUMN_NAME") // 关联表的 PK 字段
+                            rs.getString("FKTABLE_NAME"),
+                            rs.getString("FKCOLUMN_NAME"),
+                            rs.getString("PKTABLE_NAME"),
+                            rs.getString("PKCOLUMN_NAME")
                     ));
                 }
             }
         }
-
         return foreignKeys;
     }
 
     @Override
     public List<String> sampleColumn(Connection conn, String schema, String table, String column) throws SQLException {
         List<String> samples = new ArrayList<>();
-
         String sql = String.format(
-                "SELECT DISTINCT `%s` FROM `%s`.`%s` WHERE `%s` IS NOT NULL LIMIT %d",
-                column, schema, table, column, SAMPLE_LIMIT
+                "SELECT DISTINCT \"%s\" FROM \"%s\".\"%s\" WHERE \"%s\" IS NOT NULL LIMIT %d",
+                escapeIdentifier(column), escapeIdentifier(schema), escapeIdentifier(table), escapeIdentifier(column), SAMPLE_LIMIT
         );
 
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                samples.add(rs.getString(1)); // 取第一列的值
+                samples.add(rs.getString(1));
             }
         }
-
         return samples;
+    }
+
+    private String buildFullType(String dataType, int columnSize) {
+        if (columnSize <= 0 || dataType.equalsIgnoreCase("text") || dataType.equalsIgnoreCase("jsonb")) {
+            return dataType;
+        }
+        return String.format("%s(%d)", dataType, columnSize);
+    }
+
+    private String escapeIdentifier(String identifier) {
+        return identifier.replace("\"", "\"\"");
     }
 }

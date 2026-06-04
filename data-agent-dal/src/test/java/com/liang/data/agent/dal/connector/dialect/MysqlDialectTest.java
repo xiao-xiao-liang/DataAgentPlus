@@ -2,6 +2,8 @@ package com.liang.data.agent.dal.connector.dialect;
 
 import org.junit.jupiter.api.Test;
 
+import com.liang.data.agent.dal.connector.bo.DbConfigBO;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -52,5 +54,32 @@ class MysqlDialectTest {
     void shouldRejectMultipleStatements() {
         assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT * FROM users; SELECT * FROM orders"))
                 .hasMessageContaining("仅允许执行单条 SELECT 查询");
+    }
+
+    @Test
+    void shouldBuildDatabaseValidationSql() {
+        assertThat(mysqlDialect.buildDatabaseValidationSql())
+                .isEqualTo("SELECT 1 FROM information_schema.schemata WHERE schema_name = ? LIMIT 1");
+    }
+
+    @Test
+    void shouldReturnMessageWhenMysqlDatabaseMissing() throws Exception {
+        DbConfigBO config = new DbConfigBO(null, null, "root", "secret", "mysql", "data_agent");
+
+        String message = mysqlDialect.validateConnected(
+                        JdbcValidationStub.connectionWithValidationResult(false),
+                        config)
+                .orElse("");
+
+        assertThat(message).isEqualTo("连接成功，但 MySQL 数据库不存在，请检查数据库名称: data_agent");
+    }
+
+    @Test
+    void shouldPassWhenMysqlDatabaseExists() throws Exception {
+        DbConfigBO config = new DbConfigBO(null, null, "root", "secret", "mysql", "data_agent");
+
+        assertThat(mysqlDialect.validateConnected(
+                JdbcValidationStub.connectionWithValidationResult(true),
+                config)).isEmpty();
     }
 }

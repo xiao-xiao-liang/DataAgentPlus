@@ -39,8 +39,9 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
     @Override
     public Integer create(DatasourceDTO dto) {
         DatasourceEntity entity = BeanUtil.copyProperties(dto, DatasourceEntity.class);
+        fillConnectionUrl(entity);
         entity.setStatus("active");
-        entity.setTestStatus("unknown");
+        refreshTestStatus(entity);
         this.save(entity);
         log.info("创建数据源成功, id={}, name={}", entity.getId(), entity.getName());
         return entity.getId();
@@ -53,6 +54,7 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
 
         DatasourceEntity existing = getEntityById(id);
         BeanUtil.copyProperties(dto, existing);
+        fillConnectionUrl(existing);
 
         this.updateById(existing);
         log.info("更新数据源成功, id={}", id);
@@ -72,9 +74,11 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
     }
 
     public DatasourceEntity getEntityById(Integer id) {
-        return lambdaQuery().eq(DatasourceEntity::getId, id)
-                .oneOpt()
-                .orElseThrow(() -> new ServiceException("数据源不存在, id=" + id));
+        DatasourceEntity entity = super.getById(id);
+        if (entity == null) {
+            throw new ServiceException("数据源不存在, id=" + id);
+        }
+        return entity;
     }
 
     @Override
@@ -88,9 +92,10 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
     @Override
     public String testConnection(Integer id) {
         DatasourceEntity entity = getEntityById(id);
-        DbConfigBO config = DbConfigBO.from(entity);
         log.info("测试数据源连接, id={}, type={}", id, entity.getType());
-        return databaseAccessor.ping(config);
+        String result = refreshTestStatus(entity);
+        this.updateById(entity);
+        return result;
     }
 
     @Override
@@ -137,6 +142,34 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
     }
 
     /**
+     * 补齐数据源连接 URL。
+     *
+     * @param entity 数据源实体
+     */
+    private void fillConnectionUrl(DatasourceEntity entity) {
+        if (entity.getConnectionUrl() == null || entity.getConnectionUrl().isBlank()) {
+            entity.setConnectionUrl(DbConfigBO.buildJdbcUrl(
+                    entity.getType(),
+                    entity.getHost(),
+                    entity.getPort(),
+                    Optional.ofNullable(entity.getDatabaseName()).orElse("")
+            ));
+        }
+    }
+
+    /**
+     * 刷新数据源连接测试状态。
+     *
+     * @param entity 数据源实体
+     * @return 连接测试结果，null 表示成功
+     */
+    private String refreshTestStatus(DatasourceEntity entity) {
+        String result = databaseAccessor.ping(DbConfigBO.from(entity));
+        entity.setTestStatus(result == null ? "success" : "failed");
+        return result;
+    }
+
+    /**
      * 从 DTO 构建数据库连接配置（用于创建前预检测试连接）
      *
      * @param dto 数据源 DTO
@@ -145,8 +178,7 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
     private DbConfigBO buildConfigFromDto(DatasourceDTO dto) {
         String url = dto.getConnectionUrl();
         if (url == null || url.isBlank()) {
-            url = String.format("jdbc:%s://%s:%d/%s?useSSL=false&characterEncoding=utf8",
-                    dto.getType(), dto.getHost(), dto.getPort(),
+            url = DbConfigBO.buildJdbcUrl(dto.getType(), dto.getHost(), dto.getPort(),
                     Optional.ofNullable(dto.getDatabaseName()).orElse(""));
         }
         return new DbConfigBO(
@@ -155,7 +187,7 @@ public class DatasourceServiceImpl extends ServiceImpl<DatasourceMapper, Datasou
                 dto.getUsername(),
                 dto.getPassword(),
                 dto.getType(),
-                dto.getDatabaseName()
+                DbConfigBO.extractSchemaName(dto.getType(), dto.getDatabaseName())
         );
     }
 
