@@ -182,6 +182,34 @@ CREATE TABLE IF NOT EXISTS agent_knowledge
   DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识源管理表 (支持文档、QA、FAQ)';
 
 -- ----------------------------
+-- 7.1. 智能体知识分块表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS agent_knowledge_chunk
+(
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    knowledge_id   INT          NOT NULL COMMENT '所属知识源ID',
+    chunk_id       VARCHAR(255) NOT NULL COMMENT '分块业务ID',
+    chunk_order    INT          NOT NULL COMMENT '分块顺序，从0开始',
+    content        LONGTEXT     NOT NULL COMMENT '分块文本内容',
+    content_length INT          DEFAULT NULL COMMENT '分块文本长度',
+    metadata       TEXT         DEFAULT NULL COMMENT '分块元数据JSON',
+    embedding_id   VARCHAR(255) DEFAULT NULL COMMENT '向量存储中的文档ID',
+    splitter_type  VARCHAR(50)  DEFAULT NULL COMMENT '分块策略',
+    status         VARCHAR(32)  DEFAULT NULL COMMENT '状态：SKIP_EMBEDDING, VECTOR_STORED, FAILED',
+    skip_embedding TINYINT      DEFAULT 0 COMMENT '是否跳过向量化：0-不跳过, 1-跳过',
+    error_msg      VARCHAR(255) DEFAULT NULL COMMENT '操作失败的错误信息',
+    del_flag       TINYINT      DEFAULT 0 COMMENT '逻辑删除：0-未删除, 1-已删除',
+    create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_chunk_id (chunk_id),
+    INDEX idx_knowledge_id (knowledge_id),
+    INDEX idx_knowledge_order (knowledge_id, chunk_order),
+    INDEX idx_status_skip (knowledge_id, status, skip_embedding)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识分块表';
+
+-- ----------------------------
 -- 8. 语义模型表
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS semantic_model
@@ -377,3 +405,26 @@ CREATE TABLE IF NOT EXISTS model_config
     INDEX idx_is_active (is_active)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT = '模型配置表';
+-- ----------------------------
+-- 智能体知识异步任务表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS agent_knowledge_job
+(
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    knowledge_id    INT          NOT NULL COMMENT '所属知识源ID',
+    agent_id        INT          NOT NULL COMMENT '关联的智能体ID',
+    job_type        VARCHAR(50)  NOT NULL COMMENT '任务类型：UPLOAD_VECTORIZE、DELETE_CLEANUP',
+    status          VARCHAR(32)  NOT NULL COMMENT '任务状态：PENDING、RUNNING、RETRYING、SUCCESS、FAILED',
+    retry_count     INT          DEFAULT 0 COMMENT '当前重试次数',
+    max_retry_count INT          DEFAULT 3 COMMENT '最大重试次数',
+    next_retry_time TIMESTAMP    DEFAULT NULL COMMENT '下次可重试时间',
+    locked_by       VARCHAR(128) DEFAULT NULL COMMENT '锁持有者',
+    locked_until    TIMESTAMP    DEFAULT NULL COMMENT '锁过期时间',
+    error_msg       VARCHAR(500) DEFAULT NULL COMMENT '失败错误信息',
+    create_time     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    INDEX idx_status_retry (status, next_retry_time),
+    INDEX idx_knowledge_type (knowledge_id, job_type)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识异步任务表';
