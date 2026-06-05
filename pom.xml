@@ -53,6 +53,8 @@
 
         <!-- 工具库 -->
         <lombok.version>1.18.42</lombok.version>
+        <tika.version>3.1.0</tika.version>
+        <minio.version>8.5.17</minio.version>
         <guava.version>33.5.0-jre</guava.version>
         <commons-lang3.version>3.17.0</commons-lang3.version>
         <commons-io.version>2.18.0</commons-io.version>
@@ -199,6 +201,21 @@
                 <groupId>co.elastic.clients</groupId>
                 <artifactId>elasticsearch-java</artifactId>
                 <version>${elasticsearch-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-core</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-parsers-standard-package</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.elasticsearch.client</groupId>

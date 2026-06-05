@@ -1,6 +1,7 @@
 package com.liang.data.agent.common.config;
 
 import com.liang.data.agent.common.enums.LlmServiceMode;
+import com.liang.data.agent.common.enums.FileStorageType;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -24,6 +25,11 @@ public class DataAgentProperties {
      * 向量存储配置
      */
     private VectorStoreProperties vectorStore = new VectorStoreProperties();
+
+    /**
+     * 文件存储配置
+     */
+    private FileStorageProperties fileStorage = new FileStorageProperties();
 
     /**
      * 连接池配置
@@ -112,6 +118,71 @@ public class DataAgentProperties {
          * 是否启用混合搜索 (Milvus + ES)
          */
         private boolean enableHybridSearch = false;
+    }
+
+    @Getter
+    @Setter
+    public static class FileStorageProperties {
+
+        /**
+         * 存储类型
+         */
+        private FileStorageType type = FileStorageType.LOCAL;
+
+        /**
+         * 本地文件存储配置
+         */
+        private LocalProperties local = new LocalProperties();
+
+        /**
+         * MinIO 文件存储配置
+         */
+        private MinioProperties minio = new MinioProperties();
+    }
+
+    @Getter
+    @Setter
+    public static class LocalProperties {
+
+        /**
+         * 本地存储根目录
+         */
+        private String rootPath = "data-agent-storage";
+    }
+
+    @Getter
+    @Setter
+    public static class MinioProperties {
+
+        /**
+         * MinIO S3 API 地址
+         */
+        private String endpoint = "http://101.132.158.169:9001";
+
+        /**
+         * 访问密钥
+         */
+        private String accessKey = "";
+
+        /**
+         * 访问密钥 Secret
+         */
+        private String secretKey = "";
+
+        /**
+         * 存储桶名称
+         */
+        private String bucket = "data-agent";
+
+        /**
+         * 对外访问地址
+         */
+        private String publicEndpoint = "";
+
+        /**
+         * 是否自动创建存储桶
+         */
+        private boolean autoCreateBucket = true;
     }
 
     @Getter

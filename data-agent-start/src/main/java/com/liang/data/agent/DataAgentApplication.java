@@ -3,6 +3,7 @@ package com.liang.data.agent;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * DataAgent 启动类
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * @since 1.0.0
  */
 @EnableAsync
+@EnableScheduling
 @SpringBootApplication
 public class DataAgentApplication {
 

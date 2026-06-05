@@ -21,6 +21,18 @@
             <groupId>com.liang.data.agent</groupId>
             <artifactId>data-agent-ai-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+        </dependency>
 
         <!-- 校验 -->
         <dependency>
