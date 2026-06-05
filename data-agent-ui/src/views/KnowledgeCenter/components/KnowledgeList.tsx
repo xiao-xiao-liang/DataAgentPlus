@@ -1,25 +1,24 @@
 import React from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { BookOpen, Ellipsis, Settings, Trash2 } from 'lucide-react';
+import { BookOpen, Ellipsis, Settings } from 'lucide-react';
 import type { KnowledgeBase } from '../types';
 
 interface KnowledgeListProps {
   list: KnowledgeBase[];
   onCreateClick: () => void;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 export const KnowledgeList: React.FC<KnowledgeListProps> = ({
   list,
   onCreateClick,
   onSelect,
-  onDelete,
 }) => {
   return (
     <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 items-start gap-4 overflow-y-auto px-6 md:grid-cols-2 lg:grid-cols-3 no-scrollbar pt-4 pb-6 select-none animate-in fade-in duration-200">
       
-      {/* “创建知识库”卡片 */}
+      {/* 知识库入口提示卡片 */}
       <div 
         onClick={onCreateClick}
         className="group relative h-[10rem] cursor-pointer rounded-xl border border-dashed border-indigo-200 hover:border-indigo-400 bg-[#F6F6FD]/70 hover:bg-[#F6F6FD] p-[1px] transition-all hover:shadow-[0_0.25rem_0.625rem_0_rgba(102,127,255,0.15)] hover:-translate-y-[2px] duration-300 overflow-hidden"
@@ -33,10 +32,10 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
           />
           <div className="relative z-10">
             <span className="bg-gradient-to-r from-[#2D336B] to-[#4F46E5] bg-clip-text text-base font-extrabold tracking-[1px] text-transparent">
-              创建知识库
+              智能体知识库
             </span>
             <div className="text-gray-500 mt-1.5 text-xs font-medium">
-              构建与 Data Agent 匹配使用的企业知识库
+              进入后上传文件，系统会解析、切分并向量化
             </div>
           </div>
         </div>
@@ -78,18 +77,6 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     >
                       <Settings className="size-3.5 text-gray-500" />
                       管理知识库
-                    </DropdownMenu.Item>
-                    
-                    {/* 分割线 */}
-                    <div className="h-px bg-gray-100 my-1" />
-
-                    {/* 删除项 */}
-                    <DropdownMenu.Item 
-                      onClick={() => onDelete(kb.id)}
-                      className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-red-600 rounded-md hover:bg-red-50 focus:bg-red-50 cursor-pointer outline-none transition-colors"
-                    >
-                      <Trash2 className="size-3.5 text-red-500" />
-                      删除
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>

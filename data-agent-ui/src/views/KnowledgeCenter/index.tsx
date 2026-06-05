@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import type { KnowledgeBase } from './types';
-import { INITIAL_KNOWLEDGE_BASES } from './mockData';
+import type { KnowledgeBase, KnowledgeFile } from './types';
 import { CreateKnowledgeDialog } from './components/CreateKnowledgeDialog';
 import { KnowledgeList } from './components/KnowledgeList';
 import { KnowledgeDetail } from './components/KnowledgeDetail';
@@ -12,7 +11,60 @@ import { CollapsedSidebarMenuButton } from '../../layout/CollapsedSidebarMenuBut
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 import { useCurrentAgentStore } from '../../stores/currentAgent';
 
-const LOCAL_STORAGE_KEY = 'data-agent-knowledge-bases';
+type AgentKnowledgeResponse = {
+  id: number;
+  title?: string;
+  sourceFilename?: string;
+  fileSize?: number;
+  embeddingStatus?: string;
+  errorMsg?: string;
+  splitterType?: string;
+  createTime?: string;
+  updateTime?: string;
+};
+
+const formatFileSize = (bytes?: number): string => {
+  if (!bytes) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+const formatBackendTime = (value?: string): string => {
+  if (!value) return new Date().toISOString().replace('T', ' ').substring(0, 19);
+  return value.replace('T', ' ').substring(0, 19);
+};
+
+const mapStatus = (status?: string): KnowledgeFile['status'] => {
+  if (status === 'COMPLETED') return 'success';
+  if (status === 'FAILED') return 'failed';
+  if (status === 'DELETING') return 'deleting';
+  if (status === 'DELETE_FAILED') return 'delete_failed';
+  if (status === 'PROCESSING' || status === 'PENDING') return 'parsing';
+  return 'success';
+};
+
+const buildAgentKnowledgeBase = (agentId: string, items: AgentKnowledgeResponse[]): KnowledgeBase => ({
+  id: `kb-agent-${agentId}`,
+  name: '智能体知识库',
+  creator: 'Data Agent',
+  status: items.some((item) => item.embeddingStatus === 'FAILED' || item.embeddingStatus === 'DELETE_FAILED') ? 'failed' : 'ready',
+  updatedAt: formatBackendTime(items[0]?.updateTime),
+  fileCount: items.length,
+  description: '当前智能体真实上传并向量化的知识文件',
+  files: items.map((item) => ({
+    id: `knowledge-${item.id}`,
+    backendId: item.id,
+    name: item.sourceFilename || item.title || `knowledge-${item.id}`,
+    size: formatFileSize(item.fileSize),
+    status: mapStatus(item.embeddingStatus),
+    progress: mapStatus(item.embeddingStatus) === 'success' ? 100 : undefined,
+    uploadedAt: formatBackendTime(item.createTime),
+    splitterType: item.splitterType,
+    errorMsg: item.errorMsg,
+  })),
+});
 
 export const KnowledgeCenter: React.FC = () => {
   const {
@@ -57,19 +109,24 @@ export const KnowledgeCenter: React.FC = () => {
   }, [location.hash, location.pathname, location.search, location.state, navigate, setCurrentAgent]);
 
   useEffect(() => {
-    try {
-      const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedData) {
-        setKnowledgeBases(JSON.parse(savedData));
-      } else {
-        setKnowledgeBases(INITIAL_KNOWLEDGE_BASES);
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_KNOWLEDGE_BASES));
+    const loadAgentKnowledge = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/api/v1/agent-knowledge?agentId=${effectiveAgentId}`);
+        const result = await response.json();
+        const items = Array.isArray(result.data) ? result.data : [];
+        setKnowledgeBases([buildAgentKnowledgeBase(effectiveAgentId, items)]);
+      } catch (error) {
+        console.error('加载智能体知识库失败', error);
+        setKnowledgeBases([buildAgentKnowledgeBase(effectiveAgentId, [])]);
+        showToast('加载智能体知识库失败', 'error');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('读取 localStorage 失败，回退到初始数据', error);
-      setKnowledgeBases(INITIAL_KNOWLEDGE_BASES);
-    }
-  }, []);
+    };
+
+    loadAgentKnowledge();
+  }, [effectiveAgentId]);
 
   useEffect(() => {
     if (!effectiveAgentId) return;
@@ -98,14 +155,6 @@ export const KnowledgeCenter: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
-  const saveToStorage = (newList: KnowledgeBase[]) => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newList));
-    } catch (error) {
-      console.error('写入 localStorage 失败', error);
-    }
-  };
-
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastMessage(message);
     setToastType(type);
@@ -115,18 +164,20 @@ export const KnowledgeCenter: React.FC = () => {
     if (isLoading) return;
     setIsLoading(true);
 
-    window.setTimeout(() => {
-      setIsLoading(false);
-      try {
-        const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedData) {
-          setKnowledgeBases(JSON.parse(savedData));
-        }
-      } catch (error) {
+    fetch(`/api/v1/agent-knowledge?agentId=${effectiveAgentId}`)
+      .then((response) => response.json())
+      .then((result) => {
+        const items = Array.isArray(result.data) ? result.data : [];
+        setKnowledgeBases([buildAgentKnowledgeBase(effectiveAgentId, items)]);
+        showToast('知识库列表已刷新', 'success');
+      })
+      .catch((error) => {
         console.error('刷新知识库列表失败', error);
-      }
-      showToast('知识库列表已刷新', 'success');
-    }, 800);
+        showToast('知识库列表刷新失败', 'error');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   };
 
   const filteredBases = useMemo(() => {
@@ -145,7 +196,6 @@ export const KnowledgeCenter: React.FC = () => {
     if (window.confirm(`确认删除知识库 "${targetKB.name}" 吗？此操作不可撤销。`)) {
       const updated = knowledgeBases.filter((kb) => kb.id !== id);
       setKnowledgeBases(updated);
-      saveToStorage(updated);
       showToast(`已删除知识库 "${targetKB.name}"`, 'success');
       if (knowledgeBaseId === id) {
         navigate('/knowledge');
@@ -156,7 +206,6 @@ export const KnowledgeCenter: React.FC = () => {
   const handleUpdateKB = (updatedKB: KnowledgeBase) => {
     const updatedList = knowledgeBases.map((kb) => (kb.id === updatedKB.id ? updatedKB : kb));
     setKnowledgeBases(updatedList);
-    saveToStorage(updatedList);
   };
 
   const handleConfirmCreate = (
@@ -164,41 +213,11 @@ export const KnowledgeCenter: React.FC = () => {
     description: string,
     initialFile: { name: string; size: string; status: 'success' } | null,
   ) => {
-    const customKBCount = knowledgeBases.filter((kb) => kb.id.startsWith('kb-custom')).length;
-    if (customKBCount >= 1) {
-      showToast('新建失败：个人版账号仅支持创建 1 个自定义知识库', 'error');
-      setIsCreateOpen(false);
-      return;
-    }
-
-    const filesList = [];
-    if (initialFile) {
-      filesList.push({
-        id: `file-custom-${Date.now()}`,
-        name: initialFile.name,
-        size: initialFile.size,
-        status: 'success' as const,
-        progress: 100,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      });
-    }
-
-    const newKB: KnowledgeBase = {
-      id: `kb-custom-${Date.now()}`,
-      name,
-      creator: 'aliyun9466154613',
-      status: 'ready',
-      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      fileCount: filesList.length,
-      description,
-      files: filesList,
-    };
-
-    const updated = [newKB, ...knowledgeBases];
-    setKnowledgeBases(updated);
-    saveToStorage(updated);
+    void name;
+    void description;
+    void initialFile;
     setIsCreateOpen(false);
-    showToast(`知识库 "${name}" 创建成功`, 'success');
+    showToast('智能体知识库已自动创建，请直接进入后上传文件', 'success');
   };
 
   return (
@@ -231,9 +250,10 @@ export const KnowledgeCenter: React.FC = () => {
       ) : currentKB ? (
         <KnowledgeDetail
           kb={currentKB}
+          agentId={effectiveAgentId}
           onBack={() => navigate('/knowledge')}
           onUpdateKB={handleUpdateKB}
-          showToast={(msg) => showToast(msg, 'success')}
+          showToast={showToast}
         />
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
@@ -301,7 +321,12 @@ export const KnowledgeCenter: React.FC = () => {
             ) : (
               <KnowledgeList
                 list={filteredBases}
-                onCreateClick={() => setIsCreateOpen(true)}
+                onCreateClick={() => {
+                  const firstKb = filteredBases[0];
+                  if (firstKb) {
+                    navigate(`/knowledge/${firstKb.id}?name=${encodeURIComponent(firstKb.name)}`);
+                  }
+                }}
                 onSelect={(id) => {
                   const kb = knowledgeBases.find((item) => item.id === id);
                   if (kb) {

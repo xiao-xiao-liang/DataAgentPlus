@@ -1,11 +1,25 @@
 // 知识库文件接口定义
 export interface KnowledgeFile {
   id: string;
+  backendId?: number;
   name: string;
   size: string;
-  status: 'uploading' | 'parsing' | 'success' | 'failed';
-  progress?: number; // 模拟上传进度百分比 (0-100)
+  status: 'uploading' | 'parsing' | 'success' | 'failed' | 'deleting' | 'delete_failed';
+  progress?: number; // 上传进度百分比 (0-100)
   uploadedAt: string;
+  splitterType?: string;
+  errorMsg?: string;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  knowledgeId: number;
+  seq: number;
+  content: string;
+  length: number;
+  splitterType: string;
+  status?: string;
+  embeddingId?: string;
 }
 
 // 知识库接口定义

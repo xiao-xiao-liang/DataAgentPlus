@@ -9,20 +9,35 @@ import {
   Search, 
   AlertCircle,
   FileSpreadsheet,
-  Plus
+  Plus,
+  X,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import clsx from 'clsx';
-import type { KnowledgeBase, KnowledgeFile } from '../types';
+import type { KnowledgeBase, KnowledgeChunk, KnowledgeFile } from '../types';
 
 interface KnowledgeDetailProps {
   kb: KnowledgeBase;
+  agentId: string;
   onBack: () => void;
   onUpdateKB: (updatedKB: KnowledgeBase) => void;
-  showToast: (msg: string) => void;
+  showToast: (msg: string, type?: 'success' | 'error') => void;
 }
+
+const splitterOptions = [
+  { value: 'smart', label: '智能切分', description: '优先保留标题、段落等自然边界' },
+  { value: 'title', label: '按标题', description: '适合 Markdown、说明书、章节型文档' },
+  { value: 'separator', label: '按段落', description: '适合段落边界清晰的普通文本' },
+  { value: 'length', label: '按长度', description: '适合结构不明显的长文本' },
+  { value: 'token', label: '按Token', description: '按模型上下文长度控制切片' },
+] as const;
+
+type SplitterType = typeof splitterOptions[number]['value'];
 
 export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   kb,
+  agentId,
   onBack,
   onUpdateKB,
   showToast,
@@ -32,6 +47,14 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [chunksByFileId, setChunksByFileId] = useState<Record<string, KnowledgeChunk[]>>({});
+  const [splitterType, setSplitterType] = useState<SplitterType>('smart');
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadDialogDragOver, setUploadDialogDragOver] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isUploadingDialog, setIsUploadingDialog] = useState(false);
+  const [strategyMenuOpen, setStrategyMenuOpen] = useState(false);
+  const activeSplitterOption = splitterOptions.find((option) => option.value === splitterType) || splitterOptions[0];
 
   // 模糊检索过滤当前知识库的文件
   const filteredFiles = useMemo(() => {
@@ -84,13 +107,68 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     return kb.files.find(f => f.id === selectedFileId) || null;
   }, [kb.files, selectedFileId]);
 
-  // 执行模拟上传
-  const startMockUpload = (fileName: string, fileSizeStr: string) => {
-    const newFileId = `file-mock-${Date.now()}`;
+  const mapBackendStatus = (status?: string): KnowledgeFile['status'] => {
+    if (status === 'COMPLETED') return 'success';
+    if (status === 'FAILED') return 'failed';
+    if (status === 'DELETING') return 'deleting';
+    if (status === 'DELETE_FAILED') return 'delete_failed';
+    if (status === 'PROCESSING' || status === 'PENDING') return 'parsing';
+    return 'success';
+  };
+
+  const mapUploadedFile = (item: {
+    id: number;
+    sourceFilename?: string;
+    title?: string;
+    fileSize?: number;
+    splitterType?: string;
+    errorMsg?: string;
+    embeddingStatus?: string;
+  }): KnowledgeFile => ({
+    id: `knowledge-${item.id}`,
+    backendId: item.id,
+    name: item.sourceFilename || item.title || `knowledge-${item.id}`,
+    size: formatFileSize(item.fileSize || 0),
+    status: mapBackendStatus(item.embeddingStatus),
+    progress: mapBackendStatus(item.embeddingStatus) === 'success' ? 100 : undefined,
+    uploadedAt: getFormattedNow(),
+    splitterType: item.splitterType,
+    errorMsg: item.errorMsg,
+  });
+
+  React.useEffect(() => {
+    const hasPendingFile = kb.files.some((file) => file.status === 'parsing' || file.status === 'deleting');
+    if (!hasPendingFile) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      fetch(`/api/v1/agent-knowledge?agentId=${agentId}`)
+        .then((response) => response.json())
+        .then((result) => {
+          if (!Array.isArray(result.data)) {
+            return;
+          }
+          onUpdateKB({
+            ...kb,
+            files: result.data.map(mapUploadedFile),
+            fileCount: result.data.length,
+            updatedAt: getFormattedNow(),
+          });
+        })
+        .catch((error) => {
+          console.error('刷新知识文件状态失败', error);
+        });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [agentId, kb, onUpdateKB]);
+
+  // 执行真实上传，并等待后端完成存储、切分与向量化
+  const uploadFile = async (file: File, currentSplitterType: SplitterType) => {
+    const newFileId = `file-upload-${Date.now()}`;
     const newFile: KnowledgeFile = {
       id: newFileId,
-      name: fileName,
-      size: fileSizeStr,
+      name: file.name,
+      size: formatFileSize(file.size),
       status: 'uploading',
       progress: 0,
       uploadedAt: getFormattedNow()
@@ -105,49 +183,47 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     };
     onUpdateKB(updatedKB);
 
-    // 2. 模拟上传进度定时器 (每 80ms 增加 10% 左右)
-    let currentProgress = 0;
-    const uploadInterval = setInterval(() => {
-      currentProgress += Math.floor(Math.random() * 15) + 5;
-      if (currentProgress >= 100) {
-        currentProgress = 100;
-        clearInterval(uploadInterval);
-        
-        // 进入解析阶段 (parsing)
-        onUpdateKB({
-          ...updatedKB,
-          files: updatedKB.files.map(f => 
-            f.id === newFileId 
-              ? { ...f, status: 'parsing', progress: 100 } 
-              : f
-          )
-        });
+    const formData = new FormData();
+    formData.append('agentId', agentId);
+    formData.append('title', file.name);
+    formData.append('splitterType', currentSplitterType);
+    formData.append('file', file);
 
-        // 模拟解析耗时 1.2 秒
-        setTimeout(() => {
-          onUpdateKB({
-            ...updatedKB,
-            files: updatedKB.files.map(f => 
-              f.id === newFileId 
-                ? { ...f, status: 'success' } 
-                : f
-            )
-          });
-          showToast(`文件 "${fileName}" 上传并解析成功！`);
-        }, 1200);
-
-      } else {
-        // 更新上传进度
-        onUpdateKB({
-          ...updatedKB,
-          files: updatedKB.files.map(f => 
-            f.id === newFileId 
-              ? { ...f, progress: currentProgress } 
-              : f
-          )
-        });
+    try {
+      onUpdateKB({
+        ...updatedKB,
+        files: updatedKB.files.map(f =>
+          f.id === newFileId ? { ...f, status: 'parsing', progress: 100 } : f
+        )
+      });
+      const response = await fetch('/api/v1/agent-knowledge/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok || result.code !== '0') {
+        throw new Error(result.message || '知识文件上传失败');
       }
-    }, 80);
+      const uploadedFile = mapUploadedFile(result.data);
+      onUpdateKB({
+        ...updatedKB,
+        files: updatedKB.files.map(f => f.id === newFileId ? uploadedFile : f),
+        updatedAt: getFormattedNow()
+      });
+      setSelectedFileId(uploadedFile.id);
+      setUploadDialogOpen(false);
+      setSelectedUploadFile(null);
+      showToast(`文件 "${file.name}" 已上传，正在后台解析和向量化`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '知识文件上传失败';
+      onUpdateKB({
+        ...updatedKB,
+        files: updatedKB.files.map(f =>
+          f.id === newFileId ? { ...f, status: 'failed', errorMsg: message } : f
+        )
+      });
+      showToast(message, 'error');
+    }
   };
 
   // 处理文件选择
@@ -162,12 +238,48 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     }
 
     const file = selectedFiles[0];
-    const sizeStr = formatFileSize(file.size);
-    startMockUpload(file.name, sizeStr);
+    setSelectedUploadFile(file);
     
     // 重置 input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const openUploadDialog = () => {
+    if (isLimitReached) {
+      return;
+    }
+    setUploadDialogOpen(true);
+  };
+
+  const closeUploadDialog = () => {
+    if (isUploadingDialog) {
+      return;
+    }
+    setUploadDialogOpen(false);
+    setUploadDialogDragOver(false);
+    setStrategyMenuOpen(false);
+    setSelectedUploadFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const submitUploadDialog = async () => {
+    if (isUploadingDialog) {
+      return;
+    }
+    if (!selectedUploadFile) {
+      showToast('请选择要上传的文件', 'error');
+      return;
+    }
+    setIsUploadingDialog(true);
+    setStrategyMenuOpen(false);
+    try {
+      await uploadFile(selectedUploadFile, splitterType);
+    } finally {
+      setIsUploadingDialog(false);
     }
   };
 
@@ -193,15 +305,38 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
 
     const droppedFiles = e.dataTransfer.files;
     if (droppedFiles && droppedFiles.length > 0) {
-      const file = droppedFiles[0];
-      const sizeStr = formatFileSize(file.size);
-      startMockUpload(file.name, sizeStr);
+      setSelectedUploadFile(droppedFiles[0]);
+      setUploadDialogOpen(true);
+    }
+  };
+
+  const handleDialogDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setUploadDialogDragOver(false);
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles && droppedFiles.length > 0) {
+      setSelectedUploadFile(droppedFiles[0]);
     }
   };
 
   // 删除文件
-  const handleDeleteFile = (fileId: string, fileName: string) => {
+  const handleDeleteFile = async (fileId: string, fileName: string) => {
     if (window.confirm(`确认从知识库中删除文件 "${fileName}" 吗？`)) {
+      const targetFile = kb.files.find(f => f.id === fileId);
+      if (targetFile?.backendId) {
+        try {
+          const response = await fetch(`/api/v1/agent-knowledge/${targetFile.backendId}`, { method: 'DELETE' });
+          const result = await response.json();
+          if (!response.ok || result.code !== '0') {
+            throw new Error(result.message || '删除知识文件失败');
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '删除知识文件失败';
+          showToast(message, 'error');
+          return;
+        }
+      }
       const newFiles = kb.files.filter(f => f.id !== fileId);
       const updatedKB = {
         ...kb,
@@ -245,106 +380,27 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
 
   const isLimitReached = kb.files.length >= 10;
 
-  // 仿真的知识分块列表数据源
-  const mockChunks = useMemo(() => {
-    const chunks: Array<{
-      id: string;
-      fileId: string;
-      fileName: string;
-      seq: number;
-      content: string;
-      length: number;
-      time: string;
-    }> = [];
-    kb.files.forEach(f => {
-      if (f.status === 'success') {
-        const nameUpper = f.name.toUpperCase();
-        if (nameUpper.includes('游戏') || nameUpper.includes('GAME')) {
-          chunks.push({
-            id: `chunk-${f.id}-1`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 1,
-            content: `【${f.name} #分块1】二季度游戏大盘活跃度与付费模型分析：年轻化受众群体对即时语音社交、战队定制道具以及社群轻量化竞技玩法的偏好出现显著爬升（YoY 增长约 28.5%）。推荐在下阶段投放时主攻短视频平台，以创意交互广告（Playable Ads）作为核心承载页，降低买量成本。`,
-            length: 154,
-            time: f.uploadedAt
-          });
-          chunks.push({
-            id: `chunk-${f.id}-2`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 2,
-            content: `【${f.name} #分块2】KOL 矩阵联动的转化漏斗归因：在以特定电竞主播和泛娱乐博主为主的推广合集里，流失率多集中在“落地页加载”到“首存转化”阶段（流失达 44%）。拟优化游戏首包加载压缩率，降低冷启动等待时间，并在新客注册的前 3 日通过游戏内邮件赠送高性价比限时体验礼包。`,
-            length: 155,
-            time: f.uploadedAt
-          });
-          chunks.push({
-            id: `chunk-${f.id}-3`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 3,
-            content: `【${f.name} #分块3】长线留存召回方案：对活跃衰退周期进行区间建模。用户连续不登录超过 7 日即列为“高度流失倾向”，自动触发定制推送通知或短信召回。在此阶段建议搭配游戏版本更新进行福利诱导，召回优惠额度控制在单位买量成本（CAC）的 30% 以内，以防挤占利润边际。`,
-            length: 153,
-            time: f.uploadedAt
-          });
-        } else if (nameUpper.includes('流失') || nameUpper.includes('CUSTOMER') || nameUpper.includes('USER') || nameUpper.includes('ORDERS') || nameUpper.includes('CSV')) {
-          chunks.push({
-            id: `chunk-${f.id}-1`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 1,
-            content: `【${f.name} #分块1】新老客群销售归因与交叉购买分析：流失模型输出显示，单次购买型新用户（首单 30 天内无二次复购）的流失率极高，中位数接近 55%。其核心诱因为“缺乏持续购买动机”。建议针对此类客群配置智能卡片推送，在首单派发后第 5 天匹配相似产品线优惠券。`,
-            length: 152,
-            time: f.uploadedAt
-          });
-          chunks.push({
-            id: `chunk-${f.id}-2`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 2,
-            content: `【${f.name} #分块2】复购模型参数调优：利用关联规则分析（Apriori）挖掘 products.xlsx 底层购买偏好，确定“高客单价电子产品”与“耗材配件/保护壳”存在 72% 的关联置信度。未来应当将此规则内置为系统推荐策略，在结算台和购物车浮窗内实施定向搭配交叉售卖。`,
-            length: 154,
-            time: f.uploadedAt
-          });
-          chunks.push({
-            id: `chunk-${f.id}-3`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 3,
-            content: `【${f.name} #分块3】系统状态与异常降级策略：流失监测后台进行远程推送时，如遇远程短信网关调用超时（超时阈值设为 1200ms），系统将默认退避为“应用内 push 通知排队”，并将错误码记录在后端统一监控埋点中（日志标识 TraceId 联动），避免阻碍正常的结算前台事务。`,
-            length: 161,
-            time: f.uploadedAt
-          });
-        } else {
-          chunks.push({
-            id: `chunk-${f.id}-1`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 1,
-            content: `【${f.name} #分块1】文档元数据基础要素提炼。当前切片包含了此文书的第一层章节树，包含了引言、系统基本定义以及业务范围描述。通过构建该切分实体，可以辅助 LLM 在推理生成时快速获取并拼装文档上下文，避免模型因信息稀疏导致泛化幻觉。`,
-            length: 140,
-            time: f.uploadedAt
-          });
-          chunks.push({
-            id: `chunk-${f.id}-2`,
-            fileId: f.id,
-            fileName: f.name,
-            seq: 2,
-            content: `【${f.name} #分块2】核心规范与排版细节：本节详细提炼了文档中的关键公式、代码示例及格式排版规范。提取出重要业务指引参数如：多行方程组的自适应渲染、数学矩阵的对齐样式以及 Web 端 KaTeX 解析覆盖层配置，用于上下文的高效召回和样式兜底。`,
-            length: 146,
-            time: f.uploadedAt
-          });
-        }
-      }
-    });
-    return chunks;
-  }, [kb.files]);
+  React.useEffect(() => {
+    if (!selectedFile || !selectedFile.backendId || selectedFile.status !== 'success') return;
+    if (chunksByFileId[selectedFile.id]) return;
+
+    fetch(`/api/v1/agent-knowledge/${selectedFile.backendId}/chunks`)
+      .then((response) => response.json())
+      .then((result) => {
+        const chunks = Array.isArray(result.data) ? result.data : [];
+        setChunksByFileId((prev) => ({ ...prev, [selectedFile.id]: chunks }));
+      })
+      .catch((error) => {
+        console.error('加载知识分块失败', error);
+        showToast('加载知识分块失败', 'error');
+      });
+  }, [chunksByFileId, selectedFile, showToast]);
 
   // 根据选中的文件ID过滤分块
   const selectedFileChunks = useMemo(() => {
     if (!selectedFileId) return [];
-    return mockChunks.filter(chunk => chunk.fileId === selectedFileId);
-  }, [mockChunks, selectedFileId]);
+    return chunksByFileId[selectedFileId] || [];
+  }, [chunksByFileId, selectedFileId]);
 
   // 根据检索过滤分块列表
   const filteredSelectedFileChunks = useMemo(() => {
@@ -356,8 +412,8 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   // 获取当前选中的知识块对象
   const selectedChunk = useMemo(() => {
     if (!selectedChunkId) return null;
-    return mockChunks.find(c => c.id === selectedChunkId) || null;
-  }, [mockChunks, selectedChunkId]);
+    return selectedFileChunks.find(c => c.id === selectedChunkId) || null;
+  }, [selectedFileChunks, selectedChunkId]);
 
   return (
     <div 
@@ -419,7 +475,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
               <div className="flex items-center gap-1.5 mt-1.5">
                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{totalSizeStr}</span>
                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{kb.files.length} 个文件</span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{mockChunks.length} 个知识块</span>
+                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{Object.values(chunksByFileId).flat().length} 个知识块</span>
                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{selectedFileId ? '1' : '0'} 选中</span>
               </div>
             </div>
@@ -427,7 +483,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
 
           {/* 添加内容按钮 */}
           <button
-            onClick={() => !isLimitReached && fileInputRef.current?.click()}
+            onClick={openUploadDialog}
             disabled={isLimitReached}
             className={clsx(
               "flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-lg cursor-pointer transition-all border border-transparent shadow-xs active:scale-97 outline-none",
@@ -441,6 +497,186 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
           </button>
         </div>
       </div>
+
+      {uploadDialogOpen && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-gray-950/20 px-4 backdrop-blur-xs">
+          <div
+            className="w-full max-w-xl rounded-xl border border-gray-200 bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setUploadDialogDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.stopPropagation();
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setUploadDialogDragOver(false);
+              }
+            }}
+            onDrop={handleDialogDrop}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">上传文档</h3>
+                <p className="mt-1 text-xs font-medium text-gray-500">选择文件并配置切分策略后开始上传</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeUploadDialog}
+                disabled={isUploadingDialog}
+                className="rounded-md border-none bg-transparent p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                title="关闭"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="mb-1.5 text-xs font-bold text-gray-700">本地文件</div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={clsx(
+                    "flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 transition-colors",
+                    uploadDialogDragOver
+                      ? "border-gray-900 bg-gray-50"
+                      : selectedUploadFile
+                        ? "border-gray-300 bg-gray-50/70"
+                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                  )}
+                >
+                  {selectedUploadFile ? (
+                    <>
+                      <UploadCloud className="h-7 w-7 text-gray-800" />
+                      <span className="max-w-full break-all text-center text-sm font-bold text-gray-800">
+                        {selectedUploadFile.name}
+                      </span>
+                      <span className="text-xs font-mono text-gray-400">{formatFileSize(selectedUploadFile.size)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-7 w-7 text-gray-400" />
+                      <span className="text-sm font-bold text-gray-700">拖拽文件到此处，或点击选择</span>
+                      <span className="text-xs font-medium text-gray-400">支持 TXT、PDF、Word、Excel、CSV、Markdown</span>
+                    </>
+                  )}
+                </button>
+                {selectedUploadFile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUploadFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                      }
+                    }}
+                    className="mt-2 border-none bg-transparent px-0 text-xs font-bold text-gray-400 transition-colors hover:text-gray-700"
+                  >
+                    重新选择
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-gray-800">切分方式</div>
+                    <div className="mt-0.5 text-[11px] font-medium text-gray-400">决定文档如何切成可检索知识块</div>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-gray-400 ring-1 ring-gray-200">
+                    {activeSplitterOption.label}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setStrategyMenuOpen((open) => !open)}
+                    disabled={isUploadingDialog}
+                    className={clsx(
+                      "flex w-full items-center justify-between rounded-xl border bg-white px-3 py-3 text-left shadow-xs transition-all",
+                      strategyMenuOpen
+                        ? "border-gray-900 ring-2 ring-gray-900/5"
+                        : "border-gray-200 hover:border-gray-300 hover:shadow-sm",
+                      isUploadingDialog && "cursor-not-allowed opacity-60"
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-gray-900">{activeSplitterOption.label}</span>
+                      <span className="mt-0.5 block truncate text-xs font-medium text-gray-400">
+                        {activeSplitterOption.description}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={clsx(
+                        "ml-3 h-4 w-4 shrink-0 text-gray-400 transition-transform",
+                        strategyMenuOpen && "rotate-180 text-gray-700"
+                      )}
+                    />
+                  </button>
+
+                  {strategyMenuOpen && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[90] overflow-hidden rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-gray-950/5">
+                      {splitterOptions.map((option) => {
+                        const selected = option.value === splitterType;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              setSplitterType(option.value);
+                              setStrategyMenuOpen(false);
+                            }}
+                            className={clsx(
+                              "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                              selected ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                            )}
+                          >
+                            <span
+                              className={clsx(
+                                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                                selected ? "border-white bg-white text-gray-900" : "border-gray-300 text-transparent"
+                              )}
+                            >
+                              <Check className="h-3 w-3" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-xs font-bold">{option.label}</span>
+                              <span className={clsx("mt-0.5 block text-[11px] leading-4", selected ? "text-white/70" : "text-gray-400")}>
+                                {option.description}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeUploadDialog}
+                disabled={isUploadingDialog}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={submitUploadDialog}
+                disabled={!selectedUploadFile || isUploadingDialog}
+                className="rounded-lg border border-transparent bg-gray-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                {isUploadingDialog ? '上传中...' : '上传'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 限额预警提醒 */}
       {isLimitReached && (
@@ -492,7 +728,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                       <tr 
                         key={file.id} 
                         onClick={() => {
-                          if (file.status === 'uploading' || file.status === 'parsing') {
+                          if (file.status === 'uploading' || file.status === 'parsing' || file.status === 'deleting' || file.status === 'delete_failed') {
                             showToast('文件正在处理中，请解析完成后再选定查看分块。');
                             return;
                           }
@@ -556,11 +792,23 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                               <span>解析失败</span>
                             </div>
                           )}
+                          {file.status === 'deleting' && (
+                            <div className="flex items-center gap-1 text-gray-600 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 text-[9px] font-bold w-fit">
+                              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                              <span>删除中</span>
+                            </div>
+                          )}
+                          {file.status === 'delete_failed' && (
+                            <div className="flex items-center gap-1 text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5 text-[9px] font-bold w-fit">
+                              <AlertCircle className="h-3 w-3 shrink-0" />
+                              <span>删除失败</span>
+                            </div>
+                          )}
                         </td>
 
                         {/* 描述 */}
                         <td className="py-3 pr-2 text-gray-400 font-medium truncate max-w-[8rem] align-middle">
-                          -
+                          {file.errorMsg || file.splitterType || '-'}
                         </td>
 
                         {/* 操作栏 */}
@@ -572,7 +820,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                             {/* 重命名 */}
                             <button 
                               onClick={() => handleRenameFile(file.id, file.name)}
-                              disabled={file.status === 'uploading'}
+                              disabled={file.status === 'uploading' || file.status === 'parsing' || file.status === 'deleting'}
                               className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-35 transition-colors border-none bg-transparent cursor-pointer"
                               title="重命名"
                             >
@@ -584,7 +832,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                             {/* 删除 */}
                             <button 
                               onClick={() => handleDeleteFile(file.id, file.name)}
-                              disabled={file.status === 'uploading'}
+                              disabled={file.status === 'uploading' || file.status === 'deleting'}
                               className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-35 transition-colors border-none bg-transparent cursor-pointer"
                               title="从库中删除"
                             >
@@ -631,7 +879,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
               </div>
               <span className="font-bold text-gray-400">选中文档以查看分块</span>
               <span className="text-[10px] text-gray-300 mt-1.5 leading-normal max-w-[15rem] font-medium">
-                点击左侧文件表格行，即可在此区域提取该文档的仿真分块列表
+                点击左侧文件表格行，即可在此区域查看后端真实切分的知识块
               </span>
             </div>
           ) : filteredSelectedFileChunks.length === 0 ? (
@@ -655,7 +903,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                     <span className="text-[10px] font-bold text-gray-400 font-mono">#{chunk.seq} 分块</span>
                     <span className="text-[9px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded font-mono font-bold">{chunk.length} 字符</span>
                   </div>
-                  <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed font-semibold">
+                  <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed font-semibold whitespace-pre-wrap break-words">
                     {chunk.content}
                   </p>
                 </div>
@@ -676,8 +924,8 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
             <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-none bg-white">
               <div className="flex flex-col min-w-0">
                 <h3 className="text-sm font-bold text-gray-800">分块详情</h3>
-                <span className="text-[10px] text-gray-400 mt-1 font-semibold truncate max-w-[15rem]" title={selectedChunk.fileName}>
-                  来源：{selectedChunk.fileName}
+                <span className="text-[10px] text-gray-400 mt-1 font-semibold truncate max-w-[15rem]" title={selectedFile?.name || '知识文件'}>
+                  来源：{selectedFile?.name || '知识文件'}
                 </span>
               </div>
               <button 
@@ -702,16 +950,16 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                   <div className="text-gray-700 font-extrabold font-mono mt-1 text-sm">{selectedChunk.length}</div>
                 </div>
                 <div className="col-span-2 pt-3 border-t border-gray-200/50">
-                  <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">切分时间</div>
-                  <div className="text-gray-600 font-bold font-mono mt-1">{selectedChunk.time}</div>
+                  <div className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">切分策略</div>
+                  <div className="text-gray-600 font-bold font-mono mt-1">{selectedChunk.splitterType}</div>
                 </div>
               </div>
 
               <div className="space-y-2 flex flex-col">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">分块原文</span>
-                <p className="text-xs text-gray-700 leading-relaxed bg-[#FAFAFA]/80 border border-gray-150 rounded-xl p-4 font-semibold break-words select-text">
+                <pre className="text-xs text-gray-700 leading-relaxed bg-[#FAFAFA]/80 border border-gray-150 rounded-xl p-4 font-semibold whitespace-pre-wrap break-words select-text font-mono overflow-x-auto">
                   {selectedChunk.content}
-                </p>
+                </pre>
               </div>
             </div>
           </div>
