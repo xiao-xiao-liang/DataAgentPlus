@@ -13,6 +13,7 @@ interface KnowledgeChunkEditorProps {
   isGeneratingName: boolean;
   onSave: (name: string, content: string) => void;
   onRetry: () => void;
+  onRecover: () => void;
   onGenerateName: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }
@@ -32,6 +33,7 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
   isGeneratingName,
   onSave,
   onRetry,
+  onRecover,
   onGenerateName,
   onDirtyChange,
 }) => {
@@ -41,6 +43,16 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
 
   const isDirty = Boolean(chunk && (name !== chunk.name || content !== chunk.content));
   const isContentDirty = Boolean(chunk && content !== chunk.content);
+  const timeoutStartedAt = chunk?.vectorStatus === 'PROCESSING'
+    ? chunk.vectorProcessingStartedAt
+    : chunk?.updateTime;
+  const isTimedOut = Boolean(
+    (chunk?.vectorStatus === 'PENDING' || chunk?.vectorStatus === 'PROCESSING')
+      && timeoutStartedAt
+      && chunk.vectorTaskTimeoutSeconds
+      && Date.now() - new Date(timeoutStartedAt).getTime() > chunk.vectorTaskTimeoutSeconds * 1000,
+  );
+
   React.useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
@@ -116,15 +128,15 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
               <div className="mt-0.5 truncate text-[10px] font-medium opacity-75">{chunk.errorMsg || status.detail}</div>
             </div>
           </div>
-          {(chunk.vectorStatus === 'FAILED' || chunk.vectorStatus === 'PENDING') && (
+          {(chunk.vectorStatus === 'FAILED' || isTimedOut) && (
             <button
               type="button"
-              onClick={onRetry}
+              onClick={chunk.vectorStatus === 'FAILED' ? onRetry : onRecover}
               disabled={isRetrying}
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-current/20 bg-white/60 px-2 text-[10px] font-bold hover:bg-white disabled:opacity-50"
             >
               <RefreshCw className={clsx('size-3', isRetrying && 'animate-spin')} />
-              重新提交
+              {chunk.vectorStatus === 'FAILED' ? '重新提交' : '恢复任务'}
             </button>
           )}
         </div>

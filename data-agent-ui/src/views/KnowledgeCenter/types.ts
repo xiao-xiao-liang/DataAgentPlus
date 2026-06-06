@@ -20,7 +20,10 @@ export interface KnowledgeChunk {
   length: number;
   contentVersion: number;
   vectorVersion?: number;
+  vectorTaskVersion: number;
   vectorStatus: 'PENDING' | 'PROCESSING' | 'SYNCED' | 'FAILED';
+  vectorProcessingStartedAt?: string;
+  vectorTaskTimeoutSeconds?: number;
   updateTime?: string;
   nameLocked?: boolean;
   retryCount?: number;

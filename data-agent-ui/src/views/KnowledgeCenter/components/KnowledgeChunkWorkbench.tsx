@@ -21,6 +21,8 @@ const readResult = async <T,>(response: Response): Promise<T> => {
   return result.data as T;
 };
 
+const POLL_INTERVAL_MS = 3000;
+
 export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = ({
   agentId,
   knowledgeId,
@@ -112,7 +114,7 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
     if (!hasPending) return undefined;
     const timer = window.setInterval(() => {
       void loadChunks(true);
-    }, 3000);
+    }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [chunks, loadChunks, loadDetail, selectedId]);
 
@@ -161,6 +163,21 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
     }
   };
 
+  const handleRecover = async () => {
+    if (!selectedChunk) return;
+    setIsRetrying(true);
+    try {
+      const result = await readResult<KnowledgeChunkUpdateResult>(
+        await fetch(`/api/v1/agent-knowledge/${knowledgeId}/chunks/${selectedChunk.id}/recover?agentId=${agentId}`, { method: 'POST' }),
+      );
+      applyResult(result, '已恢复超时向量任务');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '恢复任务失败', 'error');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleGenerateName = async () => {
     if (!selectedChunk) return;
     setIsGeneratingName(true);
@@ -169,8 +186,7 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
         await fetch(`/api/v1/agent-knowledge/${knowledgeId}/chunks/${selectedChunk.id}/generate-name?agentId=${agentId}`, { method: 'POST' }),
       );
       applyResult(result, '已提交 AI 命名任务');
-      window.setTimeout(() => void loadChunks(true), 1500);
-      window.setTimeout(() => void loadChunks(true), 3500);
+      window.setTimeout(() => void loadChunks(true), POLL_INTERVAL_MS);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'AI 命名提交失败', 'error');
     } finally {
@@ -236,6 +252,7 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
           isGeneratingName={isGeneratingName}
           onSave={handleSave}
           onRetry={handleRetry}
+          onRecover={handleRecover}
           onGenerateName={handleGenerateName}
           onDirtyChange={setIsDirty}
         />
