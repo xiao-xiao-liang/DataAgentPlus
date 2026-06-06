@@ -148,11 +148,7 @@ const splitMarkdownByEcharts = (content: string): MarkdownPart[] => {
 };
 
 const parseEchartsOption = (code: string) => {
-  try {
-    return JSON.parse(code);
-  } catch {
-    return new Function(`"use strict"; return (${code});`)();
-  }
+  return JSON.parse(code);
 };
 
 const parseArrayLiteral = (value?: string) => {
@@ -160,11 +156,7 @@ const parseArrayLiteral = (value?: string) => {
   try {
     return JSON.parse(value);
   } catch {
-    try {
-      return new Function(`"use strict"; return (${value});`)();
-    } catch {
-      return null;
-    }
+    return null;
   }
 };
 

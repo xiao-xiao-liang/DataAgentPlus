@@ -64,6 +64,17 @@ color": "#5470        { "value": 256, "itemStyle": { "color": "#ee6666" } }
 }
 \`\`\``;
 
+const executableEchartsMarkdown = `## Unsafe Chart
+
+\`\`\`echarts
+(globalThis.__markdownParserUnsafeExecution = true, {
+  "title": { "text": "Unsafe" },
+  "xAxis": { "type": "category", "data": ["A"] },
+  "yAxis": { "type": "value" },
+  "series": [{ "type": "bar", "data": [1] }]
+})
+\`\`\``;
+
 const chartThenStreamingTextA = `${reportMarkdown}
 
 First paragraph after chart`;
@@ -143,6 +154,8 @@ try {
   const actionListHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: actionListMarkdown }));
   const malformedListHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: malformedListMarkdown }));
   const brokenChartHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: brokenEchartsMarkdown }));
+  globalThis.__markdownParserUnsafeExecution = false;
+  renderToStaticMarkup(React.createElement(MarkdownParser, { content: executableEchartsMarkdown }));
   const chartThenTextAHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: chartThenStreamingTextA }));
   const chartThenTextBHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: chartThenStreamingTextB }));
   const fencedMarkdownReportHtml = renderToStaticMarkup(React.createElement(MarkdownParser, { content: fencedMarkdownReport }));
@@ -173,6 +186,7 @@ try {
 
   assert.match(brokenChartHtml, /data-chart-option=/);
   assert.doesNotMatch(brokenChartHtml, /Chart render failed|Unexpected string/);
+  assert.equal(globalThis.__markdownParserUnsafeExecution, false);
 
   const chartKeyA = chartThenTextAHtml.match(/data-chart-key="([^"]+)"/)?.[1];
   const chartKeyB = chartThenTextBHtml.match(/data-chart-key="([^"]+)"/)?.[1];
