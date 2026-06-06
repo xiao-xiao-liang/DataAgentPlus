@@ -146,4 +146,16 @@ public interface AgentKnowledgeChunkMapper extends BaseMapper<AgentKnowledgeChun
                 .set("error_msg", errorMsg);
         return update(null, wrapper);
     }
+
+    /**
+     * 在版本未变化且名称未锁定时写入 AI 生成名称。
+     */
+    default int updateNameIfUnlocked(String chunkId, Integer contentVersion, String name) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .eq("name_locked", 0)
+                .set("name", name);
+        return update(null, wrapper);
+    }
 }

@@ -77,6 +77,9 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
         boolean submitted = publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
+        if (!Integer.valueOf(1).equals(updated.getNameLocked())) {
+            submitted = publishGenerateName(agentId, knowledgeId, chunkId, updated.getContentVersion()) && submitted;
+        }
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
     }
 
