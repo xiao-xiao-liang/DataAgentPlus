@@ -17,9 +17,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(
-        topic = KnowledgeChunkMessagePublisher.TOPIC,
-        selectorExpression = "GENERATE_NAME",
-        consumerGroup = "data-agent-knowledge-chunk-name-consumer")
+        topic = KnowledgeChunkMqConstant.TOPIC,
+        selectorExpression = KnowledgeChunkMqConstant.TAG_GENERATE_NAME,
+        consumerGroup = KnowledgeChunkMqConstant.NAME_CONSUMER_GROUP)
 public class KnowledgeChunkNameConsumer implements RocketMQListener<KnowledgeChunkMessage> {
 
     private final AgentKnowledgeChunkMapper chunkMapper;

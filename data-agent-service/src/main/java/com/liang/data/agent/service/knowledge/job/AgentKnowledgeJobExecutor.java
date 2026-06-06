@@ -17,6 +17,7 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.parser.DocumentParser;
 import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkAsyncPublisher;
+import com.liang.data.agent.service.knowledge.chunk.ChunkVectorStatus;
 import com.liang.data.agent.service.knowledge.splitter.AgentKnowledgeSplitParam;
 import com.liang.data.agent.service.knowledge.splitter.AgentKnowledgeTextSplitter;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
@@ -247,7 +248,8 @@ public class AgentKnowledgeJobExecutor {
         chunkEntity.setContentLength(chunk.getLength());
         chunkEntity.setContentVersion(1);
         chunkEntity.setVectorVersion(0);
-        chunkEntity.setVectorStatus("PENDING");
+        chunkEntity.setVectorTaskVersion(1);
+        chunkEntity.setVectorStatus(ChunkVectorStatus.PENDING.getCode());
         chunkEntity.setRetryCount(0);
         chunkEntity.setMetadata("{}");
         chunkEntity.setStatus(CHUNK_STATUS_SKIP_EMBEDDING);
@@ -285,10 +287,12 @@ public class AgentKnowledgeJobExecutor {
                         VECTOR_TYPE, VectorType.KNOWLEDGE.getCode(),
                         NAME, entity.getTitle(),
                         DESCRIPTION, entity.getSourceFilename(),
-                        "agentKnowledgeId", entity.getId().toString(),
-                        "chunkId", chunk.getChunkId(),
-                        "chunkOrder", chunk.getChunkOrder().toString(),
-                        "splitterType", entity.getSplitterType()
+                        AGENT_KNOWLEDGE_ID, entity.getId().toString(),
+                        CHUNK_ID, chunk.getChunkId(),
+                        CHUNK_ORDER, chunk.getChunkOrder().toString(),
+                        CONTENT_VERSION, chunk.getContentVersion().toString(),
+                        VECTOR_TASK_VERSION, chunk.getVectorTaskVersion().toString(),
+                        SPLITTER_TYPE, entity.getSplitterType()
                 )))
                 .toList();
     }
@@ -304,7 +308,7 @@ public class AgentKnowledgeJobExecutor {
             chunk.setStatus(CHUNK_STATUS_VECTOR_STORED);
             chunk.setEmbeddingId(versionedVectorId(chunk));
             chunk.setVectorVersion(chunk.getContentVersion());
-            chunk.setVectorStatus("SYNCED");
+            chunk.setVectorStatus(ChunkVectorStatus.SYNCED.getCode());
             chunk.setRetryCount(0);
             chunk.setErrorMsg(null);
             chunk.setUpdateTime(LocalDateTime.now());
@@ -313,7 +317,7 @@ public class AgentKnowledgeJobExecutor {
     }
 
     private String versionedVectorId(AgentKnowledgeChunkEntity chunk) {
-        return chunk.getChunkId() + "-v" + chunk.getContentVersion();
+        return chunk.getChunkId() + "-c" + chunk.getContentVersion() + "-t" + chunk.getVectorTaskVersion();
     }
 
     private void publishInitialChunkNames(AgentKnowledgeEntity knowledge, List<AgentKnowledgeChunkEntity> chunks) {

@@ -102,13 +102,13 @@ class AgentKnowledgeJobExecutorTest {
             assertThat(chunk.getContentVersion()).isEqualTo(1);
             assertThat(chunk.getVectorVersion()).isEqualTo(1);
             assertThat(chunk.getVectorStatus()).isEqualTo("SYNCED");
-            assertThat(chunk.getEmbeddingId()).isEqualTo("knowledge-12-chunk-0-v1");
+            assertThat(chunk.getEmbeddingId()).isEqualTo("knowledge-12-chunk-0-c1-t1");
             assertThat(chunk.getRetryCount()).isZero();
 
             ArgumentCaptor<List<Document>> documentCaptor = ArgumentCaptor.forClass(List.class);
             verify(vectorStoreService).addDocuments(eq("1"), documentCaptor.capture());
             assertThat(documentCaptor.getValue()).hasSize(1);
-            assertThat(documentCaptor.getValue().getFirst().getId()).isEqualTo("knowledge-12-chunk-0-v1");
+            assertThat(documentCaptor.getValue().getFirst().getId()).isEqualTo("knowledge-12-chunk-0-c1-t1");
             assertThat(documentCaptor.getValue().getFirst().getMetadata())
                     .containsEntry("agentKnowledgeId", "12")
                     .containsEntry("vector_type", "KNOWLEDGE");

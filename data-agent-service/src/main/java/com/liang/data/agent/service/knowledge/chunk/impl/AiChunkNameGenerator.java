@@ -2,10 +2,9 @@ package com.liang.data.agent.service.knowledge.chunk.impl;
 
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.service.knowledge.chunk.ChunkNameGenerator;
+import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
-import java.time.Duration;
 
 /**
  * 基于大语言模型的知识分块名称生成器。
@@ -16,6 +15,7 @@ public class AiChunkNameGenerator implements ChunkNameGenerator {
 
     private static final int MAX_NAME_LENGTH = 40;
     private final LlmService llmService;
+    private final KnowledgeChunkProperties properties;
 
     @Override
     public String generate(String content, Integer chunkOrder) {
@@ -24,7 +24,7 @@ public class AiChunkNameGenerator implements ChunkNameGenerator {
             String generated = llmService.toStringFlux(llmService.callUser(prompt))
                     .collectList()
                     .map(parts -> String.join("", parts))
-                    .block(Duration.ofSeconds(30));
+                    .block(properties.getAiNameTimeout());
             if (generated != null && !generated.isBlank()) {
                 return normalize(generated);
             }

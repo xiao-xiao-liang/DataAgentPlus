@@ -50,7 +50,7 @@ class KnowledgeChunkNameConsumerTest {
     void aiGeneratorShouldFallbackToFirstNonBlankLine() {
         LlmService llmService = mock(LlmService.class);
         when(llmService.callUser(any())).thenReturn(Flux.error(new IllegalStateException("模型不可用")));
-        AiChunkNameGenerator generator = new AiChunkNameGenerator(llmService);
+        AiChunkNameGenerator generator = new AiChunkNameGenerator(llmService, new KnowledgeChunkProperties());
 
         assertThat(generator.generate("\n  第一行名称  \n第二行", 3)).isEqualTo("第一行名称");
         assertThat(generator.generate(" \n ", 3)).isEqualTo("分块 #3");
