@@ -78,6 +78,10 @@ const router = createBrowserRouter([
         element: <KnowledgeCenter />,
       },
       {
+        path: 'knowledge/:knowledgeBaseId/files/:knowledgeId/chunks',
+        element: <KnowledgeCenter />,
+      },
+      {
         path: 'memory',
         element: <Placeholder title="记忆管理" />,
       },

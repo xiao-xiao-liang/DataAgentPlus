@@ -23,6 +23,7 @@ interface KnowledgeDetailProps {
   onBack: () => void;
   onUpdateKB: (updatedKB: KnowledgeBase) => void;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  onOpenFile: (file: KnowledgeFile) => void;
 }
 
 const splitterOptions = [
@@ -41,6 +42,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   onBack,
   onUpdateKB,
   showToast,
+  onOpenFile,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
@@ -101,12 +103,12 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
-  // 获取当前选中的文件对象
   const selectedFile = useMemo(() => {
     if (!selectedFileId) return null;
     return kb.files.find(f => f.id === selectedFileId) || null;
   }, [kb.files, selectedFileId]);
 
+  // 获取当前选中的文件对象
   const mapBackendStatus = (status?: string): KnowledgeFile['status'] => {
     if (status === 'COMPLETED') return 'success';
     if (status === 'FAILED') return 'failed';
@@ -210,7 +212,6 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
         files: updatedKB.files.map(f => f.id === newFileId ? uploadedFile : f),
         updatedAt: getFormattedNow()
       });
-      setSelectedFileId(uploadedFile.id);
       setUploadDialogOpen(false);
       setSelectedUploadFile(null);
       showToast(`文件 "${file.name}" 已上传，正在后台解析和向量化`);
@@ -348,10 +349,6 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
       showToast(`已删除文件 "${fileName}"`);
 
       // 安全退避：重置选中状态以防报错
-      if (selectedFileId === fileId) {
-        setSelectedFileId(null);
-        setSelectedChunkId(null);
-      }
     }
   };
 
@@ -475,8 +472,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
               <div className="flex items-center gap-1.5 mt-1.5">
                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{totalSizeStr}</span>
                 <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{kb.files.length} 个文件</span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{Object.values(chunksByFileId).flat().length} 个知识块</span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">{selectedFileId ? '1' : '0'} 选中</span>
+                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-semibold">点击文件进入分块工作台</span>
               </div>
             </div>
           </div>
@@ -690,7 +686,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
       <div className="flex-1 flex overflow-hidden border-t border-gray-100 mt-3 bg-white">
         
         {/* 左栏：文件列表 (占比 55%) */}
-        <div className="w-[55%] flex flex-col border-r border-gray-100 overflow-hidden bg-white">
+        <div className="w-full flex flex-col overflow-hidden bg-white">
           {/* 文件搜索 */}
           <div className="flex items-center gap-2 px-4 py-3 flex-none bg-white border-b border-gray-50">
             <div className="relative flex-1">
@@ -732,14 +728,10 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                             showToast('文件正在处理中，请解析完成后再选定查看分块。');
                             return;
                           }
-                          setSelectedFileId(file.id);
-                          setSelectedChunkId(null);
+                          onOpenFile(file);
                         }}
                         className={clsx(
-                          "hover:bg-gray-50/30 transition-colors group cursor-pointer border-l-2",
-                          selectedFileId === file.id 
-                            ? "border-l-[#2D336B] bg-[#F2F3FC]/30" 
-                            : "border-l-transparent bg-transparent"
+                          "hover:bg-gray-50/70 transition-colors group cursor-pointer border-l-2 border-l-transparent bg-transparent"
                         )}
                       >
                         {/* 文件图表与名 (大小、时间在名字下方) */}
@@ -754,10 +746,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <span className={clsx(
-                              "truncate font-bold block leading-tight",
-                              selectedFileId === file.id ? "text-gray-900" : "text-gray-700"
-                            )} title={file.name}>
+                            <span className="truncate font-bold block leading-tight text-gray-700 group-hover:text-gray-900" title={file.name}>
                               {file.name}
                             </span>
                             <span className="text-[10px] text-gray-400 font-mono font-medium mt-1 block">
@@ -850,7 +839,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
         </div>
 
         {/* 右栏：分块展示区 */}
-        <div className="w-[45%] flex flex-col overflow-hidden bg-gray-50/30">
+        <div className="hidden">
           {/* 右栏头部 */}
           <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-white flex-none">
             <span className="text-xs font-bold text-gray-800">

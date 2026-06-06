@@ -15,11 +15,22 @@ export interface KnowledgeChunk {
   id: string;
   knowledgeId: number;
   seq: number;
+  name: string;
   content: string;
   length: number;
-  splitterType: string;
-  status?: string;
-  embeddingId?: string;
+  contentVersion: number;
+  vectorVersion?: number;
+  vectorStatus: 'PENDING' | 'PROCESSING' | 'SYNCED' | 'FAILED';
+  updateTime?: string;
+  nameLocked?: boolean;
+  retryCount?: number;
+  errorMsg?: string;
+  splitterType?: string;
+}
+
+export interface KnowledgeChunkUpdateResult {
+  detail: KnowledgeChunk;
+  messageSubmitted: boolean;
 }
 
 // 知识库接口定义

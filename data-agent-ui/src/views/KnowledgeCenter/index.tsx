@@ -7,6 +7,7 @@ import { CreateKnowledgeDialog } from './components/CreateKnowledgeDialog';
 import { KnowledgeList } from './components/KnowledgeList';
 import { KnowledgeDetail } from './components/KnowledgeDetail';
 import { KnowledgeCandidatePage } from './components/KnowledgeCandidatePage';
+import { KnowledgeChunkWorkbench } from './components/KnowledgeChunkWorkbench';
 import { CollapsedSidebarMenuButton } from '../../layout/CollapsedSidebarMenuButton';
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 import { useCurrentAgentStore } from '../../stores/currentAgent';
@@ -80,7 +81,7 @@ export const KnowledgeCenter: React.FC = () => {
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [candidateCount, setCandidateCount] = useState(0);
 
-  const { knowledgeBaseId } = useParams<{ knowledgeBaseId: string }>();
+  const { knowledgeBaseId, knowledgeId } = useParams<{ knowledgeBaseId: string; knowledgeId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const currentAgentId = useCurrentAgentStore((state) => state.agentId);
@@ -247,6 +248,15 @@ export const KnowledgeCenter: React.FC = () => {
 
       {isCandidatePage ? (
         <KnowledgeCandidatePage agentId={effectiveAgentId} onBack={() => navigate('/knowledge')} showToast={showToast} />
+      ) : currentKB && knowledgeId ? (
+        <KnowledgeChunkWorkbench
+          agentId={effectiveAgentId}
+          knowledgeId={Number(knowledgeId)}
+          fileName={currentKB.files.find((file) => file.backendId === Number(knowledgeId))?.name || `knowledge-${knowledgeId}`}
+          knowledgeBaseName={currentKB.name}
+          onBack={() => navigate(`/knowledge/${currentKB.id}?name=${encodeURIComponent(currentKB.name)}`)}
+          showToast={showToast}
+        />
       ) : currentKB ? (
         <KnowledgeDetail
           kb={currentKB}
@@ -254,6 +264,11 @@ export const KnowledgeCenter: React.FC = () => {
           onBack={() => navigate('/knowledge')}
           onUpdateKB={handleUpdateKB}
           showToast={showToast}
+          onOpenFile={(file) => {
+            if (file.backendId) {
+              navigate(`/knowledge/${currentKB.id}/files/${file.backendId}/chunks?name=${encodeURIComponent(currentKB.name)}`);
+            }
+          }}
         />
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
