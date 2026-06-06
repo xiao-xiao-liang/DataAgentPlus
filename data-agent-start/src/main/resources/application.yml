@@ -100,3 +100,10 @@ rocketmq:
     group: ${ROCKETMQ_PRODUCER_GROUP:data-agent-producer-group}
     send-message-timeout: 5000
     retry-times-when-send-failed: 2
+
+knowledge:
+  chunk:
+    vector-task-timeout: 10m
+    vector-recovery-interval: 1m
+    ai-name-timeout: 30s
+    recovery-batch-size: 100

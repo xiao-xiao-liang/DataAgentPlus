@@ -7,10 +7,21 @@ package com.liang.data.agent.service.knowledge.chunk.mq;
  * @param knowledgeId    知识文件 ID
  * @param chunkId        分块业务 ID
  * @param contentVersion 正文版本
+ * @param taskVersion    向量任务版本
+ * @param operationId    操作 ID
  */
 public record KnowledgeChunkMessage(
         Integer agentId,
         Integer knowledgeId,
         String chunkId,
-        Integer contentVersion) {
+        Integer contentVersion,
+        Integer taskVersion,
+        String operationId) {
+
+    /**
+     * 创建不区分任务版本的普通消息，当前仅用于 AI 命名。
+     */
+    public KnowledgeChunkMessage(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
+        this(agentId, knowledgeId, chunkId, contentVersion, null, null);
+    }
 }

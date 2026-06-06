@@ -1,37 +1,45 @@
 package com.liang.data.agent.service.knowledge.chunk;
 
-import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkMessage;
 import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkMessagePublisher;
+import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkMqConstant;
+import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkTransactionOperation;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.Message;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
- * 知识分块 RocketMQ 消息发布器单元测试。
+ * 知识分块消息发布器单元测试。
  */
 class KnowledgeChunkMessagePublisherTest {
 
-    private final RocketMQTemplate rocketMQTemplate = mock(RocketMQTemplate.class);
-    private final KnowledgeChunkMessagePublisher publisher = new KnowledgeChunkMessagePublisher(rocketMQTemplate);
-
     @Test
-    void shouldPublishMinimalVectorizeMessage() {
-        KnowledgeChunkMessage message = new KnowledgeChunkMessage(1, 10, "knowledge-10-chunk-3", 4);
+    void shouldPublishVectorTaskAsTransactionMessage() {
+        RocketMQTemplate template = mock(RocketMQTemplate.class);
+        TransactionSendResult sendResult = new TransactionSendResult();
+        sendResult.setLocalTransactionState(LocalTransactionState.COMMIT_MESSAGE);
+        when(template.sendMessageInTransaction(eq(KnowledgeChunkMqConstant.VECTORIZE_DESTINATION),
+                any(Message.class), any())).thenReturn(sendResult);
+        KnowledgeChunkMessagePublisher publisher = new KnowledgeChunkMessagePublisher(template);
+        KnowledgeChunkTransactionOperation operation = new KnowledgeChunkTransactionOperation(
+                KnowledgeChunkTransactionOperation.Type.RETRY_FAILED, 1, 10, "chunk-3",
+                2, 4, null, null, null, null, null);
 
-        assertThat(publisher.publishVectorize(1, 10, "knowledge-10-chunk-3", 4)).isTrue();
-
-        verify(rocketMQTemplate).convertAndSend(KnowledgeChunkMessagePublisher.VECTORIZE_DESTINATION, message);
+        assertThat(publisher.publishVectorizeTransaction(operation)).isTrue();
     }
 
     @Test
-    void shouldPublishMinimalGenerateNameMessage() {
-        KnowledgeChunkMessage message = new KnowledgeChunkMessage(1, 10, "knowledge-10-chunk-3", 4);
+    void shouldPublishNameTaskAsNormalMessage() {
+        RocketMQTemplate template = mock(RocketMQTemplate.class);
+        KnowledgeChunkMessagePublisher publisher = new KnowledgeChunkMessagePublisher(template);
 
-        assertThat(publisher.publishGenerateName(1, 10, "knowledge-10-chunk-3", 4)).isTrue();
+        assertThat(publisher.publishGenerateName(1, 10, "chunk-3", 2)).isTrue();
 
-        verify(rocketMQTemplate).convertAndSend(KnowledgeChunkMessagePublisher.GENERATE_NAME_DESTINATION, message);
+        verify(template).convertAndSend(eq(KnowledgeChunkMqConstant.GENERATE_NAME_DESTINATION), any(Object.class));
     }
 }
