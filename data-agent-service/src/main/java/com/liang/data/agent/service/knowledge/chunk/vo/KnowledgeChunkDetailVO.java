@@ -4,6 +4,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+import java.time.LocalDateTime;
+
 /**
  * 知识分块编辑详情视图对象。
  */
@@ -16,4 +18,6 @@ public class KnowledgeChunkDetailVO extends KnowledgeChunkOutlineVO {
     private Boolean nameLocked;
     private Integer retryCount;
     private String errorMsg;
+    private LocalDateTime vectorProcessingStartedAt;
+    private Long vectorTaskTimeoutSeconds;
 }

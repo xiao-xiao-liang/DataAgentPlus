@@ -17,6 +17,7 @@ public class KnowledgeChunkOutlineVO {
     private Integer length;
     private Integer contentVersion;
     private Integer vectorVersion;
+    private Integer vectorTaskVersion;
     private String vectorStatus;
     private LocalDateTime updateTime;
 }

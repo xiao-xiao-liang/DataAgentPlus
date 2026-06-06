@@ -1,14 +1,19 @@
 package com.liang.data.agent.service.knowledge.chunk.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.entity.AgentKnowledgeChunkEntity;
 import com.liang.data.agent.dal.entity.AgentKnowledgeEntity;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
+import com.liang.data.agent.service.knowledge.chunk.ChunkVectorStatus;
 import com.liang.data.agent.service.knowledge.chunk.AgentKnowledgeChunkService;
 import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkAsyncPublisher;
+import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkConstraint;
+import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkProperties;
+import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkTransactionOperation;
 import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkDetailVO;
 import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkOutlineVO;
 import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkUpdateRequest;
@@ -18,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,14 +35,14 @@ import java.util.Optional;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkService {
-
-    private static final int MAX_NAME_LENGTH = 255;
-    private static final int MAX_CONTENT_LENGTH = 200_000;
+public class AgentKnowledgeChunkServiceImpl
+        extends ServiceImpl<AgentKnowledgeChunkMapper, AgentKnowledgeChunkEntity>
+        implements AgentKnowledgeChunkService {
 
     private final AgentKnowledgeMapper knowledgeMapper;
     private final AgentKnowledgeChunkMapper chunkMapper;
     private final KnowledgeChunkAsyncPublisher asyncPublisher;
+    private final KnowledgeChunkProperties properties;
 
     @Override
     public List<KnowledgeChunkOutlineVO> listOutlines(Integer agentId, Integer knowledgeId,
@@ -53,7 +59,7 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         if (StringUtils.hasText(vectorStatus)) {
             query.eq(AgentKnowledgeChunkEntity::getVectorStatus, vectorStatus.trim());
         }
-        return chunkMapper.selectList(query).stream().map(this::toOutline).toList();
+        return list(query).stream().map(this::toOutline).toList();
     }
 
     @Override
@@ -68,15 +74,23 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         validateKnowledge(agentId, knowledgeId);
         AgentKnowledgeChunkEntity current = getChunk(knowledgeId, chunkId);
         validateRequest(request);
-        int nameLocked = Boolean.TRUE.equals(request.getManualNameChanged()) ? 1
-                : Optional.ofNullable(current.getNameLocked()).orElse(0);
-        int rows = chunkMapper.updateContentWithVersion(chunkId, request.getContentVersion(),
-                request.getName().trim(), nameLocked, request.getContent(), request.getContent().length());
-        if (rows == 0) {
+        String name = request.getName().trim();
+        boolean manualNameChanged = !name.equals(current.getName());
+        if (request.getContent().equals(current.getContent())) {
+            if (chunkMapper.updateNameOnly(chunkId, request.getContentVersion(), name) == 0) {
+                throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
+            }
+            return new KnowledgeChunkUpdateResultVO(toDetail(getChunk(knowledgeId, chunkId)), false);
+        }
+        int nameLocked = manualNameChanged ? 1 : Optional.ofNullable(current.getNameLocked()).orElse(0);
+        boolean submitted = asyncPublisher.publishVectorizeTransaction(new KnowledgeChunkTransactionOperation(
+                KnowledgeChunkTransactionOperation.Type.UPDATE_CONTENT, agentId, knowledgeId, chunkId,
+                request.getContentVersion(), current.getVectorTaskVersion(), name, nameLocked, request.getContent(),
+                null, null));
+        if (!submitted) {
             throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
-        boolean submitted = publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
         if (!Integer.valueOf(1).equals(updated.getNameLocked())) {
             submitted = publishGenerateName(agentId, knowledgeId, chunkId, updated.getContentVersion()) && submitted;
         }
@@ -87,11 +101,13 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
     public KnowledgeChunkUpdateResultVO retry(Integer agentId, Integer knowledgeId, String chunkId) {
         validateKnowledge(agentId, knowledgeId);
         AgentKnowledgeChunkEntity current = getChunk(knowledgeId, chunkId);
-        if (chunkMapper.resetVectorStatus(chunkId, current.getContentVersion()) == 0) {
+        boolean submitted = asyncPublisher.publishVectorizeTransaction(new KnowledgeChunkTransactionOperation(
+                KnowledgeChunkTransactionOperation.Type.RETRY_FAILED, agentId, knowledgeId, chunkId,
+                current.getContentVersion(), current.getVectorTaskVersion(), null, null, null, null, null));
+        if (!submitted) {
             throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
-        boolean submitted = publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
     }
 
@@ -107,13 +123,19 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
     }
 
-    private boolean publishVectorize(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
-        try {
-            return asyncPublisher.publishVectorize(agentId, knowledgeId, chunkId, contentVersion);
-        } catch (RuntimeException exception) {
-            log.warn("分块向量化消息提交失败，等待用户重试：chunkId={}，contentVersion={}", chunkId, contentVersion, exception);
-            return false;
+    @Override
+    public KnowledgeChunkUpdateResultVO recover(Integer agentId, Integer knowledgeId, String chunkId) {
+        validateKnowledge(agentId, knowledgeId);
+        AgentKnowledgeChunkEntity current = getChunk(knowledgeId, chunkId);
+        LocalDateTime deadline = LocalDateTime.now().minus(properties.getVectorTaskTimeout());
+        boolean submitted = asyncPublisher.publishVectorizeTransaction(new KnowledgeChunkTransactionOperation(
+                KnowledgeChunkTransactionOperation.Type.RECOVER_TIMEOUT, agentId, knowledgeId, chunkId,
+                current.getContentVersion(), current.getVectorTaskVersion(), null, null, null,
+                current.getVectorStatus(), deadline));
+        if (!submitted) {
+            throw new ServiceException("任务尚未超时或已被其他操作恢复", BaseErrorCode.CLIENT_ERROR);
         }
+        return new KnowledgeChunkUpdateResultVO(toDetail(getChunk(knowledgeId, chunkId)), true);
     }
 
     private boolean publishGenerateName(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
@@ -141,7 +163,7 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         if (!StringUtils.hasText(chunkId)) {
             throw new ServiceException("分块 ID 不能为空", BaseErrorCode.CLIENT_ERROR);
         }
-        return Optional.ofNullable(chunkMapper.selectOne(Wrappers.lambdaQuery(AgentKnowledgeChunkEntity.class)
+        return Optional.ofNullable(getOne(Wrappers.lambdaQuery(AgentKnowledgeChunkEntity.class)
                         .eq(AgentKnowledgeChunkEntity::getKnowledgeId, knowledgeId)
                         .eq(AgentKnowledgeChunkEntity::getChunkId, chunkId)))
                 .orElseThrow(() -> new ServiceException("知识分块不存在", BaseErrorCode.CLIENT_ERROR));
@@ -151,10 +173,12 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         if (request == null || request.getContentVersion() == null || request.getContentVersion() <= 0) {
             throw new ServiceException("分块内容版本不能为空", BaseErrorCode.CLIENT_ERROR);
         }
-        if (!StringUtils.hasText(request.getName()) || request.getName().trim().length() > MAX_NAME_LENGTH) {
+        if (!StringUtils.hasText(request.getName())
+                || request.getName().trim().length() > KnowledgeChunkConstraint.MAX_NAME_LENGTH) {
             throw new ServiceException("分块名称不能为空且不能超过 255 个字符", BaseErrorCode.CLIENT_ERROR);
         }
-        if (!StringUtils.hasText(request.getContent()) || request.getContent().length() > MAX_CONTENT_LENGTH) {
+        if (!StringUtils.hasText(request.getContent())
+                || request.getContent().length() > KnowledgeChunkConstraint.MAX_CONTENT_LENGTH) {
             throw new ServiceException("分块正文不能为空且不能超过 200000 个字符", BaseErrorCode.CLIENT_ERROR);
         }
     }
@@ -167,6 +191,7 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
                 .setLength(entity.getContentLength())
                 .setContentVersion(entity.getContentVersion())
                 .setVectorVersion(entity.getVectorVersion())
+                .setVectorTaskVersion(entity.getVectorTaskVersion())
                 .setVectorStatus(entity.getVectorStatus())
                 .setUpdateTime(entity.getUpdateTime());
     }
@@ -184,7 +209,10 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
         detail.setLength(entity.getContentLength());
         detail.setContentVersion(entity.getContentVersion());
         detail.setVectorVersion(entity.getVectorVersion());
+        detail.setVectorTaskVersion(entity.getVectorTaskVersion());
         detail.setVectorStatus(entity.getVectorStatus());
+        detail.setVectorProcessingStartedAt(entity.getVectorProcessingStartedAt());
+        detail.setVectorTaskTimeoutSeconds(properties.getVectorTaskTimeout().toSeconds());
         detail.setUpdateTime(entity.getUpdateTime());
         return detail;
     }
