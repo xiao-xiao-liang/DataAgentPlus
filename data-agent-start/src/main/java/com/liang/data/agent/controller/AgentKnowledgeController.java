@@ -3,7 +3,6 @@ package com.liang.data.agent.controller;
 import com.liang.data.agent.common.result.Result;
 import com.liang.data.agent.common.result.Results;
 import com.liang.data.agent.service.knowledge.AgentKnowledgeService;
-import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,11 +47,6 @@ public class AgentKnowledgeController {
                 file.getSize(),
                 splitterType
         ));
-    }
-
-    @GetMapping("/{id}/chunks")
-    public Result<List<AgentKnowledgeChunkVO>> chunks(@RequestParam Integer agentId, @PathVariable Integer id) {
-        return Results.success(agentKnowledgeService.listChunks(agentId, id));
     }
 
     @DeleteMapping("/{id}")
