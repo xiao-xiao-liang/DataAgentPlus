@@ -196,7 +196,9 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_chunk
     content_length INT          DEFAULT NULL COMMENT '分块文本长度',
     content_version INT         NOT NULL DEFAULT 1 COMMENT '内容版本号',
     vector_version INT          DEFAULT NULL COMMENT '向量版本号',
+    vector_task_version INT     NOT NULL DEFAULT 1 COMMENT '当前向量化任务版本号',
     vector_status  VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '向量同步状态',
+    vector_processing_started_at TIMESTAMP NULL COMMENT '当前向量化任务开始处理时间',
     retry_count    INT          NOT NULL DEFAULT 0 COMMENT '向量同步重试次数',
     metadata       TEXT         DEFAULT NULL COMMENT '分块元数据JSON',
     embedding_id   VARCHAR(255) DEFAULT NULL COMMENT '向量存储中的文档ID',
@@ -212,6 +214,8 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_chunk
     INDEX idx_knowledge_id (knowledge_id),
     INDEX idx_knowledge_order (knowledge_id, chunk_order),
     INDEX idx_knowledge_vector_status (knowledge_id, vector_status),
+    INDEX idx_vector_pending_recovery (vector_status, update_time),
+    INDEX idx_vector_processing_recovery (vector_status, vector_processing_started_at),
     INDEX idx_status_skip (knowledge_id, status, skip_embedding)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识分块表';

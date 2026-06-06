@@ -49,8 +49,14 @@ public class AgentKnowledgeChunkEntity {
     /** 向量版本号 */
     private Integer vectorVersion;
 
+    /** 当前向量化任务版本号 */
+    private Integer vectorTaskVersion;
+
     /** 向量同步状态 */
     private String vectorStatus;
+
+    /** 当前向量化任务开始处理时间 */
+    private LocalDateTime vectorProcessingStartedAt;
 
     /** 向量同步重试次数 */
     private Integer retryCount;
