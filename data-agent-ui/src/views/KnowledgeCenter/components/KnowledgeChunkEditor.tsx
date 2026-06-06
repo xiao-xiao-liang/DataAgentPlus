@@ -37,6 +37,7 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
   const [content, setContent] = React.useState(chunk?.content || '');
   const [mode, setMode] = React.useState<'edit' | 'preview'>('edit');
 
+  const isContentDirty = Boolean(chunk && content !== chunk.content);
   const isDirty = Boolean(chunk && (name !== chunk.name || content !== chunk.content));
 
   if (isLoading || !chunk) {
@@ -96,7 +97,7 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gray-900 px-3.5 text-xs font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
           >
             {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-            {isSaving ? '保存中' : '保存并重新向量化'}
+            {isSaving ? '保存中' : isContentDirty ? '保存并重新向量化' : '保存名称'}
           </button>
         </div>
       </div>
