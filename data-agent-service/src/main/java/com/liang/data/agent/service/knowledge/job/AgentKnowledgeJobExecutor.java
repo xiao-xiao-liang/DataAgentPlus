@@ -16,6 +16,7 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.parser.DocumentParser;
+import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkAsyncPublisher;
 import com.liang.data.agent.service.knowledge.splitter.AgentKnowledgeSplitParam;
 import com.liang.data.agent.service.knowledge.splitter.AgentKnowledgeTextSplitter;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
@@ -56,6 +57,7 @@ public class AgentKnowledgeJobExecutor {
     private final DocumentParser documentParser;
     private final AgentKnowledgeTextSplitter textSplitter;
     private final FileStorageService fileStorageService;
+    private final KnowledgeChunkAsyncPublisher chunkAsyncPublisher;
 
     private static final String INSTANCE_ID = System.getenv("HOSTNAME") != null 
             ? System.getenv("HOSTNAME") 
@@ -135,6 +137,7 @@ public class AgentKnowledgeJobExecutor {
 
         // 5. 开启子事务：更新分块物理标志，最终完成知识库状态提交
         self.completeUpload(entity, chunkEntities);
+        publishInitialChunkNames(entity, chunkEntities);
     }
 
     /**
@@ -238,8 +241,14 @@ public class AgentKnowledgeJobExecutor {
         AgentKnowledgeChunkEntity chunkEntity = BeanUtil.copyProperties(chunk, AgentKnowledgeChunkEntity.class);
         chunkEntity.setKnowledgeId(entity.getId());
         chunkEntity.setChunkId("knowledge-" + entity.getId() + "-chunk-" + chunk.getSeq());
+        chunkEntity.setName(buildInitialChunkName(chunk));
+        chunkEntity.setNameLocked(0);
         chunkEntity.setChunkOrder(chunk.getSeq());
         chunkEntity.setContentLength(chunk.getLength());
+        chunkEntity.setContentVersion(1);
+        chunkEntity.setVectorVersion(0);
+        chunkEntity.setVectorStatus("PENDING");
+        chunkEntity.setRetryCount(0);
         chunkEntity.setMetadata("{}");
         chunkEntity.setStatus(CHUNK_STATUS_SKIP_EMBEDDING);
         chunkEntity.setSkipEmbedding(0);
@@ -250,13 +259,28 @@ public class AgentKnowledgeJobExecutor {
     }
 
     /**
+     * 为新分块生成可直接展示的大纲名称。
+     *
+     * <p>初始名称使用正文首行，后续用户可在分块工作台中手动修改或触发 AI 命名。</p>
+     */
+    private String buildInitialChunkName(AgentKnowledgeChunkVO chunk) {
+        String content = Optional.ofNullable(chunk.getContent()).orElse("").trim();
+        String firstLine = content.lines()
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse("分块 #" + chunk.getSeq());
+        return firstLine.length() > 80 ? firstLine.substring(0, 80) : firstLine;
+    }
+
+    /**
      * 构建写入向量库的文档对象。
      */
     private List<Document> toDocuments(AgentKnowledgeEntity entity, List<AgentKnowledgeChunkEntity> chunks) {
         return chunks.stream()
                 .sorted(Comparator.comparing(AgentKnowledgeChunkEntity::getChunkOrder))
                 .filter(chunk -> chunk.getSkipEmbedding() == null || chunk.getSkipEmbedding() == 0)
-                .map(chunk -> new Document(chunk.getChunkId(), chunk.getContent(), Map.of(
+                .map(chunk -> new Document(versionedVectorId(chunk), chunk.getContent(), Map.of(
                         AGENT_ID, entity.getAgentId().toString(),
                         VECTOR_TYPE, VectorType.KNOWLEDGE.getCode(),
                         NAME, entity.getTitle(),
@@ -278,10 +302,29 @@ public class AgentKnowledgeJobExecutor {
         }
         for (AgentKnowledgeChunkEntity chunk : chunks) {
             chunk.setStatus(CHUNK_STATUS_VECTOR_STORED);
-            chunk.setEmbeddingId(chunk.getChunkId());
+            chunk.setEmbeddingId(versionedVectorId(chunk));
+            chunk.setVectorVersion(chunk.getContentVersion());
+            chunk.setVectorStatus("SYNCED");
+            chunk.setRetryCount(0);
+            chunk.setErrorMsg(null);
             chunk.setUpdateTime(LocalDateTime.now());
         }
         Db.updateBatchById(chunks);
+    }
+
+    private String versionedVectorId(AgentKnowledgeChunkEntity chunk) {
+        return chunk.getChunkId() + "-v" + chunk.getContentVersion();
+    }
+
+    private void publishInitialChunkNames(AgentKnowledgeEntity knowledge, List<AgentKnowledgeChunkEntity> chunks) {
+        for (AgentKnowledgeChunkEntity chunk : chunks) {
+            try {
+                chunkAsyncPublisher.publishGenerateName(
+                        knowledge.getAgentId(), knowledge.getId(), chunk.getChunkId(), chunk.getContentVersion());
+            } catch (RuntimeException exception) {
+                log.warn("提交初始分块 AI 命名消息失败，保留首行名称：chunkId={}", chunk.getChunkId(), exception);
+            }
+        }
     }
 
     private boolean markJobRunningWithLock(AgentKnowledgeJobEntity job) {

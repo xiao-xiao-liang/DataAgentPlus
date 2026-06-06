@@ -50,6 +50,7 @@ class KnowledgeChunkVectorConsumerTest {
         chunk.setContent("延误判断规则");
         chunk.setContentVersion(4);
         chunk.setVectorVersion(2);
+        chunk.setEmbeddingId("legacy-vector-id");
         chunk.setSplitterType("title");
         when(chunkMapper.selectOne(any())).thenReturn(chunk);
     }
@@ -76,7 +77,7 @@ class KnowledgeChunkVectorConsumerTest {
         assertThat(documents.getValue().getFirst().getId()).isEqualTo("knowledge-10-chunk-3-v4");
         assertThat(documents.getValue().getFirst().getMetadata()).containsEntry("chunkVersion", "4");
         verify(chunkMapper).completeVectorIfProcessing(message.chunkId(), 4);
-        verify(vectorStoreService).deleteDocumentsByIds(List.of("knowledge-10-chunk-3-v2"));
+        verify(vectorStoreService).deleteDocumentsByIds(List.of("legacy-vector-id"));
     }
 
     @Test

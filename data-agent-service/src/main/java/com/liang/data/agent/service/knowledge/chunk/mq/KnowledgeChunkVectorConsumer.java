@@ -59,8 +59,8 @@ public class KnowledgeChunkVectorConsumer implements RocketMQListener<KnowledgeC
                 vectorStoreService.deleteDocumentsByIds(List.of(newVectorId));
                 return;
             }
-            if (chunk.getVectorVersion() != null && !chunk.getVectorVersion().equals(message.contentVersion())) {
-                vectorStoreService.deleteDocumentsByIds(List.of(vectorId(message.chunkId(), chunk.getVectorVersion())));
+            if (chunk.getEmbeddingId() != null && !chunk.getEmbeddingId().equals(newVectorId)) {
+                vectorStoreService.deleteDocumentsByIds(List.of(chunk.getEmbeddingId()));
             }
         } catch (RuntimeException exception) {
             chunkMapper.recordVectorRetry(message.chunkId(), message.contentVersion(), summarize(exception));

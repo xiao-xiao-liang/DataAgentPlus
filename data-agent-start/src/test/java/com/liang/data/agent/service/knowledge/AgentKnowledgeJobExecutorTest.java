@@ -9,6 +9,7 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobExecutor;
+import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkAsyncPublisher;
 import com.liang.data.agent.service.knowledge.parser.TikaDocumentParser;
 import com.liang.data.agent.service.knowledge.splitter.AgentKnowledgeTextSplitter;
 import com.liang.data.agent.service.storage.FileStorageService;
@@ -41,6 +42,7 @@ class AgentKnowledgeJobExecutorTest {
     private final AgentKnowledgeJobMapper agentKnowledgeJobMapper = mock(AgentKnowledgeJobMapper.class);
     private final AgentVectorStoreService vectorStoreService = mock(AgentVectorStoreService.class);
     private final FileStorageService fileStorageService = mock(FileStorageService.class);
+    private final KnowledgeChunkAsyncPublisher chunkAsyncPublisher = mock(KnowledgeChunkAsyncPublisher.class);
     private final AgentKnowledgeJobExecutor executor = new AgentKnowledgeJobExecutor(
             agentKnowledgeMapper,
             agentKnowledgeChunkMapper,
@@ -48,7 +50,8 @@ class AgentKnowledgeJobExecutorTest {
             vectorStoreService,
             new TikaDocumentParser(),
             new AgentKnowledgeTextSplitter(),
-            fileStorageService
+            fileStorageService,
+            chunkAsyncPublisher
     );
 
     @Test
@@ -94,10 +97,18 @@ class AgentKnowledgeJobExecutorTest {
             assertThat(chunk.getKnowledgeId()).isEqualTo(12);
             assertThat(chunk.getChunkId()).isEqualTo("knowledge-12-chunk-0");
             assertThat(chunk.getContent()).contains("整体准点率");
+            assertThat(chunk.getName()).isEqualTo("整体准点率 准点列车数 总列车数");
+            assertThat(chunk.getNameLocked()).isZero();
+            assertThat(chunk.getContentVersion()).isEqualTo(1);
+            assertThat(chunk.getVectorVersion()).isEqualTo(1);
+            assertThat(chunk.getVectorStatus()).isEqualTo("SYNCED");
+            assertThat(chunk.getEmbeddingId()).isEqualTo("knowledge-12-chunk-0-v1");
+            assertThat(chunk.getRetryCount()).isZero();
 
             ArgumentCaptor<List<Document>> documentCaptor = ArgumentCaptor.forClass(List.class);
             verify(vectorStoreService).addDocuments(eq("1"), documentCaptor.capture());
             assertThat(documentCaptor.getValue()).hasSize(1);
+            assertThat(documentCaptor.getValue().getFirst().getId()).isEqualTo("knowledge-12-chunk-0-v1");
             assertThat(documentCaptor.getValue().getFirst().getMetadata())
                     .containsEntry("agentKnowledgeId", "12")
                     .containsEntry("vector_type", "KNOWLEDGE");
@@ -109,6 +120,7 @@ class AgentKnowledgeJobExecutorTest {
             ArgumentCaptor<AgentKnowledgeJobEntity> jobCaptor = ArgumentCaptor.forClass(AgentKnowledgeJobEntity.class);
             verify(agentKnowledgeJobMapper, atLeastOnce()).updateById(jobCaptor.capture());
             assertThat(jobCaptor.getAllValues().getLast().getStatus()).isEqualTo("SUCCESS");
+            verify(chunkAsyncPublisher).publishGenerateName(1, 12, "knowledge-12-chunk-0", 1);
         }
     }
 }
