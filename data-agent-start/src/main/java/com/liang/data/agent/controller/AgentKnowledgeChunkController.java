@@ -62,6 +62,13 @@ public class AgentKnowledgeChunkController {
         return Results.success(chunkService.retry(agentId, knowledgeId, chunkId));
     }
 
+    @PostMapping("/{chunkId}/recover")
+    public Result<KnowledgeChunkUpdateResultVO> recover(@RequestParam Integer agentId,
+                                                        @PathVariable Integer knowledgeId,
+                                                        @PathVariable String chunkId) {
+        return Results.success(chunkService.recover(agentId, knowledgeId, chunkId));
+    }
+
     @PostMapping("/{chunkId}/generate-name")
     public Result<KnowledgeChunkUpdateResultVO> generateName(@RequestParam Integer agentId,
                                                              @PathVariable Integer knowledgeId,
