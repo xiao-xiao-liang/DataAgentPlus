@@ -11,6 +11,7 @@ import { KnowledgeChunkWorkbench } from './components/KnowledgeChunkWorkbench';
 import { CollapsedSidebarMenuButton } from '../../layout/CollapsedSidebarMenuButton';
 import type { LayoutOutletContext } from '../../layout/GlobalLayout';
 import { useCurrentAgentStore } from '../../stores/currentAgent';
+import { resolveKnowledgeAgentId } from './agentKnowledgeRouting';
 
 type AgentKnowledgeResponse = {
   id: number;
@@ -86,7 +87,7 @@ export const KnowledgeCenter: React.FC = () => {
   const location = useLocation();
   const currentAgentId = useCurrentAgentStore((state) => state.agentId);
   const setCurrentAgent = useCurrentAgentStore((state) => state.setCurrentAgent);
-  const effectiveAgentId = currentAgentId && currentAgentId !== 'default' ? currentAgentId : '1';
+  const effectiveAgentId = resolveKnowledgeAgentId(currentAgentId, knowledgeBaseId);
   const isCandidatePage = location.pathname === '/knowledge/candidates';
 
   useEffect(() => {
@@ -223,9 +224,9 @@ export const KnowledgeCenter: React.FC = () => {
 
   return (
     <div className="relative m-2 flex h-[calc(100%-1rem)] w-[calc(100%-1rem)] flex-col overflow-hidden rounded-lg border border-gray-200/80 bg-white font-sans shadow-sm select-none">
-      <div className="absolute left-0 top-0 z-20 flex h-[3.75rem] w-12 items-center justify-between">
+      <div className="pointer-events-none absolute left-0 top-0 z-20 flex h-[3.75rem] w-12 items-center justify-between">
         <div className="flex items-center">
-          <button className="mx-3 hidden size-7 items-center justify-center rounded-md p-1 text-gray-500 hover:bg-gray-100">
+          <button className="pointer-events-auto mx-3 hidden size-7 items-center justify-center rounded-md p-1 text-gray-500 hover:bg-gray-100">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
