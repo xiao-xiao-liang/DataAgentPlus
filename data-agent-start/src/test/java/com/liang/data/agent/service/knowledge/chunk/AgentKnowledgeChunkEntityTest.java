@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -110,9 +112,21 @@ class AgentKnowledgeChunkEntityTest {
     private void assertOptimisticConditions(UpdateWrapper<AgentKnowledgeChunkEntity> wrapper,
                                             String chunkId,
                                             Integer contentVersion) {
-        assertThat(wrapper.getSqlSegment()).contains("chunk_id =", "content_version =");
+        String sqlSegment = wrapper.getSqlSegment();
+        Matcher chunkIdMatcher = conditionMatcher(sqlSegment, "chunk_id");
+        Matcher contentVersionMatcher = conditionMatcher(sqlSegment, "content_version");
+
+        assertThat(sqlSegment.substring(chunkIdMatcher.end(), contentVersionMatcher.start())).contains("AND");
         Map<String, Object> parameters = wrapper.getParamNameValuePairs();
-        assertThat(parameters).containsValue(chunkId).containsValue(contentVersion);
+        assertThat(parameters).containsEntry(chunkIdMatcher.group(1), chunkId);
+        assertThat(parameters).containsEntry(contentVersionMatcher.group(1), contentVersion);
+    }
+
+    private Matcher conditionMatcher(String sqlSegment, String column) {
+        Pattern pattern = Pattern.compile(column + "\\s*=\\s*#\\{ew\\.paramNameValuePairs\\.([^}]+)}");
+        Matcher matcher = pattern.matcher(sqlSegment);
+        assertThat(matcher.find()).isTrue();
+        return matcher;
     }
 
     private void assertSetValue(UpdateWrapper<AgentKnowledgeChunkEntity> wrapper, String column, Object expectedValue) {
