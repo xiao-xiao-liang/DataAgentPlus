@@ -14,8 +14,8 @@ import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkOutlineVO;
 import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkUpdateRequest;
 import com.liang.data.agent.service.knowledge.chunk.vo.KnowledgeChunkUpdateResultVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -27,6 +27,7 @@ import java.util.Optional;
  * <p>负责分块归属校验、乐观锁编辑以及异步任务发布。</p>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkService {
 
@@ -62,7 +63,6 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public KnowledgeChunkUpdateResultVO update(Integer agentId, Integer knowledgeId, String chunkId,
                                                KnowledgeChunkUpdateRequest request) {
         validateKnowledge(agentId, knowledgeId);
@@ -76,12 +76,11 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
             throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
-        boolean submitted = asyncPublisher.publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
+        boolean submitted = publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public KnowledgeChunkUpdateResultVO retry(Integer agentId, Integer knowledgeId, String chunkId) {
         validateKnowledge(agentId, knowledgeId);
         AgentKnowledgeChunkEntity current = getChunk(knowledgeId, chunkId);
@@ -89,12 +88,11 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
             throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
-        boolean submitted = asyncPublisher.publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
+        boolean submitted = publishVectorize(agentId, knowledgeId, chunkId, updated.getContentVersion());
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public KnowledgeChunkUpdateResultVO generateName(Integer agentId, Integer knowledgeId, String chunkId) {
         validateKnowledge(agentId, knowledgeId);
         AgentKnowledgeChunkEntity current = getChunk(knowledgeId, chunkId);
@@ -102,8 +100,26 @@ public class AgentKnowledgeChunkServiceImpl implements AgentKnowledgeChunkServic
             throw new ServiceException("分块已被其他操作更新，请重新加载", BaseErrorCode.CLIENT_ERROR);
         }
         AgentKnowledgeChunkEntity updated = getChunk(knowledgeId, chunkId);
-        boolean submitted = asyncPublisher.publishGenerateName(agentId, knowledgeId, chunkId, updated.getContentVersion());
+        boolean submitted = publishGenerateName(agentId, knowledgeId, chunkId, updated.getContentVersion());
         return new KnowledgeChunkUpdateResultVO(toDetail(updated), submitted);
+    }
+
+    private boolean publishVectorize(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
+        try {
+            return asyncPublisher.publishVectorize(agentId, knowledgeId, chunkId, contentVersion);
+        } catch (RuntimeException exception) {
+            log.warn("分块向量化消息提交失败，等待用户重试：chunkId={}，contentVersion={}", chunkId, contentVersion, exception);
+            return false;
+        }
+    }
+
+    private boolean publishGenerateName(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
+        try {
+            return asyncPublisher.publishGenerateName(agentId, knowledgeId, chunkId, contentVersion);
+        } catch (RuntimeException exception) {
+            log.warn("分块名称生成消息提交失败，等待用户重试：chunkId={}，contentVersion={}", chunkId, contentVersion, exception);
+            return false;
+        }
     }
 
     private void validateKnowledge(Integer agentId, Integer knowledgeId) {

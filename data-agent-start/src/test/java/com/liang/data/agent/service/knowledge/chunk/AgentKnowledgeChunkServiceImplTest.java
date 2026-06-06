@@ -93,6 +93,21 @@ class AgentKnowledgeChunkServiceImplTest {
     }
 
     @Test
+    void updateShouldKeepSavedContentWhenPublisherThrows() {
+        when(chunkMapper.updateContentWithVersion(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+            chunk.setContentVersion(3);
+            chunk.setVectorStatus("PENDING");
+            return 1;
+        });
+        when(publisher.publishVectorize(any(), any(), any(), any())).thenThrow(new IllegalStateException("消息服务不可用"));
+
+        var result = service.update(1, 10, chunk.getChunkId(), request(false));
+
+        assertThat(result.isMessageSubmitted()).isFalse();
+        assertThat(result.getDetail().getContentVersion()).isEqualTo(3);
+    }
+
+    @Test
     void updateShouldRejectStaleVersion() {
         when(chunkMapper.updateContentWithVersion(any(), any(), any(), any(), any(), any())).thenReturn(0);
 
