@@ -326,7 +326,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
       const targetFile = kb.files.find(f => f.id === fileId);
       if (targetFile?.backendId) {
         try {
-          const response = await fetch(`/api/v1/agent-knowledge/${targetFile.backendId}`, { method: 'DELETE' });
+          const response = await fetch(`/api/v1/agent-knowledge/${targetFile.backendId}?agentId=${agentId}`, { method: 'DELETE' });
           const result = await response.json();
           if (!response.ok || result.code !== '0') {
             throw new Error(result.message || '删除知识文件失败');
@@ -384,7 +384,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     if (!selectedFile || !selectedFile.backendId || selectedFile.status !== 'success') return;
     if (chunksByFileId[selectedFile.id]) return;
 
-    fetch(`/api/v1/agent-knowledge/${selectedFile.backendId}/chunks`)
+    fetch(`/api/v1/agent-knowledge/${selectedFile.backendId}/chunks?agentId=${agentId}`)
       .then((response) => response.json())
       .then((result) => {
         const chunks = Array.isArray(result.data) ? result.data : [];
