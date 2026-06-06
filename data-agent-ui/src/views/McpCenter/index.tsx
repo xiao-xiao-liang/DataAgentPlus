@@ -372,9 +372,11 @@ export const McpCenter: React.FC = () => {
                               {/* 右侧操作按钮组 (hover 时才可见) */}
                               <div className="flex flex-shrink-0 items-center gap-1">
                                 {/* 连通测试 */}
-                                <div 
+                                <button
+                                  type="button"
+                                  aria-label="测试 MCP 服务连接"
                                   onClick={(e) => handleTestConnection(mcp.id, e)}
-                                  className="relative group/tooltip inline-flex h-8 w-8 items-center justify-center rounded-full transition-all cursor-pointer opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-800"
+                                  className="relative group/tooltip inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-gray-400 opacity-0 transition-all hover:bg-gray-100 hover:text-gray-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 group-hover:opacity-100"
                                 >
                                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-xs text-[#151517] font-normal shadow-[0_2px_8px_rgba(0,0,0,0.06)] opacity-0 pointer-events-none group-hover/tooltip:opacity-100 transition-opacity duration-150 z-30 select-none">
                                     {testingId === mcp.id ? '测试连接中...' : testedId === mcp.id ? '连接成功！' : '连通测试'}
@@ -384,29 +386,33 @@ export const McpCenter: React.FC = () => {
                                     testingId === mcp.id && "animate-pulse text-indigo-500 scale-110",
                                     testedId === mcp.id && "text-green-500 scale-110"
                                   )} />
-                                </div>
+                                </button>
 
                                 {/* 编辑 */}
-                                <div 
+                                <button
+                                  type="button"
+                                  aria-label="编辑 MCP 服务"
                                   onClick={(e) => openEditModal(mcp, e)}
-                                  className="relative group/tooltip inline-flex h-8 w-8 items-center justify-center rounded-full transition-all cursor-pointer opacity-0 group-hover:opacity-100 hover:bg-gray-100 text-gray-400 hover:text-gray-800" 
+                                  className="relative group/tooltip inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-gray-400 opacity-0 transition-all hover:bg-gray-100 hover:text-gray-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 group-hover:opacity-100" 
                                 >
                                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-xs text-[#151517] font-normal shadow-[0_2px_8px_rgba(0,0,0,0.06)] opacity-0 pointer-events-none group-hover/tooltip:opacity-100 transition-opacity duration-150 z-30 select-none">
                                     编辑
                                   </span>
                                   <Pen className="h-[18px] w-[18px]" />
-                                </div>
+                                </button>
 
                                 {/* 删除 */}
-                                <div 
+                                <button
+                                  type="button"
+                                  aria-label="删除 MCP 服务"
                                   onClick={(e) => { e.stopPropagation(); handleDelete(mcp.id); }}
-                                  className="relative group/tooltip inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full opacity-0 transition-all hover:bg-gray-100 text-[#C5221F] group-hover:opacity-100" 
+                                  className="relative group/tooltip inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-[#C5221F] opacity-0 transition-all hover:bg-gray-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 group-hover:opacity-100" 
                                 >
                                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-xs text-[#151517] font-normal shadow-[0_2px_8px_rgba(0,0,0,0.06)] opacity-0 pointer-events-none group-hover/tooltip:opacity-100 transition-opacity duration-150 z-30 select-none">
                                     删除
                                   </span>
                                   <Trash2 className="h-[18px] w-[18px]" />
-                                </div>
+                                </button>
                                 
                                 {/* 开关控制 */}
                                 <div className="flex h-6 items-center pl-1">

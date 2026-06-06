@@ -15,13 +15,20 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
   onCreateClick,
   onSelect,
 }) => {
+  const handleCardKeyDown = (event: React.KeyboardEvent, action: () => void) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    action();
+  };
+
   return (
     <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 items-start gap-4 overflow-y-auto px-6 md:grid-cols-2 lg:grid-cols-3 no-scrollbar pt-4 pb-6 select-none animate-in fade-in duration-200">
       
       {/* 知识库入口提示卡片 */}
-      <div 
+      <button
+        type="button"
         onClick={onCreateClick}
-        className="group relative h-[10rem] cursor-pointer rounded-xl border border-dashed border-indigo-200 hover:border-indigo-400 bg-[#F6F6FD]/70 hover:bg-[#F6F6FD] p-[1px] transition-all hover:shadow-[0_0.25rem_0.625rem_0_rgba(102,127,255,0.15)] hover:-translate-y-[2px] duration-300 overflow-hidden"
+        className="group relative h-[10rem] cursor-pointer overflow-hidden rounded-xl border border-dashed border-indigo-200 bg-[#F6F6FD]/70 p-[1px] text-left transition-all duration-300 hover:-translate-y-[2px] hover:border-indigo-400 hover:bg-[#F6F6FD] hover:shadow-[0_0.25rem_0.625rem_0_rgba(102,127,255,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D336B]/25"
       >
         <div className="relative flex h-full flex-col justify-end gap-2 px-6 py-5">
           {/* 右下角大图 */}
@@ -39,14 +46,17 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </button>
 
       {/* 已有知识库卡片列表 */}
       {list.map((kb) => (
         <div 
           key={kb.id}
+          role="button"
+          tabIndex={0}
           onClick={() => onSelect(kb.id)}
-          className="group relative h-[10rem] cursor-pointer rounded-xl border border-gray-200/80 bg-white p-[1px] transition-all hover:shadow-[0_0.25rem_0.625rem_0_rgba(102,127,255,0.15)] hover:-translate-y-[2px] duration-300 flex flex-col justify-between"
+          onKeyDown={(event) => handleCardKeyDown(event, () => onSelect(kb.id))}
+          className="group relative h-[10rem] cursor-pointer rounded-xl border border-gray-200/80 bg-white p-[1px] transition-all hover:shadow-[0_0.25rem_0.625rem_0_rgba(102,127,255,0.15)] hover:-translate-y-[2px] duration-300 flex flex-col justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D336B]/25"
         >
           <div className="relative flex h-full w-full flex-col justify-between p-4 bg-white rounded-xl">
             
@@ -56,6 +66,8 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                 <DropdownMenu.Trigger asChild>
                   <button 
                     onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    aria-label="打开知识库操作菜单"
                     className="flex size-6 items-center justify-center rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors border-none bg-transparent outline-none cursor-pointer"
                     type="button"
                   >
