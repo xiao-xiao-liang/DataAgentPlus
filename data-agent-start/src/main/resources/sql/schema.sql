@@ -189,9 +189,15 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_chunk
     id             BIGINT       NOT NULL AUTO_INCREMENT,
     knowledge_id   INT          NOT NULL COMMENT '所属知识源ID',
     chunk_id       VARCHAR(255) NOT NULL COMMENT '分块业务ID',
+    name           VARCHAR(255) DEFAULT NULL COMMENT '分块名称',
+    name_locked    TINYINT      NOT NULL DEFAULT 0 COMMENT '名称是否锁定：0-未锁定，1-已锁定',
     chunk_order    INT          NOT NULL COMMENT '分块顺序，从0开始',
     content        LONGTEXT     NOT NULL COMMENT '分块文本内容',
     content_length INT          DEFAULT NULL COMMENT '分块文本长度',
+    content_version INT         NOT NULL DEFAULT 1 COMMENT '内容版本号',
+    vector_version INT          DEFAULT NULL COMMENT '向量版本号',
+    vector_status  VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '向量同步状态',
+    retry_count    INT          NOT NULL DEFAULT 0 COMMENT '向量同步重试次数',
     metadata       TEXT         DEFAULT NULL COMMENT '分块元数据JSON',
     embedding_id   VARCHAR(255) DEFAULT NULL COMMENT '向量存储中的文档ID',
     splitter_type  VARCHAR(50)  DEFAULT NULL COMMENT '分块策略',
@@ -205,6 +211,7 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_chunk
     UNIQUE KEY uk_chunk_id (chunk_id),
     INDEX idx_knowledge_id (knowledge_id),
     INDEX idx_knowledge_order (knowledge_id, chunk_order),
+    INDEX idx_knowledge_vector_status (knowledge_id, vector_status),
     INDEX idx_status_skip (knowledge_id, status, skip_embedding)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识分块表';

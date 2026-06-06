@@ -28,6 +28,12 @@ public class AgentKnowledgeChunkEntity {
     /** 分块业务 ID */
     private String chunkId;
 
+    /** 分块名称 */
+    private String name;
+
+    /** 名称是否锁定：0-未锁定，1-已锁定 */
+    private Integer nameLocked;
+
     /** 分块顺序，从 0 开始 */
     private Integer chunkOrder;
 
@@ -36,6 +42,18 @@ public class AgentKnowledgeChunkEntity {
 
     /** 分块文本长度 */
     private Integer contentLength;
+
+    /** 内容版本号 */
+    private Integer contentVersion;
+
+    /** 向量版本号 */
+    private Integer vectorVersion;
+
+    /** 向量同步状态 */
+    private String vectorStatus;
+
+    /** 向量同步重试次数 */
+    private Integer retryCount;
 
     /** 分块元数据 JSON */
     private String metadata;
