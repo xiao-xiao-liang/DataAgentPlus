@@ -7,6 +7,9 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,7 +55,11 @@ class AgentKnowledgeChunkEntityTest {
         UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = captureUpdateWrapper(mapper);
         assertOptimisticConditions(wrapper, "chunk-1", 3);
         assertThat(wrapper.getSqlSet()).contains("name=", "name_locked=", "content=", "content_length=",
-                "content_version = content_version + 1");
+                "content_version = content_version + 1", "vector_status=", "retry_count=", "error_msg=")
+                .doesNotContain("vector_version");
+        assertSetValue(wrapper, "vector_status", ChunkVectorStatus.PENDING);
+        assertSetValue(wrapper, "retry_count", 0);
+        assertSetValue(wrapper, "error_msg", null);
     }
 
     @Test
@@ -61,14 +68,35 @@ class AgentKnowledgeChunkEntityTest {
         when(mapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         int updated = mapper.updateVectorStatusIfCurrent(
-                "chunk-2", 5, ChunkVectorStatus.FAILED, 4, 2, "向量同步失败"
+                "chunk-2", 5, ChunkVectorStatus.SYNCED, null, 0, null
         );
 
         assertThat(updated).isEqualTo(1);
         UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = captureUpdateWrapper(mapper);
         assertOptimisticConditions(wrapper, "chunk-2", 5);
-        assertThat(wrapper.getSqlSet()).contains(
-                "vector_status=", "vector_version=", "retry_count=", "error_msg="
+        assertSetValue(wrapper, "vector_status", ChunkVectorStatus.SYNCED);
+        assertSetValue(wrapper, "vector_version", null);
+        assertSetValue(wrapper, "retry_count", 0);
+        assertSetValue(wrapper, "error_msg", null);
+    }
+
+    @Test
+    void migrationShouldAddAndBackfillKnowledgeChunkWorkbenchFields() throws IOException {
+        String migration = readClasspathResource("sql/migration/V20260606__knowledge_chunk_workbench.sql");
+
+        assertThat(migration).contains(
+                "ALTER TABLE agent_knowledge_chunk",
+                "ADD COLUMN name VARCHAR(255)",
+                "ADD COLUMN name_locked TINYINT NOT NULL DEFAULT 0",
+                "ADD COLUMN content_version INT NOT NULL DEFAULT 1",
+                "ADD COLUMN vector_version INT NULL",
+                "ADD COLUMN vector_status VARCHAR(32) NOT NULL DEFAULT 'PENDING'",
+                "ADD COLUMN retry_count INT NOT NULL DEFAULT 0",
+                "ADD INDEX idx_knowledge_vector_status (knowledge_id, vector_status)",
+                "name = CONCAT('分块 #', chunk_order)",
+                "WHEN status = 'VECTOR_STORED' THEN 1",
+                "WHEN status = 'VECTOR_STORED' THEN 'SYNCED'",
+                "WHEN status = 'FAILED' THEN 'FAILED'"
         );
     }
 
@@ -82,8 +110,26 @@ class AgentKnowledgeChunkEntityTest {
     private void assertOptimisticConditions(UpdateWrapper<AgentKnowledgeChunkEntity> wrapper,
                                             String chunkId,
                                             Integer contentVersion) {
-        assertThat(wrapper.getSqlSegment()).contains("chunk_id", "content_version");
+        assertThat(wrapper.getSqlSegment()).contains("chunk_id =", "content_version =");
         Map<String, Object> parameters = wrapper.getParamNameValuePairs();
         assertThat(parameters).containsValue(chunkId).containsValue(contentVersion);
+    }
+
+    private void assertSetValue(UpdateWrapper<AgentKnowledgeChunkEntity> wrapper, String column, Object expectedValue) {
+        String sqlSet = wrapper.getSqlSet();
+        String marker = column + "=#{ew.paramNameValuePairs.";
+        int valueStart = sqlSet.indexOf(marker) + marker.length();
+        assertThat(valueStart).isGreaterThanOrEqualTo(marker.length());
+        int valueEnd = sqlSet.indexOf('}', valueStart);
+        assertThat(valueEnd).isGreaterThan(valueStart);
+        String parameterName = sqlSet.substring(valueStart, valueEnd);
+        assertThat(wrapper.getParamNameValuePairs()).containsEntry(parameterName, expectedValue);
+    }
+
+    private String readClasspathResource(String path) throws IOException {
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(path)) {
+            assertThat(input).isNotNull();
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 }

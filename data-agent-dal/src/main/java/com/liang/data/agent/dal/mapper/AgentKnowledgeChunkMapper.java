@@ -35,6 +35,9 @@ public interface AgentKnowledgeChunkMapper extends BaseMapper<AgentKnowledgeChun
                 .set("name_locked", nameLocked)
                 .set("content", content)
                 .set("content_length", contentLength)
+                .set("vector_status", "PENDING")
+                .set("retry_count", 0)
+                .set("error_msg", null)
                 .setSql("content_version = content_version + 1");
         return update(null, wrapper);
     }
