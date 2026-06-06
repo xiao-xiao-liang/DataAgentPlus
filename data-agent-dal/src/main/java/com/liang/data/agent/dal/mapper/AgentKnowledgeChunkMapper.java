@@ -68,4 +68,28 @@ public interface AgentKnowledgeChunkMapper extends BaseMapper<AgentKnowledgeChun
                 .set("error_msg", errorMsg);
         return update(null, wrapper);
     }
+
+    /**
+     * 将当前版本重置为等待向量同步状态。
+     */
+    default int resetVectorStatus(String chunkId, Integer contentVersion) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .set("vector_status", "PENDING")
+                .set("retry_count", 0)
+                .set("error_msg", null);
+        return update(null, wrapper);
+    }
+
+    /**
+     * 解除当前版本的名称锁定。
+     */
+    default int unlockName(String chunkId, Integer contentVersion) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .set("name_locked", 0);
+        return update(null, wrapper);
+    }
 }
