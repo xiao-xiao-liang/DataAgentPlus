@@ -92,3 +92,11 @@ logging:
   level:
     com.liang.data.agent: INFO
     org.springframework.ai: INFO
+
+# ==================== RocketMQ 分块异步任务 ====================
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:118.195.146.161:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:data-agent-producer-group}
+    send-message-timeout: 5000
+    retry-times-when-send-failed: 2
