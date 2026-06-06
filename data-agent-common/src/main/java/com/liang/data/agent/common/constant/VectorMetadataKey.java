@@ -29,6 +29,15 @@ public final class VectorMetadataKey {
     /** 描述 / 注释 */
     public static final String DESCRIPTION = "description";
 
+    // ==================== 知识分块相关 ====================
+
+    public static final String AGENT_KNOWLEDGE_ID = "agentKnowledgeId";
+    public static final String CHUNK_ID = "chunkId";
+    public static final String CHUNK_ORDER = "chunkOrder";
+    public static final String CONTENT_VERSION = "contentVersion";
+    public static final String VECTOR_TASK_VERSION = "vectorTaskVersion";
+    public static final String SPLITTER_TYPE = "splitterType";
+
     /** 所属表名 (列文档专用) */
     public static final String TABLE_NAME = "tableName";
 

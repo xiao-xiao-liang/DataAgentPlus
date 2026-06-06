@@ -31,7 +31,7 @@ class KnowledgeChunkVectorConsumerTest {
     private final AgentVectorStoreService vectorStoreService = mock(AgentVectorStoreService.class);
     private final KnowledgeChunkVectorConsumer consumer =
             new KnowledgeChunkVectorConsumer(knowledgeMapper, chunkMapper, vectorStoreService);
-    private final KnowledgeChunkMessage message = new KnowledgeChunkMessage(1, 10, "knowledge-10-chunk-3", 4);
+    private final KnowledgeChunkMessage message = new KnowledgeChunkMessage(1, 10, "knowledge-10-chunk-3", 4, 7, "op-1");
     private AgentKnowledgeChunkEntity chunk;
 
     @BeforeEach
@@ -50,6 +50,7 @@ class KnowledgeChunkVectorConsumerTest {
         chunk.setContent("延误判断规则");
         chunk.setContentVersion(4);
         chunk.setVectorVersion(2);
+        chunk.setVectorTaskVersion(7);
         chunk.setEmbeddingId("legacy-vector-id");
         chunk.setSplitterType("title");
         when(chunkMapper.selectOne(any())).thenReturn(chunk);
@@ -61,51 +62,53 @@ class KnowledgeChunkVectorConsumerTest {
 
         consumer.onMessage(message);
 
-        verify(chunkMapper, never()).claimVectorProcessing(any(), any());
+        verify(chunkMapper, never()).claimVectorProcessing(any(), any(), any(), any());
         verify(vectorStoreService, never()).addDocuments(any(), any());
     }
 
     @Test
     void shouldWriteNewVectorThenCompleteAndDeletePreviousVersion() {
-        when(chunkMapper.claimVectorProcessing(message.chunkId(), 4)).thenReturn(1);
-        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4)).thenReturn(1);
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
+        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7")).thenReturn(1);
 
         consumer.onMessage(message);
 
         ArgumentCaptor<List<Document>> documents = ArgumentCaptor.forClass(List.class);
         verify(vectorStoreService).addDocuments(eq("1"), documents.capture());
-        assertThat(documents.getValue().getFirst().getId()).isEqualTo("knowledge-10-chunk-3-v4");
-        assertThat(documents.getValue().getFirst().getMetadata()).containsEntry("chunkVersion", "4");
-        verify(chunkMapper).completeVectorIfProcessing(message.chunkId(), 4);
+        assertThat(documents.getValue().getFirst().getId()).isEqualTo("knowledge-10-chunk-3-c4-t7");
+        assertThat(documents.getValue().getFirst().getMetadata())
+                .containsEntry("contentVersion", "4")
+                .containsEntry("vectorTaskVersion", "7");
+        verify(chunkMapper).completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7");
         verify(vectorStoreService).deleteDocumentsByIds(List.of("legacy-vector-id"));
     }
 
     @Test
     void shouldDeleteNewVectorWhenVersionChangesBeforeCompletion() {
-        when(chunkMapper.claimVectorProcessing(message.chunkId(), 4)).thenReturn(1);
-        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4)).thenReturn(0);
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
+        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7")).thenReturn(0);
 
         consumer.onMessage(message);
 
-        verify(vectorStoreService).deleteDocumentsByIds(List.of("knowledge-10-chunk-3-v4"));
+        verify(vectorStoreService).deleteDocumentsByIds(List.of("knowledge-10-chunk-3-c4-t7"));
         verify(vectorStoreService, never()).deleteDocumentsByIds(List.of("knowledge-10-chunk-3-v2"));
     }
 
     @Test
     void shouldRecordRetryAndRethrowOnVectorFailure() {
-        when(chunkMapper.claimVectorProcessing(message.chunkId(), 4)).thenReturn(1);
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
         doThrow(new IllegalStateException("向量库不可用"))
                 .when(vectorStoreService).addDocuments(any(), any());
 
         assertThatThrownBy(() -> consumer.onMessage(message))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("向量库不可用");
-        verify(chunkMapper).recordVectorRetry(message.chunkId(), 4, "向量库不可用");
+        verify(chunkMapper).recordVectorRetry(message.chunkId(), 4, 7, "向量库不可用");
     }
 
     @Test
     void duplicateSyncedMessageShouldDoNothing() {
-        when(chunkMapper.claimVectorProcessing(message.chunkId(), 4)).thenReturn(0);
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(0);
 
         consumer.onMessage(message);
 
@@ -119,6 +122,6 @@ class KnowledgeChunkVectorConsumerTest {
         deadLetterConsumer.onMessage(message);
 
         verify(chunkMapper).markVectorFailedIfCurrent(
-                message.chunkId(), 4, "分块向量化重试耗尽，请手动重试");
+                message.chunkId(), 4, 7, "分块向量化重试耗尽，请手动重试");
     }
 }
