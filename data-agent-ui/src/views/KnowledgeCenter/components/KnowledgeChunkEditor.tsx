@@ -14,6 +14,7 @@ interface KnowledgeChunkEditorProps {
   onSave: (name: string, content: string) => void;
   onRetry: () => void;
   onGenerateName: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }
 
 const vectorStatusMeta = {
@@ -32,13 +33,17 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
   onSave,
   onRetry,
   onGenerateName,
+  onDirtyChange,
 }) => {
   const [name, setName] = React.useState(chunk?.name || '');
   const [content, setContent] = React.useState(chunk?.content || '');
   const [mode, setMode] = React.useState<'edit' | 'preview'>('edit');
 
-  const isContentDirty = Boolean(chunk && content !== chunk.content);
   const isDirty = Boolean(chunk && (name !== chunk.name || content !== chunk.content));
+  const isContentDirty = Boolean(chunk && content !== chunk.content);
+  React.useEffect(() => {
+    onDirtyChange(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   if (isLoading || !chunk) {
     return (

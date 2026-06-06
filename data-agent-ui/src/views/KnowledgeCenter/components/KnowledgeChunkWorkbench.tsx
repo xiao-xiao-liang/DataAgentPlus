@@ -39,7 +39,9 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
   const [isSaving, setIsSaving] = React.useState(false);
   const [isRetrying, setIsRetrying] = React.useState(false);
   const [isGeneratingName, setIsGeneratingName] = React.useState(false);
+  const [isDirty, setIsDirty] = React.useState(false);
   const selectedIdRef = React.useRef<string | null>(null);
+  const detailAbortRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -55,9 +57,12 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
         await fetch(`/api/v1/agent-knowledge/${knowledgeId}/chunks?${params.toString()}`),
       );
       setChunks(data);
-      setSelectedId((current) => current && data.some((chunk) => chunk.id === current) ? current : data[0]?.id || null);
+      setSelectedId((current) => isDirty && current
+        ? current
+        : current && data.some((chunk) => chunk.id === current) ? current : data[0]?.id || null);
       setSelectedChunk((current) => {
         if (!current) return current;
+        if (isDirty) return current;
         const outline = data.find((chunk) => chunk.id === current.id);
         return outline ? { ...current, ...outline } : current;
       });
@@ -66,19 +71,24 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
     } finally {
       if (!silent) setIsLoadingList(false);
     }
-  }, [agentId, knowledgeId, keyword, showToast, statusFilter]);
+  }, [agentId, isDirty, knowledgeId, keyword, showToast, statusFilter]);
 
   const loadDetail = React.useCallback(async (chunkId: string, silent = false) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     if (!silent) setIsLoadingDetail(true);
     try {
       const data = await readResult<KnowledgeChunk>(
-        await fetch(`/api/v1/agent-knowledge/${knowledgeId}/chunks/${chunkId}?agentId=${agentId}`),
+        await fetch(`/api/v1/agent-knowledge/${knowledgeId}/chunks/${chunkId}?agentId=${agentId}`, { signal: controller.signal }),
       );
       if (selectedIdRef.current === chunkId) {
         setSelectedChunk(data);
       }
     } catch (error) {
-      if (!silent) showToast(error instanceof Error ? error.message : '加载分块详情失败', 'error');
+      if (!silent && !(error instanceof DOMException && error.name === 'AbortError')) {
+        showToast(error instanceof Error ? error.message : '加载分块详情失败', 'error');
+      }
     } finally {
       if (!silent) setIsLoadingDetail(false);
     }
@@ -174,7 +184,9 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            onClick={onBack}
+            onClick={() => {
+              if (!isDirty || window.confirm('当前分块存在未保存修改，确定离开吗？')) onBack();
+            }}
             title="返回文件列表"
             className="flex size-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900"
           >
@@ -211,7 +223,9 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
           isLoading={isLoadingList}
           onKeywordChange={setKeyword}
           onStatusFilterChange={setStatusFilter}
-          onSelect={setSelectedId}
+          onSelect={(chunkId) => {
+            if (!isDirty || window.confirm('当前分块存在未保存修改，确定切换吗？')) setSelectedId(chunkId);
+          }}
         />
         <KnowledgeChunkEditor
           key={selectedChunk ? `${selectedChunk.id}-${selectedChunk.contentVersion}-${selectedChunk.name}` : 'empty'}
@@ -223,6 +237,7 @@ export const KnowledgeChunkWorkbench: React.FC<KnowledgeChunkWorkbenchProps> = (
           onSave={handleSave}
           onRetry={handleRetry}
           onGenerateName={handleGenerateName}
+          onDirtyChange={setIsDirty}
         />
       </div>
     </div>
