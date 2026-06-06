@@ -11,9 +11,7 @@ import {
   Search,
   ChevronDown,
   Plus,
-  Menu,
   ChevronsLeft,
-  ChevronsRight,
   ChevronsUpDown,
   Ellipsis,
   Trash2,
@@ -80,7 +78,6 @@ const GlobalLayout: React.FC = () => {
   // 正则提取当前路由下的 sessionId
   const match = location.pathname.match(/^\/chat\/([^?/\s]+)/);
   const pathnameSessionId = match ? match[1] : null;
-  const isChatSessionPage = Boolean(pathnameSessionId);
   const activeSession = sessions.find((session) => session.id === pathnameSessionId);
   const currentAgentId = resolveSessionAgentId(activeSession?.agentId, selectedAgentId);
   const isSidebarVisible = !isSidebarCollapsed || isSidebarPreviewOpen;
@@ -325,23 +322,6 @@ const GlobalLayout: React.FC = () => {
           style={{ width: isSidebarCollapsed ? '0px' : `${SIDEBAR_EXPANDED_OFFSET}px` }}
         ></div>
 
-        {false && false && isSidebarCollapsed && !isChatSessionPage && (
-          <button
-            type="button"
-            onMouseEnter={openSidebarPreview}
-            onMouseLeave={queueSidebarPreviewClose}
-            onFocus={openSidebarPreview}
-            onBlur={queueSidebarPreviewClose}
-            onClick={expandSidebar}
-            title="展开边栏"
-            className="group absolute left-3 top-3 z-[60] inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <span className="relative size-4">
-              <Menu className="absolute inset-0 size-4 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0" />
-              <ChevronsRight className="absolute inset-0 size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-            </span>
-          </button>
-        )}
         
         {/* 绝对定位的浮动卡片边栏 (h-[calc(100%-1rem)], 宽度 228px, rounded-[10px], 边距 m-2 mr-0) */}
         <aside 
@@ -611,23 +591,6 @@ const GlobalLayout: React.FC = () => {
 
       {/* 右侧主内容区 */}
       <main className="flex-1 h-full relative overflow-hidden">
-        {false && isSidebarCollapsed && !isChatSessionPage && (
-          <button
-            type="button"
-            onMouseEnter={openSidebarPreview}
-            onMouseLeave={queueSidebarPreviewClose}
-            onFocus={openSidebarPreview}
-            onBlur={queueSidebarPreviewClose}
-            onClick={expandSidebar}
-            title="展开边栏"
-            className="group absolute left-3 top-3 z-[60] inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <span className="relative size-4">
-              <Menu className="absolute inset-0 size-4 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0" />
-              <ChevronsRight className="absolute inset-0 size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
-            </span>
-          </button>
-        )}
         <Outlet
           context={{
             activeSessionTitle,
