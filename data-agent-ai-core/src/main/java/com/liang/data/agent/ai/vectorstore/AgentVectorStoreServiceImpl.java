@@ -30,6 +30,7 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
 
     private final VectorStore vectorStore;
     private final DataAgentProperties properties;
+    private final List<ActiveKnowledgeVectorResolver> activeKnowledgeVectorResolvers;
 
     @Override
     public List<Document> search(String agentId, String query, VectorType vectorType, int topK, double threshold) {
@@ -50,6 +51,11 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
                 .build();
 
         List<Document> results = vectorStore.similaritySearch(searchRequest);
+        if (vectorType == VectorType.KNOWLEDGE) {
+            for (ActiveKnowledgeVectorResolver resolver : activeKnowledgeVectorResolvers) {
+                results = resolver.retainActive(results);
+            }
+        }
         log.debug("向量检索完成: agentId={}, vectorType={}, 命中 {} 条", agentId, vectorType.getCode(), results.size());
         return results;
     }
