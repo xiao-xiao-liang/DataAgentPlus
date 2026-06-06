@@ -90,6 +90,15 @@ public class AgentVectorStoreServiceImpl implements AgentVectorStoreService {
     }
 
     @Override
+    public void deleteDocumentsByIds(List<String> documentIds) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return;
+        }
+        vectorStore.delete(documentIds);
+        log.info("按 ID 删除 {} 条向量文档", documentIds.size());
+    }
+
+    @Override
     public boolean hasDocuments(String agentId) {
         String filterExpr = String.format("%s == '%s'", AGENT_ID, agentId);
         List<Document> docs = vectorStore.similaritySearch(

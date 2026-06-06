@@ -92,4 +92,58 @@ public interface AgentKnowledgeChunkMapper extends BaseMapper<AgentKnowledgeChun
                 .set("name_locked", 0);
         return update(null, wrapper);
     }
+
+    /**
+     * 领取当前版本的向量化任务。
+     */
+    default int claimVectorProcessing(String chunkId, Integer contentVersion) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .in("vector_status", "PENDING", "FAILED")
+                .set("vector_status", "PROCESSING");
+        return update(null, wrapper);
+    }
+
+    /**
+     * 将处理中且版本未变化的分块标记为同步成功。
+     */
+    default int completeVectorIfProcessing(String chunkId, Integer contentVersion) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .eq("vector_status", "PROCESSING")
+                .set("vector_status", "SYNCED")
+                .set("vector_version", contentVersion)
+                .set("retry_count", 0)
+                .set("error_msg", null);
+        return update(null, wrapper);
+    }
+
+    /**
+     * 记录当前版本向量化失败并恢复为等待重试状态。
+     */
+    default int recordVectorRetry(String chunkId, Integer contentVersion, String errorMsg) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .eq("vector_status", "PROCESSING")
+                .set("vector_status", "PENDING")
+                .set("error_msg", errorMsg)
+                .setSql("retry_count = retry_count + 1");
+        return update(null, wrapper);
+    }
+
+    /**
+     * 将死信消息对应的当前版本标记为最终失败。
+     */
+    default int markVectorFailedIfCurrent(String chunkId, Integer contentVersion, String errorMsg) {
+        UpdateWrapper<AgentKnowledgeChunkEntity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("chunk_id", chunkId)
+                .eq("content_version", contentVersion)
+                .ne("vector_status", "SYNCED")
+                .set("vector_status", "FAILED")
+                .set("error_msg", errorMsg);
+        return update(null, wrapper);
+    }
 }

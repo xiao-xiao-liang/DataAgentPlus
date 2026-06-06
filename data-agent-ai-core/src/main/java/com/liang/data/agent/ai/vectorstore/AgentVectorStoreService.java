@@ -48,6 +48,11 @@ public interface AgentVectorStoreService {
     boolean deleteDocumentsByMetadata(Map<String, Object> metadata);
 
     /**
+     * 按文档 ID 精确删除向量文档。
+     */
+    void deleteDocumentsByIds(List<String> documentIds);
+
+    /**
      * 检查智能体是否已有向量化文档
      */
     boolean hasDocuments(String agentId);
