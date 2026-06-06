@@ -25,6 +25,7 @@
 - 普通单表查询和更新优先使用 `lambdaQuery()`、`lambdaUpdate()`。
 - 仅在复杂 CAS、批量活动版本查询或 MP 服务层难以清晰表达的操作中使用自定义 Mapper 方法。
 - 自定义 Mapper 方法必须对应明确的数据一致性需求，避免将普通 CRUD 下沉到 Mapper。
+- 自定义 Mapper 尽量使用显式 SQL；SQL 行数较多时使用 Java 文本块 `"""..."""` 包裹，保证 SQL 可读性。
 - 其他表和跨模块依赖根据职责选择注入 Service 或 Mapper，不强制统一。
 
 ### 2.2 一致性边界
