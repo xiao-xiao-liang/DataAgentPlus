@@ -22,11 +22,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.liang.data.agent.common.constant.ModeSwitch.HUMAN_FEEDBACK_DATA;
 import static com.liang.data.agent.common.constant.ModeSwitch.HUMAN_REVIEW_ENABLED;
@@ -229,18 +231,20 @@ public class GraphService {
     private Flux<GraphStreamChunk> streamGraph(String threadId, Flux<?> graphFlux, RunnableConfig config, String label) {
         StreamContext streamContext = new StreamContext();
         streamContextMap.put(threadId, streamContext);
-        final String[] currentNode = new String[1];
-        return graphFlux
+        AtomicReference<String> currentNode = new AtomicReference<>();
+
+        Flux<GraphStreamChunk> contentEvents = graphFlux
                 .concatMap(response -> {
                     if (response instanceof StreamingOutput<?> so) {
                         String chunk = so.chunk();
                         String nodeName = so.node();
                         List<GraphStreamChunk> events = new ArrayList<>();
-                        if (currentNode[0] != null && !currentNode[0].equals(nodeName)) {
-                            persistCheckpoint(threadId, currentNode[0], config, streamContext);
-                            events.add(GraphStreamChunk.nodeCompleted(currentNode[0]));
+                        String previousNode = currentNode.get();
+                        if (previousNode != null && !previousNode.equals(nodeName)) {
+                            persistCheckpoint(threadId, previousNode, config, streamContext);
+                            events.add(GraphStreamChunk.nodeCompleted(previousNode));
                         }
-                        currentNode[0] = nodeName;
+                        currentNode.set(nodeName);
                         if (StringUtils.hasLength(chunk)) {
                             events.add(GraphStreamChunk.content(chunk, nodeName));
                         }
@@ -252,10 +256,26 @@ public class GraphService {
                     if (event.hasContent()) {
                         streamContext.appendOutput(event.content());
                     }
+                });
+
+        return contentEvents.publish(sharedContentEvents -> {
+                    Flux<GraphStreamChunk> fallbackPersistEvents = Flux.interval(
+                                    Duration.ofMillis(StreamContext.FALLBACK_PERSIST_INTERVAL_MILLIS))
+                            .takeUntilOther(sharedContentEvents.ignoreElements())
+                            .doOnNext(ignored -> {
+                                String nodeName = currentNode.get();
+                                if (nodeName != null
+                                        && streamContext.shouldPersistByTimeFallback(System.currentTimeMillis())) {
+                                    persistCheckpoint(threadId, nodeName, config, streamContext);
+                                }
+                            })
+                            .thenMany(Flux.empty());
+                    return Flux.merge(sharedContentEvents, fallbackPersistEvents);
                 })
                 .doOnComplete(() -> {
-                    if (currentNode[0] != null) {
-                        persistCheckpoint(threadId, currentNode[0], config, streamContext);
+                    String nodeName = currentNode.get();
+                    if (nodeName != null) {
+                        persistCheckpoint(threadId, nodeName, config, streamContext);
                     }
                     log.info("{}流式输出结束 - threadId: {}", label, threadId);
                     cleanupStreamContext(threadId);

@@ -14,9 +14,24 @@ import lombok.extern.slf4j.Slf4j;
 public class StreamContext {
 
     /**
+     * 流式输出时间兜底保存间隔，单位毫秒
+     */
+    public static final long FALLBACK_PERSIST_INTERVAL_MILLIS = 2000L;
+
+    /**
      * 累积的输出内容
      */
     private final StringBuilder collectedOutput = new StringBuilder();
+
+    /**
+     * 最近一次时间兜底保存时间
+     */
+    private long lastFallbackPersistTimeMillis = System.currentTimeMillis();
+
+    /**
+     * 最近一次时间兜底保存的内容长度
+     */
+    private int lastFallbackPersistedLength = 0;
 
     /**
      * 是否已清理标识（volatile 保证多线程可见性）
@@ -43,10 +58,31 @@ public class StreamContext {
      *
      * @param output 输出片段
      */
-    public void appendOutput(String output) {
+    public synchronized void appendOutput(String output) {
         if (output != null && !cleaned) {
             collectedOutput.append(output);
         }
+    }
+
+    /**
+     * 判断是否应该执行流式输出时间兜底保存。
+     *
+     * @param nowMillis 当前时间戳
+     * @return true 表示应执行兜底保存
+     */
+    public synchronized boolean shouldPersistByTimeFallback(long nowMillis) {
+        if (cleaned || collectedOutput.isEmpty()) {
+            return false;
+        }
+        if (collectedOutput.length() == lastFallbackPersistedLength) {
+            return false;
+        }
+        if (nowMillis - lastFallbackPersistTimeMillis < FALLBACK_PERSIST_INTERVAL_MILLIS) {
+            return false;
+        }
+        lastFallbackPersistTimeMillis = nowMillis;
+        lastFallbackPersistedLength = collectedOutput.length();
+        return true;
     }
 
     /**
@@ -54,7 +90,7 @@ public class StreamContext {
      *
      * @return 累积输出字符串
      */
-    public String getCollectedOutput() {
+    public synchronized String getCollectedOutput() {
         return collectedOutput.toString();
     }
 

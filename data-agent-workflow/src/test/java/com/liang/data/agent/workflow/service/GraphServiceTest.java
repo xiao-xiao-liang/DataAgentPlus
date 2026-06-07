@@ -20,14 +20,18 @@ import com.liang.data.agent.workflow.node.ClarificationNormalizeNode;
 import com.liang.data.agent.workflow.util.NodeBeanUtil;
 import com.liang.data.agent.workflow.util.FluxUtil;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
+import static com.alibaba.cloud.ai.graph.StateGraph.START;
 import static com.liang.data.agent.common.constant.StateKey.CLARIFICATION_ASK_NODE;
 import static com.liang.data.agent.common.constant.StateKey.CLARIFICATION_CONFIRM_NODE;
 import static com.liang.data.agent.common.constant.StateKey.CLARIFICATION_NORMALIZE_NODE;
@@ -39,7 +43,11 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.CLARIFICATION_N
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GraphServiceTest {
@@ -70,6 +78,40 @@ class GraphServiceTest {
         CompileConfig compileConfig = GraphService.buildCompileConfig(checkpointSaver);
 
         assertTrue(compileConfig.checkpointSaver().isPresent());
+    }
+
+    @Test
+    void shouldPersistLongRunningNodeByTimeFallbackBeforeNodeCompleted() throws Exception {
+        AsyncNodeAction noopNode = AsyncNodeAction.node_async(state -> Map.of());
+        StateGraph graph = new StateGraph("long_stream_graph", () -> Map.of())
+                .addNode("LongStreamingNode", AsyncNodeAction.node_async(this::longRunningStreamingNode))
+                .addNode(CLARIFICATION_ASK_NODE, noopNode)
+                .addNode(CLARIFICATION_NORMALIZE_NODE, noopNode)
+                .addNode(CLARIFICATION_CONFIRM_NODE, noopNode)
+                .addNode(HUMAN_FEEDBACK_NODE, noopNode)
+                .addEdge(START, "LongStreamingNode")
+                .addEdge("LongStreamingNode", END);
+        WorkflowRunService workflowRunService = mock(WorkflowRunService.class);
+        GraphService graphService = new GraphService(graph, workflowRunService,
+                HumanFeedbackIntentService.withoutModel(), (BaseCheckpointSaver) null);
+
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-long-stream")
+                .query("长耗时节点流式输出")
+                .build();
+
+        List<String> chunks = graphService.chat(request, "(无)").collectList().block();
+
+        assertEquals("第一段第二段", String.join("", chunks).replaceAll("\\R", ""));
+        ArgumentCaptor<String> accumulatedContentCaptor = ArgumentCaptor.forClass(String.class);
+        verify(workflowRunService, atLeast(2)).markNodeCompleted(
+                anyString(), anyString(), any(), any(), anyMap(), accumulatedContentCaptor.capture());
+        List<String> savedContents = accumulatedContentCaptor.getAllValues().stream()
+                .map(content -> content.replaceAll("\\R", ""))
+                .toList();
+        assertTrue(savedContents.contains("第一段"));
+        assertEquals("第一段第二段", savedContents.getLast());
     }
 
     @Test
@@ -134,5 +176,25 @@ class GraphServiceTest {
                 sourceFlux
         );
         return Map.of(CLARIFICATION_NORMALIZED_OUTPUT, generator);
+    }
+
+    private Map<String, Object> longRunningStreamingNode(OverAllState state) {
+        Flux<ChatResponse> sourceFlux = Flux.just(ChatResponseUtil.createResponse("第一段"))
+                .concatWith(Mono.delay(Duration.ofMillis(2100))
+                        .map(ignored -> ChatResponseUtil.createResponse("第二段")));
+        Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
+                LongStreamingNode.class,
+                state,
+                ignored -> Map.of("long_output", "done"),
+                sourceFlux
+        );
+        return Map.of("long_output", generator);
+    }
+
+    private static class LongStreamingNode implements NodeAction {
+        @Override
+        public Map<String, Object> apply(OverAllState state) {
+            return Map.of();
+        }
     }
 }
