@@ -56,6 +56,8 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [isUploadingDialog, setIsUploadingDialog] = useState(false);
   const [strategyMenuOpen, setStrategyMenuOpen] = useState(false);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<KnowledgeFile | null>(null);
+  const [isDeletingFile, setIsDeletingFile] = useState(false);
   const activeSplitterOption = splitterOptions.find((option) => option.value === splitterType) || splitterOptions[0];
 
   // 模糊检索过滤当前知识库的文件
@@ -322,23 +324,25 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   };
 
   // 删除文件
-  const handleDeleteFile = async (fileId: string, fileName: string) => {
-    if (window.confirm(`确认从知识库中删除文件 "${fileName}" 吗？`)) {
-      const targetFile = kb.files.find(f => f.id === fileId);
-      if (targetFile?.backendId) {
-        try {
-          const response = await fetch(`/api/v1/agent-knowledge/${targetFile.backendId}?agentId=${agentId}`, { method: 'DELETE' });
-          const result = await response.json();
-          if (!response.ok || result.code !== '0') {
-            throw new Error(result.message || '删除知识文件失败');
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : '删除知识文件失败';
-          showToast(message, 'error');
-          return;
+  const handleDeleteFile = (fileId: string) => {
+    const targetFile = kb.files.find(f => f.id === fileId);
+    if (!targetFile) return;
+    setPendingDeleteFile(targetFile);
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!pendingDeleteFile || isDeletingFile) return;
+
+    setIsDeletingFile(true);
+    try {
+      if (pendingDeleteFile.backendId) {
+        const response = await fetch(`/api/v1/agent-knowledge/${pendingDeleteFile.backendId}?agentId=${agentId}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (!response.ok || result.code !== '0') {
+          throw new Error(result.message || '删除知识文件失败');
         }
       }
-      const newFiles = kb.files.filter(f => f.id !== fileId);
+      const newFiles = kb.files.filter(f => f.id !== pendingDeleteFile.id);
       const updatedKB = {
         ...kb,
         files: newFiles,
@@ -346,9 +350,17 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
         updatedAt: getFormattedNow()
       };
       onUpdateKB(updatedKB);
-      showToast(`已删除文件 "${fileName}"`);
-
-      // 安全退避：重置选中状态以防报错
+      if (selectedFileId === pendingDeleteFile.id) {
+        setSelectedFileId(null);
+        setSelectedChunkId(null);
+      }
+      showToast(`已删除文件 "${pendingDeleteFile.name}"`);
+      setPendingDeleteFile(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除知识文件失败';
+      showToast(message, 'error');
+    } finally {
+      setIsDeletingFile(false);
     }
   };
 
@@ -820,7 +832,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
 
                             {/* 删除 */}
                             <button 
-                              onClick={() => handleDeleteFile(file.id, file.name)}
+                              onClick={() => handleDeleteFile(file.id)}
                               disabled={file.status === 'uploading' || file.status === 'deleting'}
                               className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-35 transition-colors border-none bg-transparent cursor-pointer"
                               title="从库中删除"
@@ -901,6 +913,88 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
           )}
         </div>
       </div>
+
+      {pendingDeleteFile && (
+        <div
+          className="absolute inset-0 z-[70] flex items-center justify-center bg-gray-950/20 px-4 backdrop-blur-[2px] animate-in fade-in duration-150"
+          onClick={() => {
+            if (!isDeletingFile) setPendingDeleteFile(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-file-dialog-title"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && !isDeletingFile) {
+                setPendingDeleteFile(null);
+              }
+            }}
+            className="w-full max-w-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+          >
+            <div className="flex items-start gap-3 border-b border-gray-100 px-5 py-4">
+              <div className="grid size-9 shrink-0 place-items-center rounded-full bg-red-50 text-red-600">
+                <Trash2 className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="delete-file-dialog-title" className="m-0 text-sm font-bold text-gray-900">
+                  删除知识文件？
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  文件将从当前知识库中移除，相关解析结果也会一并失效。
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭删除确认"
+                disabled={isDeletingFile}
+                onClick={() => setPendingDeleteFile(null)}
+                className="grid size-7 shrink-0 place-items-center rounded-md border-none bg-transparent text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-xl border border-red-100 bg-red-50/60 px-3.5 py-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-500" />
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-bold text-red-700" title={pendingDeleteFile.name}>
+                      {pendingDeleteFile.name}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-red-600/80">
+                      此操作不可撤销，请确认不再需要该文件。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 bg-gray-50 px-5 py-3">
+              <button
+                type="button"
+                disabled={isDeletingFile}
+                onClick={() => setPendingDeleteFile(null)}
+                className="h-9 rounded-lg border border-gray-200 bg-white px-3.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingFile}
+                onClick={confirmDeleteFile}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-600 bg-red-600 px-3.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-75"
+              >
+                {isDeletingFile && <Loader2 className="size-3.5 animate-spin" />}
+                <span>{isDeletingFile ? '删除中' : '确认删除'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. 右侧滑出抽屉面板 */}
       {selectedChunk && (
