@@ -12,6 +12,7 @@ import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.dto.GraphRequest;
 import com.liang.data.agent.workflow.service.GraphService;
 import com.liang.data.agent.workflow.service.WorkflowRunService;
+import com.liang.data.agent.workflow.util.WorkflowEventUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -19,6 +20,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -134,7 +137,7 @@ public class GraphController {
 
         return streamFlux
                 .doOnNext(event -> {
-                    if (event.hasContent()) {
+                    if (isTextOutputEvent(event)) {
                         accumulatedResponse.append(event.content());
                     }
                     if (event.nodeCompleted() && !accumulatedResponse.isEmpty()) {
@@ -148,8 +151,19 @@ public class GraphController {
                         completedNodeResponse.append(accumulatedResponse);
                     }
                 })
-                .filter(GraphStreamChunk::hasContent)
-                .map(GraphStreamChunk::content)
+                .flatMap(event -> {
+                    if (isTextOutputEvent(event)) {
+                        String workflowEvent = encodeWorkflowStreamEvent(request.getAgentId(), finalSessionId, event);
+                        return StringUtils.hasText(workflowEvent)
+                                ? Flux.just(event.content(), workflowEvent)
+                                : Flux.just(event.content());
+                    }
+                    if (isWorkflowEventOutput(event)) {
+                        return Flux.just(event.content());
+                    }
+                    String workflowEvent = encodeWorkflowStreamEvent(request.getAgentId(), finalSessionId, event);
+                    return StringUtils.hasText(workflowEvent) ? Flux.just(workflowEvent) : Flux.empty();
+                })
                 .doOnComplete(() -> {
                     String fullResponse = accumulatedResponse.toString();
                     log.info("会话 {} 的图流交互已完成，响应长度: {}", finalSessionId, fullResponse.length());
@@ -183,7 +197,11 @@ public class GraphController {
                     chatMessageService.saveMessageAsync(errorMsgDto, finalSessionId);
                     workflowRunService.markFailed(finalSessionId, safeMessage(err));
                 })
-                .onErrorResume(err -> Flux.just(formatSseData("系统繁忙，请稍后再试（" + safeMessage(err) + "）")))
+                .onErrorResume(err -> Flux.just(encodeWorkflowStreamEvent(
+                        request.getAgentId(),
+                        finalSessionId,
+                        GraphStreamChunk.error(safeMessage(err), "")
+                )))
                 .doOnCancel(() -> {
                     log.info("客户端断开连接, threadId: {}", finalSessionId);
                     if (!completedNodeResponse.isEmpty()) {
@@ -209,6 +227,30 @@ public class GraphController {
 
     private String formatSseData(String message) {
         return "data:" + message.replace("\r", " ").replace("\n", " ") + "\n\n";
+    }
+
+    private String encodeWorkflowStreamEvent(String agentId, String threadId, GraphStreamChunk event) {
+        if (event == null) {
+            return "";
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("nodeName", event.nodeName());
+        payload.put("content", event.content());
+        return WorkflowEventUtil.encode(agentId, threadId, event.eventType(), payload);
+    }
+
+    private boolean isTextOutputEvent(GraphStreamChunk event) {
+        return event != null
+                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && event.hasContent()
+                && !event.content().contains(WorkflowEventUtil.EVENT_PREFIX);
+    }
+
+    private boolean isWorkflowEventOutput(GraphStreamChunk event) {
+        return event != null
+                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && event.hasContent()
+                && event.content().contains(WorkflowEventUtil.EVENT_PREFIX);
     }
 
     private String safeMessage(Throwable throwable) {

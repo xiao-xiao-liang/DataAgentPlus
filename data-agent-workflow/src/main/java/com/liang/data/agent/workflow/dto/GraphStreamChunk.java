@@ -5,11 +5,42 @@ import org.springframework.util.StringUtils;
 /**
  * 工作流流式输出事件，用于在后端传递文本片段和节点完成信号。
  *
+ * @param eventType     工作流事件类型
  * @param content       需要发送给前端的文本内容
  * @param nodeName      当前事件关联的节点名称
  * @param nodeCompleted 是否表示节点已经完成
  */
-public record GraphStreamChunk(String content, String nodeName, boolean nodeCompleted) {
+public record GraphStreamChunk(String eventType, String content, String nodeName, boolean nodeCompleted) {
+
+    /**
+     * 节点输出事件
+     */
+    public static final String EVENT_NODE_OUTPUT = "node_output";
+
+    /**
+     * 节点开始事件
+     */
+    public static final String EVENT_NODE_STARTED = "node_started";
+
+    /**
+     * 节点完成事件
+     */
+    public static final String EVENT_NODE_COMPLETED = "node_completed";
+
+    /**
+     * 等待用户输入事件
+     */
+    public static final String EVENT_WAITING_USER_INPUT = "waiting_user_input";
+
+    /**
+     * 工作流错误事件
+     */
+    public static final String EVENT_WORKFLOW_ERROR = "workflow_error";
+
+    /**
+     * 工作流完成事件
+     */
+    public static final String EVENT_WORKFLOW_DONE = "workflow_done";
 
     /**
      * 构建普通文本输出事件。
@@ -19,7 +50,17 @@ public record GraphStreamChunk(String content, String nodeName, boolean nodeComp
      * @return 工作流流式输出事件
      */
     public static GraphStreamChunk content(String content, String nodeName) {
-        return new GraphStreamChunk(content, nodeName, false);
+        return new GraphStreamChunk(EVENT_NODE_OUTPUT, content, nodeName, false);
+    }
+
+    /**
+     * 构建节点开始事件。
+     *
+     * @param nodeName 当前节点名称
+     * @return 工作流流式输出事件
+     */
+    public static GraphStreamChunk nodeStarted(String nodeName) {
+        return new GraphStreamChunk(EVENT_NODE_STARTED, "", nodeName, false);
     }
 
     /**
@@ -29,7 +70,38 @@ public record GraphStreamChunk(String content, String nodeName, boolean nodeComp
      * @return 工作流流式输出事件
      */
     public static GraphStreamChunk nodeCompleted(String nodeName) {
-        return new GraphStreamChunk("", nodeName, true);
+        return new GraphStreamChunk(EVENT_NODE_COMPLETED, "", nodeName, true);
+    }
+
+    /**
+     * 构建等待用户输入事件。
+     *
+     * @param nodeName 当前节点名称
+     * @param content  等待态关联的结构化内容
+     * @return 工作流流式输出事件
+     */
+    public static GraphStreamChunk waitingUserInput(String nodeName, String content) {
+        return new GraphStreamChunk(EVENT_WAITING_USER_INPUT, content, nodeName, false);
+    }
+
+    /**
+     * 构建工作流错误事件。
+     *
+     * @param content  错误内容
+     * @param nodeName 当前节点名称
+     * @return 工作流流式输出事件
+     */
+    public static GraphStreamChunk error(String content, String nodeName) {
+        return new GraphStreamChunk(EVENT_WORKFLOW_ERROR, content, nodeName, false);
+    }
+
+    /**
+     * 构建工作流完成事件。
+     *
+     * @return 工作流流式输出事件
+     */
+    public static GraphStreamChunk done() {
+        return new GraphStreamChunk(EVENT_WORKFLOW_DONE, "", "", false);
     }
 
     /**

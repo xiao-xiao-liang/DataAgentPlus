@@ -59,8 +59,9 @@ class GraphControllerTest {
 
         List<String> chunks = controller.chat(request).collectList().block();
 
-        assertThat(String.join("", chunks)).contains("data:");
-        assertThat(String.join("", chunks)).contains("系统繁忙，请稍后再试");
+        assertThat(String.join("", chunks)).contains("@@DATA_AGENT_EVENT@@");
+        assertThat(String.join("", chunks)).contains("\"eventType\":\"workflow_error\"");
+        assertThat(String.join("", chunks)).contains("boom");
         verify(chatMessageService).saveMessageAsync(any(), anyString());
     }
 
@@ -83,7 +84,11 @@ class GraphControllerTest {
 
         List<String> chunks = controller.chat(request).collectList().block();
 
-        assertThat(chunks).containsExactly("node-1-output", "node-2-output");
+        assertThat(chunks).hasSize(4);
+        assertThat(chunks.get(0)).isEqualTo("node-1-output");
+        assertThat(chunks.get(1)).contains("\"eventType\":\"node_output\"");
+        assertThat(chunks.get(2)).isEqualTo("node-2-output");
+        assertThat(chunks.get(3)).contains("\"eventType\":\"node_output\"");
         verify(chatMessageService, never()).saveOrUpdateStreamingAssistantMessage(
                 eq("thread-completed"),
                 anyString(),
@@ -118,7 +123,12 @@ class GraphControllerTest {
 
         List<String> chunks = controller.chat(request).collectList().block();
 
-        assertThat(chunks).containsExactly("node-1-output", "node-2-output");
+        assertThat(chunks).hasSize(5);
+        assertThat(chunks.get(0)).isEqualTo("node-1-output");
+        assertThat(chunks.get(1)).contains("\"eventType\":\"node_output\"");
+        assertThat(chunks.get(2)).contains("\"eventType\":\"node_completed\"");
+        assertThat(chunks.get(3)).isEqualTo("node-2-output");
+        assertThat(chunks.get(4)).contains("\"eventType\":\"node_output\"");
         verify(chatMessageService).saveOrUpdateStreamingAssistantMessage(
                 "thread-node-completed",
                 "node-1-output",
@@ -131,6 +141,35 @@ class GraphControllerTest {
                 "text",
                 true
         );
+    }
+
+    @Test
+    void chatStreamsStructuredNodeEventsWithoutPollutingVisibleContent() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-node-event")
+                .query("query")
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-node-event"))
+                .thenReturn(ChatSessionVO.builder().id("thread-node-event").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-node-event", 10)).thenReturn("(none)");
+        when(graphService.chatStream(any(GraphRequest.class), anyString()))
+                .thenReturn(Flux.just(
+                        GraphStreamChunk.content("node-output", "node-1"),
+                        GraphStreamChunk.nodeCompleted("node-1"),
+                        GraphStreamChunk.done()
+                ));
+
+        List<String> chunks = controller.chat(request).collectList().block();
+        String response = String.join("", chunks);
+
+        assertThat(chunks.getFirst()).isEqualTo("node-output");
+        assertThat(response).contains("@@DATA_AGENT_EVENT@@");
+        assertThat(response).contains("\"eventType\":\"node_output\"");
+        assertThat(response).contains("\"eventType\":\"node_completed\"");
+        assertThat(response).contains("\"eventType\":\"workflow_done\"");
+        assertThat(response).contains("\"nodeName\":\"node-1\"");
     }
 
     @Test
@@ -229,8 +268,12 @@ class GraphControllerTest {
                         GraphStreamChunk.content("partial-node-output", "node-2")
                 ));
 
-        List<String> chunks = controller.chat(request).take(2).collectList().block();
-        assertThat(chunks).containsExactly("completed-node-output", "partial-node-output");
+        List<String> chunks = controller.chat(request).take(4).collectList().block();
+        assertThat(chunks).hasSize(4);
+        assertThat(chunks.get(0)).isEqualTo("completed-node-output");
+        assertThat(chunks.get(1)).contains("\"eventType\":\"node_output\"");
+        assertThat(chunks.get(2)).contains("\"eventType\":\"node_completed\"");
+        assertThat(chunks.get(3)).isEqualTo("partial-node-output");
 
         verify(chatMessageService).saveOrUpdateStreamingAssistantMessage(
                 "thread-cancel-with-partial-node",

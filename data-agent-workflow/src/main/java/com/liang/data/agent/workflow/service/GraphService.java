@@ -10,6 +10,7 @@ import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.liang.data.agent.workflow.util.WorkflowEventUtil;
 import com.liang.data.agent.common.enums.InteractionType;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntent;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntentResult;
@@ -102,7 +103,7 @@ public class GraphService {
 
     public Flux<String> chat(GraphRequest request, String multiTurnContext) {
         return chatStream(request, multiTurnContext)
-                .filter(GraphStreamChunk::hasContent)
+                .filter(this::isTextOutputEvent)
                 .map(GraphStreamChunk::content);
     }
 
@@ -244,8 +245,14 @@ public class GraphService {
                             persistCheckpoint(threadId, previousNode, config, streamContext);
                             events.add(GraphStreamChunk.nodeCompleted(previousNode));
                         }
+                        if (previousNode == null || !previousNode.equals(nodeName)) {
+                            events.add(GraphStreamChunk.nodeStarted(nodeName));
+                        }
                         currentNode.set(nodeName);
                         if (StringUtils.hasLength(chunk)) {
+                            if (isWaitingUserInputEvent(chunk)) {
+                                events.add(GraphStreamChunk.waitingUserInput(nodeName, chunk));
+                            }
                             events.add(GraphStreamChunk.content(chunk, nodeName));
                         }
                         return Flux.fromIterable(events);
@@ -253,7 +260,7 @@ public class GraphService {
                     return Flux.empty();
                 })
                 .doOnNext(event -> {
-                    if (event.hasContent()) {
+                    if (isTextOutputEvent(event)) {
                         streamContext.appendOutput(event.content());
                     }
                 });
@@ -272,6 +279,13 @@ public class GraphService {
                             .thenMany(Flux.empty());
                     return Flux.merge(sharedContentEvents, fallbackPersistEvents);
                 })
+                .concatWith(Flux.defer(() -> {
+                    String nodeName = currentNode.get();
+                    if (nodeName == null) {
+                        return Flux.just(GraphStreamChunk.done());
+                    }
+                    return Flux.just(GraphStreamChunk.nodeCompleted(nodeName), GraphStreamChunk.done());
+                }))
                 .doOnComplete(() -> {
                     String nodeName = currentNode.get();
                     if (nodeName != null) {
@@ -288,6 +302,24 @@ public class GraphService {
                     log.info("{}被取消 - threadId: {}", label, threadId);
                     cleanupStreamContext(threadId);
                 });
+    }
+
+    private boolean isTextOutputEvent(GraphStreamChunk event) {
+        return event != null
+                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && StringUtils.hasLength(event.content())
+                && !isWorkflowEventContent(event.content());
+    }
+
+    private boolean isWaitingUserInputEvent(String content) {
+        return isWorkflowEventContent(content)
+                && (content.contains("\"eventType\":\"clarification_request\"")
+                || content.contains("\"eventType\":\"clarification_confirmation\"")
+                || content.contains("\"eventType\":\"memory_candidate\""));
+    }
+
+    private boolean isWorkflowEventContent(String content) {
+        return StringUtils.hasLength(content) && content.contains(WorkflowEventUtil.EVENT_PREFIX);
     }
 
     private void persistCheckpoint(String threadId, String nodeName, RunnableConfig config, StreamContext streamContext) {

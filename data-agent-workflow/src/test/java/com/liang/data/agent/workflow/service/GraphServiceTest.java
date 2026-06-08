@@ -12,6 +12,7 @@ import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.workflow.dto.GraphRequest;
+import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.dto.node.IntentRecognitionOutputDTO;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import com.liang.data.agent.workflow.config.WorkflowConfiguration;
@@ -40,6 +41,7 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.INTENT_RECOGNIT
 import static com.liang.data.agent.common.constant.NodeOutputKey.QUERY_ENHANCE_NODE_OUTPUT;
 import static com.liang.data.agent.common.constant.NodeOutputKey.TABLE_DOCUMENTS_FOR_SCHEMA_OUTPUT;
 import static com.liang.data.agent.common.constant.NodeOutputKey.CLARIFICATION_NORMALIZED_OUTPUT;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -115,6 +117,62 @@ class GraphServiceTest {
     }
 
     @Test
+    void shouldEmitWorkflowDoneEventWhenStreamCompletes() throws Exception {
+        AsyncNodeAction noopNode = AsyncNodeAction.node_async(state -> Map.of());
+        StateGraph graph = new StateGraph("done_event_graph", () -> Map.of())
+                .addNode("LongStreamingNode", AsyncNodeAction.node_async(this::longRunningStreamingNode))
+                .addNode(CLARIFICATION_ASK_NODE, noopNode)
+                .addNode(CLARIFICATION_NORMALIZE_NODE, noopNode)
+                .addNode(CLARIFICATION_CONFIRM_NODE, noopNode)
+                .addNode(HUMAN_FEEDBACK_NODE, noopNode)
+                .addEdge(START, "LongStreamingNode")
+                .addEdge("LongStreamingNode", END);
+        GraphService graphService = new GraphService(graph, WorkflowRunService.noop(),
+                HumanFeedbackIntentService.withoutModel(), (BaseCheckpointSaver) null);
+
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-done-event")
+                .query("长耗时节点流式输出")
+                .build();
+
+        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
+
+        assertThat(chunks).isNotNull();
+        assertThat(chunks.getLast().eventType()).isEqualTo(GraphStreamChunk.EVENT_WORKFLOW_DONE);
+        assertThat(chunks.getLast().hasContent()).isFalse();
+        assertThat(chunks.get(chunks.size() - 2).eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_COMPLETED);
+    }
+
+    @Test
+    void shouldEmitNodeStartedEventBeforeNodeOutput() throws Exception {
+        AsyncNodeAction noopNode = AsyncNodeAction.node_async(state -> Map.of());
+        StateGraph graph = new StateGraph("node_started_graph", () -> Map.of())
+                .addNode("LongStreamingNode", AsyncNodeAction.node_async(this::longRunningStreamingNode))
+                .addNode(CLARIFICATION_ASK_NODE, noopNode)
+                .addNode(CLARIFICATION_NORMALIZE_NODE, noopNode)
+                .addNode(CLARIFICATION_CONFIRM_NODE, noopNode)
+                .addNode(HUMAN_FEEDBACK_NODE, noopNode)
+                .addEdge(START, "LongStreamingNode")
+                .addEdge("LongStreamingNode", END);
+        GraphService graphService = new GraphService(graph, WorkflowRunService.noop(),
+                HumanFeedbackIntentService.withoutModel(), (BaseCheckpointSaver) null);
+
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-node-started")
+                .query("长耗时节点流式输出")
+                .build();
+
+        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
+
+        assertThat(chunks).isNotNull();
+        assertThat(chunks.getFirst().eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_STARTED);
+        assertThat(chunks.getFirst().nodeName()).isEqualTo("LongStreamingNode");
+        assertThat(chunks.get(1).eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_OUTPUT);
+    }
+
+    @Test
     void shouldResumeFromClarificationAnswerIntoNormalizeNode() throws Exception {
         NodeBeanUtil nodeBeanUtil = mock(NodeBeanUtil.class);
         when(nodeBeanUtil.toAsyncNode(any())).thenAnswer(invocation -> {
@@ -139,8 +197,9 @@ class GraphServiceTest {
                 .threadId("thread-clarify")
                 .query("分析系统链路的核心瓶颈所在")
                 .build();
-        List<String> firstChunks = graphService.chat(firstRequest, "(无)").collectList().block();
-        assertTrue(String.join("", firstChunks).contains("clarification_request"));
+        List<GraphStreamChunk> firstChunks = graphService.chatStream(firstRequest, "(无)").collectList().block();
+        assertThat(firstChunks).isNotNull();
+        assertThat(firstChunks).anySatisfy(chunk -> assertThat(chunk.content()).contains("clarification_request"));
 
         GraphRequest answerRequest = GraphRequest.builder()
                 .agentId("2")
@@ -150,6 +209,37 @@ class GraphServiceTest {
                 .build();
         List<String> resumedChunks = graphService.chat(answerRequest, "(无)").collectList().block();
         assertEquals("normalized", String.join("", resumedChunks).trim());
+    }
+
+    @Test
+    void shouldEmitWaitingUserInputWhenClarificationEventAppears() throws Exception {
+        NodeBeanUtil nodeBeanUtil = mock(NodeBeanUtil.class);
+        when(nodeBeanUtil.toAsyncNode(any())).thenAnswer(invocation -> {
+            Class<?> nodeClass = invocation.getArgument(0);
+            NodeAction action = nodeClass == ClarificationAskNode.class
+                    ? new ClarificationAskNode()
+                    : this::stubNodeOutput;
+            return AsyncNodeAction.node_async(action);
+        });
+        when(nodeBeanUtil.toAsyncEdge(any())).thenReturn(AsyncEdgeAction.edge_async(state -> END));
+
+        StateGraph graph = new WorkflowConfiguration().nl2sqlGraph(nodeBeanUtil);
+        GraphService graphService = new GraphService(graph);
+
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-waiting-input")
+                .query("分析系统链路的核心瓶颈所在")
+                .build();
+
+        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
+
+        assertThat(chunks).isNotNull();
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk.eventType()).isEqualTo(GraphStreamChunk.EVENT_WAITING_USER_INPUT);
+            assertThat(chunk.nodeName()).isEqualTo("ClarificationAskNode");
+            assertThat(chunk.content()).contains("clarification_request");
+        });
     }
 
     private Map<String, Object> stubNodeOutput(OverAllState state) {
