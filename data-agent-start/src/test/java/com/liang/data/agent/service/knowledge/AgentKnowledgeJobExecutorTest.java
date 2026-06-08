@@ -16,19 +16,17 @@ import com.liang.data.agent.service.storage.FileStorageService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
-import org.springframework.ai.document.Document;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,7 +53,7 @@ class AgentKnowledgeJobExecutorTest {
     );
 
     @Test
-    void executeUploadJobShouldVectorizeDocumentAndMarkSuccess() {
+    void executeUploadJobShouldSaveChunksAndPublishVectorMessages() {
         AgentKnowledgeJobEntity job = new AgentKnowledgeJobEntity();
         job.setId(31L);
         job.setKnowledgeId(12);
@@ -100,22 +98,17 @@ class AgentKnowledgeJobExecutorTest {
             assertThat(chunk.getName()).isEqualTo("整体准点率 准点列车数 总列车数");
             assertThat(chunk.getNameLocked()).isZero();
             assertThat(chunk.getContentVersion()).isEqualTo(1);
-            assertThat(chunk.getVectorVersion()).isEqualTo(1);
-            assertThat(chunk.getVectorStatus()).isEqualTo("SYNCED");
-            assertThat(chunk.getEmbeddingId()).isEqualTo("knowledge-12-chunk-0-c1-t1");
+            assertThat(chunk.getVectorVersion()).isZero();
+            assertThat(chunk.getVectorStatus()).isEqualTo("PENDING");
+            assertThat(chunk.getEmbeddingId()).isNull();
             assertThat(chunk.getRetryCount()).isZero();
 
-            ArgumentCaptor<List<Document>> documentCaptor = ArgumentCaptor.forClass(List.class);
-            verify(vectorStoreService).addDocuments(eq("1"), documentCaptor.capture());
-            assertThat(documentCaptor.getValue()).hasSize(1);
-            assertThat(documentCaptor.getValue().getFirst().getId()).isEqualTo("knowledge-12-chunk-0-c1-t1");
-            assertThat(documentCaptor.getValue().getFirst().getMetadata())
-                    .containsEntry("agentKnowledgeId", "12")
-                    .containsEntry("vector_type", "KNOWLEDGE");
+            verify(vectorStoreService, never()).addDocuments(any(), any());
+            verify(chunkAsyncPublisher).publishVectorize(1, 12, "knowledge-12-chunk-0", 1, 1);
 
             ArgumentCaptor<AgentKnowledgeEntity> knowledgeCaptor = ArgumentCaptor.forClass(AgentKnowledgeEntity.class);
             verify(agentKnowledgeMapper, atLeastOnce()).updateById(knowledgeCaptor.capture());
-            assertThat(knowledgeCaptor.getAllValues().getLast().getEmbeddingStatus()).isEqualTo("COMPLETED");
+            assertThat(knowledgeCaptor.getAllValues().getLast().getEmbeddingStatus()).isEqualTo("PROCESSING");
 
             ArgumentCaptor<AgentKnowledgeJobEntity> jobCaptor = ArgumentCaptor.forClass(AgentKnowledgeJobEntity.class);
             verify(agentKnowledgeJobMapper, atLeastOnce()).updateById(jobCaptor.capture());

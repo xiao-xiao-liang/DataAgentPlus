@@ -14,7 +14,7 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.AgentKnowledgeService;
-import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobEvent;
+import com.liang.data.agent.service.knowledge.job.KnowledgeJobAsyncPublisher;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeVO;
 import com.liang.data.agent.service.storage.FileObjectNameGenerator;
@@ -22,7 +22,6 @@ import com.liang.data.agent.service.storage.FileStorageService;
 import com.liang.data.agent.service.storage.StoredFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +49,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
     private final AgentKnowledgeJobMapper agentKnowledgeJobMapper;
     private final FileStorageService fileStorageService;
     private final FileObjectNameGenerator objectNameGenerator;
-    private final ApplicationEventPublisher eventPublisher;
+    private final KnowledgeJobAsyncPublisher jobAsyncPublisher;
     private static final long MAX_UPLOAD_FILE_SIZE = 50L * 1024 * 1024;
     private static final Set<String> SUPPORTED_FILE_TYPES = Set.of(
             "md", "markdown", "txt", "log", "sql", "csv", "json", "pdf", "doc", "docx", "xls", "xlsx"
@@ -120,7 +119,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
 
         AgentKnowledgeJobEntity job = buildPendingJob(entity, JOB_TYPE_UPLOAD_VECTORIZE);
         agentKnowledgeJobMapper.insert(job);
-        eventPublisher.publishEvent(new AgentKnowledgeJobEvent(job.getId()));
+        jobAsyncPublisher.publish(job.getId());
         return toVO(entity);
     }
 
@@ -153,7 +152,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
 
         AgentKnowledgeJobEntity job = buildPendingJob(entity, JOB_TYPE_DELETE_CLEANUP);
         agentKnowledgeJobMapper.insert(job);
-        eventPublisher.publishEvent(new AgentKnowledgeJobEvent(job.getId()));
+        jobAsyncPublisher.publish(job.getId());
     }
 
     /**

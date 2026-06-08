@@ -65,6 +65,7 @@ public class KnowledgeChunkVectorConsumer implements RocketMQListener<KnowledgeC
                 vectorStoreService.deleteDocumentsByIds(List.of(newVectorId));
                 return;
             }
+            completeKnowledgeIfAllChunksSynced(message.knowledgeId());
         } catch (RuntimeException exception) {
             chunkMapper.recordVectorRetry(
                     message.chunkId(), message.contentVersion(), message.taskVersion(), summarize(exception));
@@ -104,6 +105,12 @@ public class KnowledgeChunkVectorConsumer implements RocketMQListener<KnowledgeC
 
     private String vectorId(String chunkId, Integer contentVersion, Integer taskVersion) {
         return chunkId + "-c" + contentVersion + "-t" + taskVersion;
+    }
+
+    private void completeKnowledgeIfAllChunksSynced(Integer knowledgeId) {
+        if (chunkMapper.countUnfinishedVectorChunks(knowledgeId) == 0) {
+            knowledgeMapper.completeEmbeddingIfProcessing(knowledgeId);
+        }
     }
 
     private String summarize(RuntimeException exception) {

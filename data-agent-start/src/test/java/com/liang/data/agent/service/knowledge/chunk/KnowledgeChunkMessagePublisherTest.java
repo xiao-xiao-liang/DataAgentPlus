@@ -42,4 +42,14 @@ class KnowledgeChunkMessagePublisherTest {
 
         verify(template).convertAndSend(eq(KnowledgeChunkMqConstant.GENERATE_NAME_DESTINATION), any(Object.class));
     }
+
+    @Test
+    void shouldPublishCurrentVectorTaskAsNormalMessage() {
+        RocketMQTemplate template = mock(RocketMQTemplate.class);
+        KnowledgeChunkMessagePublisher publisher = new KnowledgeChunkMessagePublisher(template);
+
+        assertThat(publisher.publishVectorize(1, 10, "chunk-3", 2, 4)).isTrue();
+
+        verify(template).convertAndSend(eq(KnowledgeChunkMqConstant.VECTORIZE_DESTINATION), any(Object.class));
+    }
 }

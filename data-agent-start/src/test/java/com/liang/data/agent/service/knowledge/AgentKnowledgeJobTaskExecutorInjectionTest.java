@@ -3,8 +3,8 @@ package com.liang.data.agent.service.knowledge;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.entity.AgentKnowledgeJobEntity;
 import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobExecutor;
-import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobListener;
 import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobScheduler;
+import com.liang.data.agent.service.knowledge.job.mq.KnowledgeJobConsumer;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 /**
- * 智能体知识任务线程池注入测试。
+ * 智能体知识任务执行入口注入测试。
  */
 class AgentKnowledgeJobTaskExecutorInjectionTest {
 
@@ -30,10 +30,10 @@ class AgentKnowledgeJobTaskExecutorInjectionTest {
             .withUserConfiguration(TestConfiguration.class);
 
     @Test
-    void shouldUseApplicationTaskExecutorWhenSchedulerBeanAlsoMatchesTaskExecutor() {
+    void shouldCreateMqConsumerAndUseApplicationTaskExecutorForScheduler() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(AgentKnowledgeJobListener.class);
+            assertThat(context).hasSingleBean(KnowledgeJobConsumer.class);
             assertThat(context).hasSingleBean(AgentKnowledgeJobScheduler.class);
         });
     }
@@ -59,7 +59,7 @@ class AgentKnowledgeJobTaskExecutorInjectionTest {
      * 构造与 Spring Boot 自动配置一致的执行器候选，复现启动时的注入歧义。
      */
     @Configuration
-    @Import({AgentKnowledgeJobListener.class, AgentKnowledgeJobScheduler.class})
+    @Import({KnowledgeJobConsumer.class, AgentKnowledgeJobScheduler.class})
     static class TestConfiguration {
 
         @Bean

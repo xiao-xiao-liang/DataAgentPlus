@@ -122,6 +122,18 @@ public interface AgentKnowledgeChunkMapper extends BaseMapper<AgentKnowledgeChun
                                    @Param("embeddingId") String embeddingId);
 
     /**
+     * 统计指定知识文档下尚未同步完成的分块数量。
+     */
+    @Select("""
+            SELECT COUNT(1)
+            FROM agent_knowledge_chunk
+            WHERE knowledge_id = #{knowledgeId}
+              AND del_flag = 0
+              AND vector_status <> 'SYNCED'
+            """)
+    int countUnfinishedVectorChunks(@Param("knowledgeId") Integer knowledgeId);
+
+    /**
      * 记录可重试失败并恢复为等待状态。
      */
     @Update("""
