@@ -7,8 +7,12 @@ import ch.qos.logback.core.read.ListAppender;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.common.config.DataAgentProperties;
+import com.liang.data.agent.common.ratelimit.ResourceType;
+import com.liang.data.agent.dal.connector.DatabaseAccessor;
 import com.liang.data.agent.dal.connector.bo.DisplayStyleBO;
 import com.liang.data.agent.dal.connector.bo.ResultSetBO;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
+import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
 import org.junit.jupiter.api.Test;
@@ -21,10 +25,17 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.liang.data.agent.common.constant.NodeOutputKey.QUERY_ENHANCE_NODE_OUTPUT;
+import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_EXECUTE_NODE_OUTPUT;
+import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_GENERATE_OUTPUT;
+import static com.liang.data.agent.common.constant.StateKey.AGENT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SqlExecuteNodeTest {
@@ -44,7 +55,8 @@ class SqlExecuteNodeTest {
                 null,
                 llmService,
                 properties,
-                mock(JsonParseUtil.class)
+                mock(JsonParseUtil.class),
+                mock(ResourceGate.class)
         );
 
         QueryEnhanceOutputDTO queryEnhanceOutputDTO = new QueryEnhanceOutputDTO();
@@ -74,5 +86,30 @@ class SqlExecuteNodeTest {
         } finally {
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    void applyShouldNotExecuteSqlWhenSqlPermitRejected() throws Exception {
+        DatabaseAccessor databaseAccessor = mock(DatabaseAccessor.class);
+        ResourceGate resourceGate = mock(ResourceGate.class);
+        when(resourceGate.tryAcquire(eq(ResourceType.SQL_EXECUTION), anyString(), any()))
+                .thenReturn(ResourcePermit.rejected(ResourceType.SQL_EXECUTION, "agent-1"));
+        SqlExecuteNode node = new SqlExecuteNode(
+                databaseAccessor,
+                null,
+                null,
+                mock(LlmService.class),
+                new DataAgentProperties(),
+                mock(JsonParseUtil.class),
+                resourceGate
+        );
+        OverAllState state = mock(OverAllState.class);
+        when(state.value(SQL_GENERATE_OUTPUT)).thenReturn(Optional.of("select 1"));
+        when(state.value(AGENT_ID)).thenReturn(Optional.of("1"));
+
+        Map<String, Object> result = node.apply(state);
+
+        assertThat(result).containsKey(SQL_EXECUTE_NODE_OUTPUT);
+        verify(databaseAccessor, never()).executeSql(any(), anyString());
     }
 }

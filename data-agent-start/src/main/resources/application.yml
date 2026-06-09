@@ -82,6 +82,15 @@ data-agent:
     min-idle: 5
     max-active: 20
     max-wait: 10000
+  resource-gate:
+    limits:
+      CHAT_WORKFLOW: 10
+      SSE_STREAM: 50
+      LLM_CALL: 5
+      SQL_EXECUTION: 10
+      PYTHON_EXECUTION: 3
+      KNOWLEDGE_JOB: 3
+      KNOWLEDGE_VECTOR: 5
   python-memory-limit: 256
   python-timeout: 30
   code-executor:

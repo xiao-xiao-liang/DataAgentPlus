@@ -3,10 +3,13 @@ package com.liang.data.agent.service.knowledge.chunk.mq;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.liang.data.agent.ai.vectorstore.AgentVectorStoreService;
 import com.liang.data.agent.common.enums.VectorType;
+import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.entity.AgentKnowledgeChunkEntity;
 import com.liang.data.agent.dal.entity.AgentKnowledgeEntity;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
+import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import static com.liang.data.agent.common.constant.VectorMetadataKey.*;
@@ -38,9 +42,24 @@ public class KnowledgeChunkVectorConsumer implements RocketMQListener<KnowledgeC
     private final AgentKnowledgeMapper knowledgeMapper;
     private final AgentKnowledgeChunkMapper chunkMapper;
     private final AgentVectorStoreService vectorStoreService;
+    private final ResourceGate resourceGate;
 
     @Override
     public void onMessage(KnowledgeChunkMessage message) {
+        // 1. 先申请向量写入资源，资源不足时抛出异常触发 RocketMQ 重试
+        ResourcePermit permit = resourceGate.tryAcquire(ResourceType.KNOWLEDGE_VECTOR,
+                message.chunkId(), Duration.ZERO);
+        if (!permit.acquired()) {
+            throw new IllegalStateException("知识向量写入资源繁忙，请稍后重试");
+        }
+
+        // 2. 获得许可后执行向量写入，并在成功、异常或提前返回时释放许可
+        try (permit) {
+            handleMessage(message);
+        }
+    }
+
+    private void handleMessage(KnowledgeChunkMessage message) {
         AgentKnowledgeEntity knowledge = knowledgeMapper.selectById(message.knowledgeId());
         AgentKnowledgeChunkEntity chunk = getChunk(message);
         if (knowledge == null || !message.agentId().equals(knowledge.getAgentId()) || chunk == null

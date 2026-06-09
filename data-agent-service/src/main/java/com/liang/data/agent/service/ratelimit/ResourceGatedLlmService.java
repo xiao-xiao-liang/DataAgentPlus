@@ -1,0 +1,53 @@
+package com.liang.data.agent.service.ratelimit;
+
+import com.liang.data.agent.ai.llm.LlmService;
+import com.liang.data.agent.ai.util.ChatResponseUtil;
+import com.liang.data.agent.common.ratelimit.ResourceType;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ChatResponse;
+import reactor.core.publisher.Flux;
+
+import java.time.Duration;
+import java.util.function.Supplier;
+
+/**
+ * 带资源门控的大模型服务装饰器。
+ *
+ * <p>统一保护所有 {@link LlmService} 调用入口，避免不同节点绕过 LLM 并发限制。</p>
+ */
+@Slf4j
+@RequiredArgsConstructor
+public class ResourceGatedLlmService implements LlmService {
+
+    private final LlmService delegate;
+    private final ResourceGate resourceGate;
+
+    @Override
+    public Flux<ChatResponse> call(String system, String user) {
+        return callWithPermit("llm-call", () -> delegate.call(system, user));
+    }
+
+    @Override
+    public Flux<ChatResponse> callSystem(String system) {
+        return callWithPermit("llm-call-system", () -> delegate.callSystem(system));
+    }
+
+    @Override
+    public Flux<ChatResponse> callUser(String user) {
+        return callWithPermit("llm-call-user", () -> delegate.callUser(user));
+    }
+
+    private Flux<ChatResponse> callWithPermit(String ownerId, Supplier<Flux<ChatResponse>> supplier) {
+        // 1. 先申请 LLM 资源许可，资源不足时直接返回明确提示
+        ResourcePermit permit = resourceGate.tryAcquire(ResourceType.LLM_CALL, ownerId, Duration.ZERO);
+        if (!permit.acquired()) {
+            log.warn("LLM 资源繁忙，跳过本次调用，占用方：{}", ownerId);
+            return Flux.just(ChatResponseUtil.createResponse("大模型资源繁忙，请稍后重试。"));
+        }
+
+        // 2. 执行真实 LLM 流，并在完成、异常或取消时释放许可
+        return supplier.get()
+                .doFinally(signalType -> permit.close());
+    }
+}

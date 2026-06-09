@@ -1,10 +1,13 @@
 package com.liang.data.agent.service.knowledge.chunk;
 
 import com.liang.data.agent.ai.vectorstore.AgentVectorStoreService;
+import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.entity.AgentKnowledgeChunkEntity;
 import com.liang.data.agent.dal.entity.AgentKnowledgeEntity;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
+import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkDeadLetterConsumer;
 import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkMessage;
 import com.liang.data.agent.service.knowledge.chunk.mq.KnowledgeChunkVectorConsumer;
@@ -29,13 +32,18 @@ class KnowledgeChunkVectorConsumerTest {
     private final AgentKnowledgeMapper knowledgeMapper = mock(AgentKnowledgeMapper.class);
     private final AgentKnowledgeChunkMapper chunkMapper = mock(AgentKnowledgeChunkMapper.class);
     private final AgentVectorStoreService vectorStoreService = mock(AgentVectorStoreService.class);
+    private final ResourceGate resourceGate = mock(ResourceGate.class);
     private final KnowledgeChunkVectorConsumer consumer =
-            new KnowledgeChunkVectorConsumer(knowledgeMapper, chunkMapper, vectorStoreService);
+            new KnowledgeChunkVectorConsumer(knowledgeMapper, chunkMapper, vectorStoreService, resourceGate);
     private final KnowledgeChunkMessage message = new KnowledgeChunkMessage(1, 10, "knowledge-10-chunk-3", 4, 7, "op-1");
     private AgentKnowledgeChunkEntity chunk;
 
     @BeforeEach
     void setUp() {
+        when(resourceGate.tryAcquire(eq(ResourceType.KNOWLEDGE_VECTOR), anyString(), any()))
+                .thenReturn(ResourcePermit.acquired(ResourceType.KNOWLEDGE_VECTOR, "chunk", () -> {
+                }));
+
         AgentKnowledgeEntity knowledge = new AgentKnowledgeEntity();
         knowledge.setId(10);
         knowledge.setAgentId(1);
@@ -170,6 +178,18 @@ class KnowledgeChunkVectorConsumerTest {
 
         consumer.onMessage(message);
 
+        verify(chunkMapper, never()).claimVectorProcessing(any(), any(), any(), any());
+        verify(vectorStoreService, never()).addDocuments(any(), any());
+    }
+
+    @Test
+    void shouldRetryWhenVectorPermitRejected() {
+        when(resourceGate.tryAcquire(eq(ResourceType.KNOWLEDGE_VECTOR), anyString(), any()))
+                .thenReturn(ResourcePermit.rejected(ResourceType.KNOWLEDGE_VECTOR, message.chunkId()));
+
+        assertThatThrownBy(() -> consumer.onMessage(message))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("知识向量写入资源繁忙");
         verify(chunkMapper, never()).claimVectorProcessing(any(), any(), any(), any());
         verify(vectorStoreService, never()).addDocuments(any(), any());
     }

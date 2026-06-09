@@ -9,6 +9,7 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.TextType;
+import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.connector.DatabaseAccessor;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.DisplayStyleBO;
@@ -17,6 +18,8 @@ import com.liang.data.agent.dal.connector.bo.ResultSetBO;
 import com.liang.data.agent.dal.entity.DatasourceEntity;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
+import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.workflow.dto.SqlRetryDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -61,6 +64,7 @@ public class SqlExecuteNode implements NodeAction {
     private final LlmService llmService;
     private final DataAgentProperties properties;
     private final JsonParseUtil jsonParseUtil;
+    private final ResourceGate resourceGate;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int SAMPLE_DATA_LIMIT = 20;
@@ -77,6 +81,18 @@ public class SqlExecuteNode implements NodeAction {
             return buildErrorResponse(state, "SQL 包含多条语句，请仅生成一条可执行的查询语句", null);
         }
 
+        ResourcePermit permit = resourceGate.tryAcquire(ResourceType.SQL_EXECUTION, "agent-" + agentId, Duration.ZERO);
+        if (!permit.acquired()) {
+            return buildErrorResponse(state, "SQL 执行资源繁忙，请稍后重试", null);
+        }
+
+        try (permit) {
+            return executeWithPermit(state, sql, agentId);
+        }
+    }
+
+    private Map<String, Object> executeWithPermit(OverAllState state, String sql, String agentId) throws Exception {
+        // ======================== 阶段一：获取激活的数据源配置 ========================
         Integer datasourceId = agentDatasourceMapper.getActiveDatasource(Integer.valueOf(agentId));
 
         if (Objects.isNull(datasourceId)) {

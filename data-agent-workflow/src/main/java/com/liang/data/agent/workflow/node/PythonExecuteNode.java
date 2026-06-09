@@ -9,6 +9,9 @@ import com.liang.data.agent.ai.code.PythonCodeExecutor;
 import com.liang.data.agent.ai.code.model.TaskResponse;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
+import com.liang.data.agent.common.ratelimit.ResourceType;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
+import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +21,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -43,6 +47,7 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_RESULT_LIST
 public class PythonExecuteNode implements NodeAction {
 
     private final PythonCodeExecutor pythonCodeExecutor;
+    private final ResourceGate resourceGate;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MAX_PYTHON_TRIES = 3;
 
@@ -63,66 +68,90 @@ public class PythonExecuteNode implements NodeAction {
         log.info("启动 Python 代码执行沙箱 - 脚本长度: {} 字符, 输入记录: {} 条, 当前尝试次数: {}", 
                 pythonCode.length(), sqlResults.size(), triesCount);
 
-        // 3. 调用多策略引擎执行代码，限制最大超时时间为 30 秒
-        TaskResponse response = pythonCodeExecutor.execute(pythonCode, sqlResultJson, 30);
+        // 3. 申请 Python 执行资源，资源不足时不进入沙箱
+        ResourcePermit permit = resourceGate.tryAcquire(ResourceType.PYTHON_EXECUTION, "python-execute", Duration.ZERO);
+        if (!permit.acquired()) {
+            return buildResourceBusyResponse(state);
+        }
 
         Flux<ChatResponse> displayFlux;
         Map<String, Object> stateUpdate = new HashMap<>();
 
-        if (response.isSuccess()) {
-            // 执行成功：还原 stdout 并处理乱码，推进流程
-            String cleanStdout = decodeUnicode(response.getStdout());
-            log.info("Python 脚本执行成功，执行耗时: {} 毫秒", response.getExecutionTimeMs());
-            
-            displayFlux = Flux.just(
-                    ChatResponseUtil.createResponse("开始执行 Python 数据分析代码..."),
-                    ChatResponseUtil.createResponse("分析引擎标准输出："),
-                    ChatResponseUtil.createPureResponse(TextType.JSON.getStartSign()),
-                    ChatResponseUtil.createResponse(cleanStdout),
-                    ChatResponseUtil.createPureResponse(TextType.JSON.getEndSign()),
-                    ChatResponseUtil.createResponse("Python 代码数据处理执行成功！")
-            );
+        try (permit) {
+            // 4. 调用多策略引擎执行代码，限制最大超时时间为 30 秒
+            TaskResponse response = pythonCodeExecutor.execute(pythonCode, sqlResultJson, 30);
 
-            stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, cleanStdout);
-            stateUpdate.put(PYTHON_IS_SUCCESS, true);
-        } else {
-            // 执行失败：防乱码转换 stderr，标记为失败以触发重试纠错路由
-            String cleanStderr = decodeUnicode(response.getStderr());
-            int nextTries = triesCount + 1;
-            log.warn("Python 脚本执行失败。尝试次数: {}/{}。报错详情: {}", nextTries, MAX_PYTHON_TRIES, cleanStderr);
+            if (response.isSuccess()) {
+                // 执行成功：还原 stdout 并处理乱码，推进流程
+                String cleanStdout = decodeUnicode(response.getStdout());
+                log.info("Python 脚本执行成功，执行耗时: {} 毫秒", response.getExecutionTimeMs());
 
-            stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, cleanStderr);
-            stateUpdate.put(PYTHON_IS_SUCCESS, false);
-            stateUpdate.put(PYTHON_TRIES_COUNT, nextTries);
-
-            if (nextTries >= MAX_PYTHON_TRIES) {
-                // 已经达到了最大重试限制，为了保证工作流不戛然而止而导致用户无法获取最终报告，我们直接标记为进入降级模式
-                log.error("已达到 Python 脚本执行重试限制 ({} 次)，触发优雅降级流程，流转向分析汇总", MAX_PYTHON_TRIES);
-                stateUpdate.put(PYTHON_FALLBACK_MODE, true);
-                
                 displayFlux = Flux.just(
                         ChatResponseUtil.createResponse("开始执行 Python 数据分析代码..."),
-                        ChatResponseUtil.createResponse("⚠️ 分析引擎执行报错或异常输出："),
-                        ChatResponseUtil.createResponse(cleanStderr),
-                        ChatResponseUtil.createResponse("[系统] 已达到大模型重试纠错上限，正转向启动工作流优雅降级机制...")
+                        ChatResponseUtil.createResponse("分析引擎标准输出："),
+                        ChatResponseUtil.createPureResponse(TextType.JSON.getStartSign()),
+                        ChatResponseUtil.createResponse(cleanStdout),
+                        ChatResponseUtil.createPureResponse(TextType.JSON.getEndSign()),
+                        ChatResponseUtil.createResponse("Python 代码数据处理执行成功！")
                 );
+
+                stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, cleanStdout);
+                stateUpdate.put(PYTHON_IS_SUCCESS, true);
             } else {
-                displayFlux = Flux.just(
-                        ChatResponseUtil.createResponse("开始执行 Python 数据分析代码..."),
-                        ChatResponseUtil.createResponse("⚠️ 分析引擎执行报错或异常输出："),
-                        ChatResponseUtil.createResponse(cleanStderr),
-                        ChatResponseUtil.createResponse(String.format("Python 执行未成功。当前尝试第 %d 次，正将错误回传给大模型触发自愈纠错机制...", nextTries))
-                );
+                // 执行失败：防乱码转换 stderr，标记为失败以触发重试纠错路由
+                String cleanStderr = decodeUnicode(response.getStderr());
+                int nextTries = triesCount + 1;
+                log.warn("Python 脚本执行失败。尝试次数: {}/{}。报错详情: {}", nextTries, MAX_PYTHON_TRIES, cleanStderr);
+
+                stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, cleanStderr);
+                stateUpdate.put(PYTHON_IS_SUCCESS, false);
+                stateUpdate.put(PYTHON_TRIES_COUNT, nextTries);
+
+                if (nextTries >= MAX_PYTHON_TRIES) {
+                    // 已经达到了最大重试限制，为了保证工作流不戛然而止而导致用户无法获取最终报告，我们直接标记为进入降级模式
+                    log.error("已达到 Python 脚本执行重试限制 ({} 次)，触发优雅降级流程，流转向分析汇总", MAX_PYTHON_TRIES);
+                    stateUpdate.put(PYTHON_FALLBACK_MODE, true);
+
+                    displayFlux = Flux.just(
+                            ChatResponseUtil.createResponse("开始执行 Python 数据分析代码..."),
+                            ChatResponseUtil.createResponse("⚠️ 分析引擎执行报错或异常输出："),
+                            ChatResponseUtil.createResponse(cleanStderr),
+                            ChatResponseUtil.createResponse("[系统] 已达到大模型重试纠错上限，正转向启动工作流优雅降级机制...")
+                    );
+                } else {
+                    displayFlux = Flux.just(
+                            ChatResponseUtil.createResponse("开始执行 Python 数据分析代码..."),
+                            ChatResponseUtil.createResponse("⚠️ 分析引擎执行报错或异常输出："),
+                            ChatResponseUtil.createResponse(cleanStderr),
+                            ChatResponseUtil.createResponse(String.format("Python 执行未成功。当前尝试第 %d 次，正将错误回传给大模型触发自愈纠错机制...", nextTries))
+                    );
+                }
             }
         }
 
-        // 4. 将输出封装为流式响应，推送给前端展示
+        // 5. 将输出封装为流式响应，推送给前端展示
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
                 this.getClass(), state,
                 v -> stateUpdate,
                 displayFlux
         );
 
+        return Map.of(PYTHON_EXECUTE_NODE_OUTPUT, generator);
+    }
+
+    private Map<String, Object> buildResourceBusyResponse(OverAllState state) {
+        Map<String, Object> stateUpdate = new HashMap<>();
+        stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, "Python 执行资源繁忙，请稍后重试");
+        stateUpdate.put(PYTHON_IS_SUCCESS, false);
+
+        Flux<ChatResponse> displayFlux = Flux.just(
+                ChatResponseUtil.createResponse("Python 执行资源繁忙，请稍后重试")
+        );
+        Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
+                this.getClass(), state,
+                v -> stateUpdate,
+                displayFlux
+        );
         return Map.of(PYTHON_EXECUTE_NODE_OUTPUT, generator);
     }
 

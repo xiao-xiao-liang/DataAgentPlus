@@ -2,9 +2,13 @@ package com.liang.data.agent.common.config;
 
 import com.liang.data.agent.common.enums.LlmServiceMode;
 import com.liang.data.agent.common.enums.FileStorageType;
+import com.liang.data.agent.common.ratelimit.ResourceType;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import java.util.EnumMap;
+import java.util.Map;
 
 /**
  * DataAgent 自定义配置属性
@@ -35,6 +39,11 @@ public class DataAgentProperties {
      * 连接池配置
      */
     private PoolProperties pool = new PoolProperties();
+
+    /**
+     * 资源门控配置
+     */
+    private ResourceGateProperties resourceGate = new ResourceGateProperties();
 
     /**
      * SQL 执行失败最大重试次数
@@ -207,5 +216,27 @@ public class DataAgentProperties {
          * 获取连接最大等待时间 (毫秒)
          */
         private long maxWait = 10_000L;
+    }
+
+    @Getter
+    @Setter
+    public static class ResourceGateProperties {
+
+        /**
+         * 各类资源的单实例并发上限
+         */
+        private Map<ResourceType, Integer> limits = defaultLimits();
+
+        private static Map<ResourceType, Integer> defaultLimits() {
+            Map<ResourceType, Integer> limits = new EnumMap<>(ResourceType.class);
+            limits.put(ResourceType.CHAT_WORKFLOW, 10);
+            limits.put(ResourceType.SSE_STREAM, 50);
+            limits.put(ResourceType.LLM_CALL, 5);
+            limits.put(ResourceType.SQL_EXECUTION, 10);
+            limits.put(ResourceType.PYTHON_EXECUTION, 3);
+            limits.put(ResourceType.KNOWLEDGE_JOB, 3);
+            limits.put(ResourceType.KNOWLEDGE_VECTOR, 5);
+            return limits;
+        }
     }
 }

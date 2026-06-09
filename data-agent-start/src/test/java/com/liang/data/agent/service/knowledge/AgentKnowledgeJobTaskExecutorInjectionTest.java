@@ -5,6 +5,7 @@ import com.liang.data.agent.dal.entity.AgentKnowledgeJobEntity;
 import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobExecutor;
 import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobScheduler;
 import com.liang.data.agent.service.knowledge.job.mq.KnowledgeJobConsumer;
+import com.liang.data.agent.service.ratelimit.ResourceGate;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -70,6 +71,11 @@ class AgentKnowledgeJobTaskExecutorInjectionTest {
         @Bean
         AgentKnowledgeJobMapper agentKnowledgeJobMapper() {
             return mock(AgentKnowledgeJobMapper.class);
+        }
+
+        @Bean
+        ResourceGate resourceGate() {
+            return mock(ResourceGate.class);
         }
 
         @Bean
