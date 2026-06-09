@@ -18,7 +18,7 @@ public interface WorkflowAdmissionService {
      * @param query     用户问题
      * @return 队列信息
      */
-    WorkflowQueueVO enqueue(String userId, String sessionId, Integer agentId, String query);
+    WorkflowQueueVO enqueue(Long userId, String sessionId, Integer agentId, String query);
 
     /**
      * 尝试将等待任务推进为运行中。

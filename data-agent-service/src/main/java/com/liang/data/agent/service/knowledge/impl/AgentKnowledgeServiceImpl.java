@@ -78,11 +78,11 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
      * 上传接口逻辑：将远程网络 RPC 剥离在事务外部，防高并发数据库连接池耗尽风险
      */
     @Override
-    public AgentKnowledgeVO upload(Integer agentId, String userId, String title, String sourceFilename, InputStream inputStream,
+    public AgentKnowledgeVO upload(Integer agentId, Long userId, String title, String sourceFilename, InputStream inputStream,
                                    long contentLength, String splitterType) {
         validateAgentId(agentId);
         validateUpload(sourceFilename, inputStream, contentLength);
-        String normalizedUserId = normalizeUserId(userId);
+        Long normalizedUserId = normalizeUserId(userId);
 
         String fileType = resolveFileType(sourceFilename);
         validateFileType(fileType);
@@ -113,7 +113,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
      * 细粒度持久化事务
      */
     @Transactional(rollbackFor = Exception.class)
-    public AgentKnowledgeVO saveKnowledgeMetadataInTransaction(Integer agentId, String userId, String title, String sourceFilename,
+    public AgentKnowledgeVO saveKnowledgeMetadataInTransaction(Integer agentId, Long userId, String title, String sourceFilename,
                                                                long fileSize, String fileType, String splitterType, String filePath) {
         AgentKnowledgeEntity entity = buildPendingEntity(agentId, title, sourceFilename, fileSize, fileType, splitterType);
         entity.setFilePath(filePath);
@@ -152,7 +152,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
         entity.setUpdateTime(LocalDateTime.now());
         updateById(entity);
 
-        AgentKnowledgeJobEntity job = buildPendingJob(entity, "default-user", JOB_TYPE_DELETE_CLEANUP);
+        AgentKnowledgeJobEntity job = buildPendingJob(entity, 1L, JOB_TYPE_DELETE_CLEANUP);
         agentKnowledgeJobMapper.insert(job);
         jobAsyncPublisher.publish(job.getId());
     }
@@ -180,8 +180,8 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
     /**
      * 构建待执行的异步任务。
      */
-    private AgentKnowledgeJobEntity buildPendingJob(AgentKnowledgeEntity entity, String userId, String jobType) {
-        AgentKnowledgeJobEntity job = AgentKnowledgeJobEntity.builder()
+    private AgentKnowledgeJobEntity buildPendingJob(AgentKnowledgeEntity entity, Long userId, String jobType) {
+        return AgentKnowledgeJobEntity.builder()
                 .knowledgeId(entity.getId())
                 .agentId(entity.getAgentId())
                 .userId(normalizeUserId(userId))
@@ -190,7 +190,6 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
                 .retryCount(0)
                 .maxRetryCount(DEFAULT_MAX_RETRY_COUNT)
                 .build();
-        return job;
     }
 
     private KnowledgeJobQueueVO buildJobQueue(AgentKnowledgeJobEntity job) {
@@ -204,8 +203,8 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
                 .setAheadUserCount(agentKnowledgeJobMapper.countAheadUsers(job.getAgentId(), job.getJobType(), job.getId()));
     }
 
-    private String normalizeUserId(String userId) {
-        return StringUtils.hasText(userId) ? userId.trim() : "default-user";
+    private Long normalizeUserId(Long userId) {
+        return userId != null ? userId : 1L;
     }
 
     private AgentKnowledgeEntity getKnowledge(Integer agentId, Integer id) {

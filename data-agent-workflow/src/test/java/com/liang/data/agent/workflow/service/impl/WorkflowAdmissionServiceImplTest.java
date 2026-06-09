@@ -35,14 +35,14 @@ class WorkflowAdmissionServiceImplTest {
         });
         when(chatWorkflowQueueMapper.countAheadTasks(any(), any(), any())).thenReturn(0L);
         when(chatWorkflowQueueMapper.countAheadUsers(any(), any(), any())).thenReturn(0L);
-        when(chatWorkflowQueueMapper.countRunningByUser("user-1", "CHAT_WORKFLOW")).thenReturn(0L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1001L, "CHAT_WORKFLOW")).thenReturn(0L);
 
-        WorkflowQueueVO result = service.enqueue("user-1", "session-1", 2, "分析客流");
+        WorkflowQueueVO result = service.enqueue(1001L, "session-1", 2, "分析客流");
 
         ArgumentCaptor<ChatWorkflowQueueEntity> captor = ArgumentCaptor.forClass(ChatWorkflowQueueEntity.class);
         verify(chatWorkflowQueueMapper).insert(captor.capture());
         ChatWorkflowQueueEntity saved = captor.getValue();
-        assertThat(saved.getUserId()).isEqualTo("user-1");
+        assertThat(saved.getUserId()).isEqualTo(1001L);
         assertThat(saved.getSessionId()).isEqualTo("session-1");
         assertThat(saved.getAgentId()).isEqualTo(2);
         assertThat(saved.getQuery()).isEqualTo("分析客流");
@@ -59,9 +59,9 @@ class WorkflowAdmissionServiceImplTest {
 
     @Test
     void tryPromoteShouldKeepWaitingWhenUserAlreadyHasTwoRunningTasks() {
-        ChatWorkflowQueueEntity queue = waitingQueue("queue-1", "user-1", 1L);
+        ChatWorkflowQueueEntity queue = waitingQueue("queue-1", 1001L, 1L);
         when(chatWorkflowQueueMapper.selectByQueueId("queue-1")).thenReturn(queue);
-        when(chatWorkflowQueueMapper.countRunningByUser("user-1", "CHAT_WORKFLOW")).thenReturn(2L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1001L, "CHAT_WORKFLOW")).thenReturn(2L);
         when(chatWorkflowQueueMapper.countRunningByScope("CHAT_WORKFLOW")).thenReturn(2L);
 
         WorkflowQueueVO result = service.tryPromote("queue-1");
@@ -72,9 +72,9 @@ class WorkflowAdmissionServiceImplTest {
 
     @Test
     void tryPromoteShouldPromoteQueueHeadWhenCapacityAvailable() {
-        ChatWorkflowQueueEntity queue = waitingQueue("queue-1", "user-1", 1L);
+        ChatWorkflowQueueEntity queue = waitingQueue("queue-1", 1001L, 1L);
         when(chatWorkflowQueueMapper.selectByQueueId("queue-1")).thenReturn(queue);
-        when(chatWorkflowQueueMapper.countRunningByUser("user-1", "CHAT_WORKFLOW")).thenReturn(1L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1001L, "CHAT_WORKFLOW")).thenReturn(1L);
         when(chatWorkflowQueueMapper.countRunningByScope("CHAT_WORKFLOW")).thenReturn(5L);
         when(chatWorkflowQueueMapper.existsEarlierWaiting("CHAT_WORKFLOW", queue.getQueuedAt(), queue.getId())).thenReturn(false);
         when(chatWorkflowQueueMapper.markRunning("queue-1")).thenReturn(1);
@@ -87,9 +87,9 @@ class WorkflowAdmissionServiceImplTest {
 
     @Test
     void tryPromoteShouldNotPromoteWhenEarlierWaitingTaskExists() {
-        ChatWorkflowQueueEntity queue = waitingQueue("queue-2", "user-1", 2L);
+        ChatWorkflowQueueEntity queue = waitingQueue("queue-2", 1001L, 2L);
         when(chatWorkflowQueueMapper.selectByQueueId("queue-2")).thenReturn(queue);
-        when(chatWorkflowQueueMapper.countRunningByUser("user-1", "CHAT_WORKFLOW")).thenReturn(0L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1001L, "CHAT_WORKFLOW")).thenReturn(0L);
         when(chatWorkflowQueueMapper.countRunningByScope("CHAT_WORKFLOW")).thenReturn(0L);
         when(chatWorkflowQueueMapper.existsEarlierWaiting("CHAT_WORKFLOW", queue.getQueuedAt(), queue.getId())).thenReturn(true);
 
@@ -100,11 +100,11 @@ class WorkflowAdmissionServiceImplTest {
 
     @Test
     void queryPositionShouldReturnAheadTaskAndUserCounts() {
-        ChatWorkflowQueueEntity queue = waitingQueue("queue-3", "user-3", 3L);
+        ChatWorkflowQueueEntity queue = waitingQueue("queue-3", 1003L, 3L);
         when(chatWorkflowQueueMapper.selectByQueueId("queue-3")).thenReturn(queue);
         when(chatWorkflowQueueMapper.countAheadTasks("CHAT_WORKFLOW", queue.getQueuedAt(), queue.getId())).thenReturn(5L);
         when(chatWorkflowQueueMapper.countAheadUsers("CHAT_WORKFLOW", queue.getQueuedAt(), queue.getId())).thenReturn(2L);
-        when(chatWorkflowQueueMapper.countRunningByUser("user-3", "CHAT_WORKFLOW")).thenReturn(1L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1003L, "CHAT_WORKFLOW")).thenReturn(1L);
 
         WorkflowQueueVO result = service.queryPosition("queue-3");
 
@@ -113,7 +113,7 @@ class WorkflowAdmissionServiceImplTest {
         assertThat(result.getRunningTaskCount()).isEqualTo(1);
     }
 
-    private ChatWorkflowQueueEntity waitingQueue(String queueId, String userId, Long id) {
+    private ChatWorkflowQueueEntity waitingQueue(String queueId, Long userId, Long id) {
         return ChatWorkflowQueueEntity.builder()
                 .id(id)
                 .queueId(queueId)

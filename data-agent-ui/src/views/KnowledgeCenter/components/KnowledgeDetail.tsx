@@ -36,7 +36,7 @@ const splitterOptions = [
 
 type SplitterType = typeof splitterOptions[number]['value'];
 
-const DEFAULT_USER_ID = 'default-user';
+const DEFAULT_USER_ID = 1;
 
 export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   kb,
@@ -195,7 +195,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     formData.append('agentId', agentId);
     formData.append('title', file.name);
     formData.append('splitterType', currentSplitterType);
-    formData.append('userId', DEFAULT_USER_ID);
+    formData.append('userId', String(DEFAULT_USER_ID));
     formData.append('file', file);
 
     try {

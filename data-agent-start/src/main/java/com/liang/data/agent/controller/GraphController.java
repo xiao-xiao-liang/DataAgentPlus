@@ -44,7 +44,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GraphController {
 
-    private static final String DEFAULT_USER_ID = "default-user";
+    private static final Long DEFAULT_USER_ID = 1L;
     private static final Duration QUEUE_RETRY_INTERVAL = Duration.ofSeconds(2);
     private static final Duration QUEUE_MAX_WAIT = Duration.ofMinutes(5);
 
@@ -96,7 +96,7 @@ public class GraphController {
         if (interactionType == InteractionType.NEW_QUERY && StringUtils.hasText(request.getHumanFeedbackContent())) {
             interactionType = InteractionType.HUMAN_PLAN_FEEDBACK;
         }
-        String userId = normalizeUserId(request.getUserId());
+        Long userId = normalizeUserId(request.getUserId());
         request.setUserId(userId);
         WorkflowQueueVO queue = null;
         if (interactionType == InteractionType.NEW_QUERY) {
@@ -358,7 +358,7 @@ public class GraphController {
         }
     }
 
-    private String normalizeUserId(String userId) {
-        return StringUtils.hasText(userId) ? userId.trim() : DEFAULT_USER_ID;
+    private Long normalizeUserId(Long userId) {
+        return userId != null ? userId : DEFAULT_USER_ID;
     }
 }

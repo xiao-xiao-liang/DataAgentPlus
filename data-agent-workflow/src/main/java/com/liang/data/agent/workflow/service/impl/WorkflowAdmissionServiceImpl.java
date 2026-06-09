@@ -36,7 +36,7 @@ public class WorkflowAdmissionServiceImpl implements WorkflowAdmissionService {
     }
 
     @Override
-    public WorkflowQueueVO enqueue(String userId, String sessionId, Integer agentId, String query) {
+    public WorkflowQueueVO enqueue(Long userId, String sessionId, Integer agentId, String query) {
         LocalDateTime now = LocalDateTime.now();
         ChatWorkflowQueueEntity entity = ChatWorkflowQueueEntity.builder()
                 .queueId(UUID.randomUUID().toString())
@@ -148,7 +148,7 @@ public class WorkflowAdmissionServiceImpl implements WorkflowAdmissionService {
                 .build();
     }
 
-    private String normalizeUserId(String userId) {
-        return StringUtils.hasText(userId) ? userId.trim() : "default-user";
+    private Long normalizeUserId(Long userId) {
+        return userId != null ? userId : 1L;
     }
 }

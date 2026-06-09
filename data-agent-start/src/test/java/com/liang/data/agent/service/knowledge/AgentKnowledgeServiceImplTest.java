@@ -67,7 +67,7 @@ class AgentKnowledgeServiceImplTest {
 
         var result = service.upload(
                 1,
-                "default-user",
+                1001L,
                 "准点率口诀",
                 "metro.md",
                 new ByteArrayInputStream("整体准点率 准点列车数 总列车数".getBytes(StandardCharsets.UTF_8)),
@@ -89,7 +89,7 @@ class AgentKnowledgeServiceImplTest {
         AgentKnowledgeJobEntity job = jobCaptor.getValue();
         assertThat(job.getKnowledgeId()).isEqualTo(12);
         assertThat(job.getAgentId()).isEqualTo(1);
-        assertThat(job.getUserId()).isEqualTo("default-user");
+        assertThat(job.getUserId()).isEqualTo(1001L);
         assertThat(job.getJobType()).isEqualTo("UPLOAD_VECTORIZE");
         assertThat(job.getStatus()).isEqualTo("PENDING");
         assertThat(result.getJobQueue()).isNotNull();

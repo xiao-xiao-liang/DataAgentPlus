@@ -20,7 +20,7 @@ public interface WorkflowRunService {
      * @param agentId   智能体 ID
      * @param query     用户问题
      */
-    void startRun(String sessionId, Integer agentId, String userId, String query);
+    void startRun(String sessionId, Integer agentId, Long userId, String query);
 
     /**
      * 标记节点完成并保存图状态快照。
@@ -74,7 +74,7 @@ public interface WorkflowRunService {
     static WorkflowRunService noop() {
         return new WorkflowRunService() {
             @Override
-            public void startRun(String sessionId, Integer agentId, String userId, String query) {
+            public void startRun(String sessionId, Integer agentId, Long userId, String query) {
             }
 
             @Override

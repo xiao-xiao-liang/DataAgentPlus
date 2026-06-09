@@ -32,7 +32,7 @@ public interface ChatWorkflowQueueMapper extends BaseMapper<ChatWorkflowQueueEnt
      * @return 运行中任务数
      */
     @Select("SELECT COUNT(1) FROM chat_workflow_queue WHERE user_id = #{userId} AND queue_scope = #{queueScope} AND status = 'RUNNING'")
-    long countRunningByUser(@Param("userId") String userId, @Param("queueScope") String queueScope);
+    long countRunningByUser(@Param("userId") Long userId, @Param("queueScope") String queueScope);
 
     /**
      * 统计指定范围内运行中的任务数。

@@ -27,11 +27,10 @@ public interface AgentKnowledgeService {
      * @param agentId        智能体 ID
      * @param title          知识标题
      * @param sourceFilename 原始文件名
-     * @param content        文件内容字节
      * @param splitterType   切分策略
      * @return 知识文件信息
      */
-    AgentKnowledgeVO upload(Integer agentId, String userId, String title, String sourceFilename, InputStream inputStream,
+    AgentKnowledgeVO upload(Integer agentId, Long userId, String title, String sourceFilename, InputStream inputStream,
                             long contentLength, String splitterType);
 
     /**

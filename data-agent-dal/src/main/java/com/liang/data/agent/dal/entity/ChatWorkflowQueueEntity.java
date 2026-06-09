@@ -32,7 +32,7 @@ public class ChatWorkflowQueueEntity {
     private String queueId;
 
     /** 用户 ID */
-    private String userId;
+    private Long userId;
 
     /** 会话 ID */
     private String sessionId;

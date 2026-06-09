@@ -95,7 +95,7 @@ const DEFAULT_CHAT_AGENT_OPTION: ChatAgentOption = {
   description: '系统内置Data Agent',
 };
 
-const DEFAULT_USER_ID = 'default-user';
+const DEFAULT_USER_ID = 1;
 
 const getPreviewData = (fileName: string) => {
   if (fileName.includes('餐厅')) return MOCK_PREVIEW_DATA.restaurant;
