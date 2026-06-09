@@ -30,6 +30,9 @@ public class WorkflowRunVO implements Serializable {
     /** 智能体 ID */
     private Integer agentId;
 
+    /** 用户 ID */
+    private String userId;
+
     /** 用户原始问题 */
     private String query;
 

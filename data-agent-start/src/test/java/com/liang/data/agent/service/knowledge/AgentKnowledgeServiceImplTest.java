@@ -7,13 +7,12 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.impl.AgentKnowledgeServiceImpl;
-import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobEvent;
+import com.liang.data.agent.service.knowledge.job.KnowledgeJobAsyncPublisher;
 import com.liang.data.agent.service.storage.FileObjectNameGenerator;
 import com.liang.data.agent.service.storage.FileStorageService;
 import com.liang.data.agent.service.storage.StoredFile;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayInputStream;
@@ -37,13 +36,13 @@ class AgentKnowledgeServiceImplTest {
     private final AgentKnowledgeChunkMapper agentKnowledgeChunkMapper = mock(AgentKnowledgeChunkMapper.class);
     private final AgentKnowledgeJobMapper agentKnowledgeJobMapper = mock(AgentKnowledgeJobMapper.class);
     private final FileStorageService fileStorageService = mock(FileStorageService.class);
-    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final KnowledgeJobAsyncPublisher jobAsyncPublisher = mock(KnowledgeJobAsyncPublisher.class);
     private final AgentKnowledgeServiceImpl service = new AgentKnowledgeServiceImpl(
             agentKnowledgeChunkMapper,
             agentKnowledgeJobMapper,
             fileStorageService,
             new FileObjectNameGenerator(),
-            eventPublisher
+            jobAsyncPublisher
     );
 
     AgentKnowledgeServiceImplTest() {
@@ -52,7 +51,7 @@ class AgentKnowledgeServiceImplTest {
     }
 
     @Test
-    void uploadShouldCreatePendingJobAndPublishEvent() {
+    void uploadShouldCreatePendingJobAndPublishMessage() {
         when(agentKnowledgeMapper.insert(any(AgentKnowledgeEntity.class))).thenAnswer(invocation -> {
             AgentKnowledgeEntity entity = invocation.getArgument(0);
             entity.setId(12);
@@ -68,6 +67,7 @@ class AgentKnowledgeServiceImplTest {
 
         var result = service.upload(
                 1,
+                "default-user",
                 "准点率口诀",
                 "metro.md",
                 new ByteArrayInputStream("整体准点率 准点列车数 总列车数".getBytes(StandardCharsets.UTF_8)),
@@ -89,12 +89,15 @@ class AgentKnowledgeServiceImplTest {
         AgentKnowledgeJobEntity job = jobCaptor.getValue();
         assertThat(job.getKnowledgeId()).isEqualTo(12);
         assertThat(job.getAgentId()).isEqualTo(1);
+        assertThat(job.getUserId()).isEqualTo("default-user");
         assertThat(job.getJobType()).isEqualTo("UPLOAD_VECTORIZE");
         assertThat(job.getStatus()).isEqualTo("PENDING");
+        assertThat(result.getJobQueue()).isNotNull();
+        assertThat(result.getJobQueue().getJobId()).isEqualTo(31L);
+        assertThat(result.getJobQueue().getAheadTaskCount()).isZero();
+        assertThat(result.getJobQueue().getAheadUserCount()).isZero();
 
-        ArgumentCaptor<AgentKnowledgeJobEvent> eventCaptor = ArgumentCaptor.forClass(AgentKnowledgeJobEvent.class);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().jobId()).isEqualTo(31L);
+        verify(jobAsyncPublisher).publish(31L);
         verify(agentKnowledgeChunkMapper, never()).insert(any(AgentKnowledgeChunkEntity.class));
     }
 
@@ -124,7 +127,7 @@ class AgentKnowledgeServiceImplTest {
     }
 
     @Test
-    void deleteShouldCreateCleanupJobAndPublishEvent() {
+    void deleteShouldCreateCleanupJobAndPublishMessage() {
         AgentKnowledgeEntity entity = new AgentKnowledgeEntity();
         entity.setId(12);
         entity.setAgentId(1);
@@ -150,9 +153,7 @@ class AgentKnowledgeServiceImplTest {
         assertThat(jobCaptor.getValue().getJobType()).isEqualTo("DELETE_CLEANUP");
         assertThat(jobCaptor.getValue().getStatus()).isEqualTo("PENDING");
 
-        ArgumentCaptor<AgentKnowledgeJobEvent> eventCaptor = ArgumentCaptor.forClass(AgentKnowledgeJobEvent.class);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().jobId()).isEqualTo(32L);
+        verify(jobAsyncPublisher).publish(32L);
         verify(agentKnowledgeChunkMapper, never()).delete(any());
     }
 

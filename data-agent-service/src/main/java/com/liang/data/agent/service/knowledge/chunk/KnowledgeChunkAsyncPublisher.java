@@ -15,6 +15,18 @@ public interface KnowledgeChunkAsyncPublisher {
     boolean publishVectorizeTransaction(KnowledgeChunkTransactionOperation operation);
 
     /**
+     * 提交当前分块向量化消息。
+     *
+     * @param agentId 智能体 ID
+     * @param knowledgeId 知识文档 ID
+     * @param chunkId 分块 ID
+     * @param contentVersion 正文版本
+     * @param taskVersion 向量任务版本
+     */
+    boolean publishVectorize(Integer agentId, Integer knowledgeId, String chunkId,
+                             Integer contentVersion, Integer taskVersion);
+
+    /**
      * 提交普通 AI 命名消息。
      */
     boolean publishGenerateName(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion);

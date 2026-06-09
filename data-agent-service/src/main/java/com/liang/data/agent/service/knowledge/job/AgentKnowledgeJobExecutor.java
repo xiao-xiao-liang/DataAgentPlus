@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.liang.data.agent.ai.vectorstore.AgentVectorStoreService;
-import com.liang.data.agent.common.constant.VectorMetadataKey;
 import com.liang.data.agent.common.enums.VectorType;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
@@ -24,7 +23,6 @@ import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
 import com.liang.data.agent.service.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -133,11 +131,8 @@ public class AgentKnowledgeJobExecutor {
         // 3. 开启子事务：批量保存分块数据
         List<AgentKnowledgeChunkEntity> chunkEntities = self.saveChunksInTransaction(entity, chunks);
 
-        // 4. 事务外长耗时：远程网络推送向量数据
-        vectorStoreService.addDocuments(entity.getAgentId().toString(), toDocuments(entity, chunkEntities));
-
-        // 5. 开启子事务：更新分块物理标志，最终完成知识库状态提交
-        self.completeUpload(entity, chunkEntities);
+        // 4. 事务外提交分块向量化任务，最终完成状态由分块消费者聚合更新
+        publishInitialChunkVectorTasks(entity, chunkEntities);
         publishInitialChunkNames(entity, chunkEntities);
     }
 
@@ -160,19 +155,6 @@ public class AgentKnowledgeJobExecutor {
     @Transactional(rollbackFor = Exception.class)
     public List<AgentKnowledgeChunkEntity> saveChunksInTransaction(AgentKnowledgeEntity entity, List<AgentKnowledgeChunkVO> chunks) {
         return saveChunks(entity, chunks);
-    }
-
-    /**
-     * 事务内更新分块为已写入向量库，并最终更新知识库状态为完成（事务控制）
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public void completeUpload(AgentKnowledgeEntity entity, List<AgentKnowledgeChunkEntity> chunkEntities) {
-        markChunksVectorStored(chunkEntities);
-
-        entity.setEmbeddingStatus(KNOWLEDGE_STATUS_COMPLETED);
-        entity.setErrorMsg(null);
-        entity.setUpdateTime(LocalDateTime.now());
-        agentKnowledgeMapper.updateById(entity);
     }
 
     /**
@@ -275,49 +257,20 @@ public class AgentKnowledgeJobExecutor {
         return firstLine.length() > 80 ? firstLine.substring(0, 80) : firstLine;
     }
 
-    /**
-     * 构建写入向量库的文档对象。
-     */
-    private List<Document> toDocuments(AgentKnowledgeEntity entity, List<AgentKnowledgeChunkEntity> chunks) {
-        return chunks.stream()
-                .sorted(Comparator.comparing(AgentKnowledgeChunkEntity::getChunkOrder))
-                .filter(chunk -> chunk.getSkipEmbedding() == null || chunk.getSkipEmbedding() == 0)
-                .map(chunk -> new Document(versionedVectorId(chunk), chunk.getContent(), Map.of(
-                        AGENT_ID, entity.getAgentId().toString(),
-                        VECTOR_TYPE, VectorType.KNOWLEDGE.getCode(),
-                        NAME, entity.getTitle(),
-                        DESCRIPTION, entity.getSourceFilename(),
-                        AGENT_KNOWLEDGE_ID, entity.getId().toString(),
-                        CHUNK_ID, chunk.getChunkId(),
-                        CHUNK_ORDER, chunk.getChunkOrder().toString(),
-                        CONTENT_VERSION, chunk.getContentVersion().toString(),
-                        VECTOR_TASK_VERSION, chunk.getVectorTaskVersion().toString(),
-                        SPLITTER_TYPE, entity.getSplitterType()
-                )))
-                .toList();
-    }
-
-    /**
-     * 标记分块已经写入向量库。
-     */
-    private void markChunksVectorStored(List<AgentKnowledgeChunkEntity> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
-            return;
-        }
+    private void publishInitialChunkVectorTasks(AgentKnowledgeEntity knowledge, List<AgentKnowledgeChunkEntity> chunks) {
         for (AgentKnowledgeChunkEntity chunk : chunks) {
-            chunk.setStatus(CHUNK_STATUS_VECTOR_STORED);
-            chunk.setEmbeddingId(versionedVectorId(chunk));
-            chunk.setVectorVersion(chunk.getContentVersion());
-            chunk.setVectorStatus(ChunkVectorStatus.SYNCED.getCode());
-            chunk.setRetryCount(0);
-            chunk.setErrorMsg(null);
-            chunk.setUpdateTime(LocalDateTime.now());
+            try {
+                chunkAsyncPublisher.publishVectorize(
+                        knowledge.getAgentId(),
+                        knowledge.getId(),
+                        chunk.getChunkId(),
+                        chunk.getContentVersion(),
+                        chunk.getVectorTaskVersion());
+            } catch (RuntimeException exception) {
+                log.warn("提交初始分块向量化消息失败，等待恢复任务补偿：chunkId={}，contentVersion={}，taskVersion={}",
+                        chunk.getChunkId(), chunk.getContentVersion(), chunk.getVectorTaskVersion(), exception);
+            }
         }
-        Db.updateBatchById(chunks);
-    }
-
-    private String versionedVectorId(AgentKnowledgeChunkEntity chunk) {
-        return chunk.getChunkId() + "-c" + chunk.getContentVersion() + "-t" + chunk.getVectorTaskVersion();
     }
 
     private void publishInitialChunkNames(AgentKnowledgeEntity knowledge, List<AgentKnowledgeChunkEntity> chunks) {

@@ -36,6 +36,15 @@ public class KnowledgeChunkMessagePublisher implements KnowledgeChunkAsyncPublis
     }
 
     @Override
+    public boolean publishVectorize(Integer agentId, Integer knowledgeId, String chunkId,
+                                    Integer contentVersion, Integer taskVersion) {
+        rocketMQTemplate.convertAndSend(KnowledgeChunkMqConstant.VECTORIZE_DESTINATION,
+                new KnowledgeChunkMessage(agentId, knowledgeId, chunkId, contentVersion,
+                        taskVersion, UUID.randomUUID().toString()));
+        return true;
+    }
+
+    @Override
     public boolean publishGenerateName(Integer agentId, Integer knowledgeId, String chunkId, Integer contentVersion) {
         rocketMQTemplate.convertAndSend(KnowledgeChunkMqConstant.GENERATE_NAME_DESTINATION,
                 new KnowledgeChunkMessage(agentId, knowledgeId, chunkId, contentVersion, null, UUID.randomUUID().toString()));

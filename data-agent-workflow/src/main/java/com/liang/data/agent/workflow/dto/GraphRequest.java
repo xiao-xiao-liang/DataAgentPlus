@@ -20,6 +20,11 @@ public class GraphRequest {
     private String agentId;
 
     /**
+     * 用户 ID。未接入登录前由前端传默认值，接入登录后改为认证上下文提供。
+     */
+    private String userId;
+
+    /**
      * 线程 ID (用于多轮对话和流式上下文关联)
      */
     private String threadId;

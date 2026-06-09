@@ -25,6 +25,7 @@ public class AgentKnowledgeVO {
     private Long fileSize;
     private String fileType;
     private String splitterType;
+    private KnowledgeJobQueueVO jobQueue;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

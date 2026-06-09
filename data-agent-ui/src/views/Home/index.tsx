@@ -66,6 +66,15 @@ interface MemoryCandidatePayload {
   confidenceScore?: number;
 }
 
+interface QueueEventPayload {
+  queueId: string;
+  status: 'WAITING' | 'RUNNING';
+  aheadTaskCount: number;
+  aheadUserCount: number;
+  runningTaskCount: number;
+  maxUserRunningLimit: number;
+}
+
 interface WorkflowRunState {
   status?: string;
   resumable?: boolean;
@@ -85,6 +94,8 @@ const DEFAULT_CHAT_AGENT_OPTION: ChatAgentOption = {
   name: 'Data Agent',
   description: '系统内置Data Agent',
 };
+
+const DEFAULT_USER_ID = 'default-user';
 
 const getPreviewData = (fileName: string) => {
   if (fileName.includes('餐厅')) return MOCK_PREVIEW_DATA.restaurant;
@@ -2351,6 +2362,7 @@ const Home: React.FC = () => {
         },
         body: JSON.stringify({
           agentId: effectiveAgentId,
+          userId: DEFAULT_USER_ID,
           threadId: currentSessionId,
           query: text,
           humanFeedback: chatMode === 'humanReview',
@@ -2471,6 +2483,7 @@ const Home: React.FC = () => {
         },
         body: JSON.stringify({
           agentId: effectiveAgentId,
+          userId: DEFAULT_USER_ID,
           threadId: currentSessionId,
           query: '',
           interactionType: 'HUMAN_PLAN_FEEDBACK',
@@ -2566,6 +2579,7 @@ const Home: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: effectiveAgentId,
+          userId: DEFAULT_USER_ID,
           threadId: currentSessionId,
           query: '',
           interactionType: 'CONTINUE_ANALYSIS',
@@ -2657,6 +2671,7 @@ const Home: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: effectiveAgentId,
+          userId: DEFAULT_USER_ID,
           threadId: currentSessionId,
           query: '',
           interactionType,
@@ -3144,6 +3159,23 @@ const Home: React.FC = () => {
                               onSave={() => handleMemoryCandidateAction(payload.candidateId, 'submit')}
                               onPublish={() => handleMemoryCandidateAction(payload.candidateId, 'publish')}
                             />
+                          );
+                        }
+                        if (event.eventType === 'queue_waiting' || event.eventType === 'queue_running') {
+                          const payload = event.payload as QueueEventPayload;
+                          const isRunningQueue = event.eventType === 'queue_running' || payload.status === 'RUNNING';
+                          return (
+                            <div
+                              key={`${event.eventType}-${eventIdx}`}
+                              className="my-3 flex w-fit max-w-[640px] items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[13px] leading-5 text-indigo-700"
+                            >
+                              <Clock className="size-4 flex-none" />
+                              <span>
+                                {isRunningQueue
+                                  ? '已获得分析资源，正在开始执行'
+                                  : `正在排队，前方还有 ${payload.aheadTaskCount ?? 0} 个任务 / ${payload.aheadUserCount ?? 0} 位用户`}
+                              </span>
+                            </div>
                           );
                         }
                         return null;

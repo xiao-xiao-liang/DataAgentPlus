@@ -68,6 +68,7 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
 
   const status = vectorStatusMeta[chunk.vectorStatus] || vectorStatusMeta.PENDING;
   const StatusIcon = status.icon;
+  const statusDetail = chunk.errorMsg || status.detail;
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
@@ -82,10 +83,28 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-3 text-[10px] font-medium text-gray-400">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-medium text-gray-400">
             <span>{chunk.length} 字符</span>
             <span>内容版本 v{chunk.contentVersion}</span>
             <span>向量版本 v{chunk.vectorVersion || 0}</span>
+            <span
+              className={clsx('inline-flex max-w-[14rem] items-center gap-1.5 truncate rounded-full border px-2 py-0.5 font-bold', status.className)}
+              title={statusDetail}
+            >
+              <StatusIcon className={clsx('size-3 shrink-0', chunk.vectorStatus === 'PROCESSING' && 'animate-spin')} />
+              <span className="truncate">{status.label}</span>
+            </span>
+            {(chunk.vectorStatus === 'FAILED' || isTimedOut) && (
+              <button
+                type="button"
+                onClick={chunk.vectorStatus === 'FAILED' ? onRetry : onRecover}
+                disabled={isRetrying}
+                className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-1.5 text-[10px] font-bold text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50"
+              >
+                <RefreshCw className={clsx('size-3', isRetrying && 'animate-spin')} />
+                {chunk.vectorStatus === 'FAILED' ? '重新提交' : '恢复任务'}
+              </button>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -120,27 +139,6 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 no-scrollbar">
-        <div className={clsx('mb-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2', status.className)}>
-          <div className="flex min-w-0 items-center gap-2">
-            <StatusIcon className={clsx('size-4 shrink-0', chunk.vectorStatus === 'PROCESSING' && 'animate-spin')} />
-            <div className="min-w-0">
-              <div className="text-xs font-bold">{status.label}</div>
-              <div className="mt-0.5 truncate text-[10px] font-medium opacity-75">{chunk.errorMsg || status.detail}</div>
-            </div>
-          </div>
-          {(chunk.vectorStatus === 'FAILED' || isTimedOut) && (
-            <button
-              type="button"
-              onClick={chunk.vectorStatus === 'FAILED' ? onRetry : onRecover}
-              disabled={isRetrying}
-              className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-current/20 bg-white/60 px-2 text-[10px] font-bold hover:bg-white disabled:opacity-50"
-            >
-              <RefreshCw className={clsx('size-3', isRetrying && 'animate-spin')} />
-              {chunk.vectorStatus === 'FAILED' ? '重新提交' : '恢复任务'}
-            </button>
-          )}
-        </div>
-
         <label className="mb-1.5 text-[11px] font-bold text-gray-600" htmlFor="chunk-name">
           分块名称
         </label>
@@ -179,7 +177,7 @@ export const KnowledgeChunkEditor: React.FC<KnowledgeChunkEditorProps> = ({
             className="min-h-[30rem] flex-1 resize-none rounded-md border border-gray-200 bg-gray-50/30 p-4 font-mono text-[13px] leading-6 text-gray-800 outline-none transition-colors focus:border-gray-400 focus:bg-white"
           />
         ) : (
-          <article className="min-h-[30rem] flex-1 select-text rounded-md border border-gray-200 bg-white p-5 text-sm leading-7 text-gray-700 [&_a]:text-blue-600 [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-gray-100 [&_code]:px-1 [&_h1]:mb-4 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-3 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:font-bold [&_li]:ml-5 [&_ol]:list-decimal [&_p]:mb-3 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-gray-950 [&_pre]:p-4 [&_pre]:text-gray-100 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2 [&_ul]:list-disc">
+          <article className="min-h-[30rem] flex-1 select-text rounded-md border border-gray-200 bg-white p-5 text-sm leading-7 text-gray-700 [&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-gray-100 [&_:not(pre)>code]:px-1 [&_a]:text-blue-600 [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_h1]:mb-4 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-3 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:font-bold [&_li]:ml-5 [&_ol]:list-decimal [&_p]:mb-3 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-gray-950 [&_pre]:p-4 [&_pre]:text-gray-100 [&_pre_code]:rounded-none [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-gray-100 [&_pre_code]:whitespace-pre [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2 [&_ul]:list-disc">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </article>
         )}

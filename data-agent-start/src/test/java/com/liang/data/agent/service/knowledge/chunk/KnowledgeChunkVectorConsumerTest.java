@@ -84,6 +84,28 @@ class KnowledgeChunkVectorConsumerTest {
     }
 
     @Test
+    void shouldMarkKnowledgeCompletedWhenAllChunksSynced() {
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
+        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7")).thenReturn(1);
+        when(chunkMapper.countUnfinishedVectorChunks(10)).thenReturn(0);
+
+        consumer.onMessage(message);
+
+        verify(knowledgeMapper).completeEmbeddingIfProcessing(10);
+    }
+
+    @Test
+    void shouldNotMarkKnowledgeCompletedWhenOtherChunksPending() {
+        when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
+        when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7")).thenReturn(1);
+        when(chunkMapper.countUnfinishedVectorChunks(10)).thenReturn(2);
+
+        consumer.onMessage(message);
+
+        verify(knowledgeMapper, never()).completeEmbeddingIfProcessing(10);
+    }
+
+    @Test
     void shouldDeleteNewVectorWhenVersionChangesBeforeCompletion() {
         when(chunkMapper.claimVectorProcessing(eq(message.chunkId()), eq(4), eq(7), any())).thenReturn(1);
         when(chunkMapper.completeVectorIfProcessing(message.chunkId(), 4, 7, "knowledge-10-chunk-3-c4-t7")).thenReturn(0);
@@ -117,11 +139,38 @@ class KnowledgeChunkVectorConsumerTest {
 
     @Test
     void deadLetterShouldMarkOnlyCurrentVersionFailed() {
-        KnowledgeChunkDeadLetterConsumer deadLetterConsumer = new KnowledgeChunkDeadLetterConsumer(chunkMapper);
+        when(chunkMapper.markVectorFailedIfCurrent(
+                message.chunkId(), 4, 7, "分块向量化重试耗尽，请手动重试")).thenReturn(1);
+        KnowledgeChunkDeadLetterConsumer deadLetterConsumer = new KnowledgeChunkDeadLetterConsumer(chunkMapper, knowledgeMapper);
 
         deadLetterConsumer.onMessage(message);
 
         verify(chunkMapper).markVectorFailedIfCurrent(
                 message.chunkId(), 4, 7, "分块向量化重试耗尽，请手动重试");
+        verify(knowledgeMapper).failEmbeddingIfProcessing(
+                message.knowledgeId(), "分块向量化重试耗尽，请手动重试");
+    }
+
+    @Test
+    void shouldIgnoreMessageWhenKnowledgeDeleted() {
+        when(knowledgeMapper.selectById(10)).thenReturn(null);
+
+        consumer.onMessage(message);
+
+        verify(chunkMapper, never()).claimVectorProcessing(any(), any(), any(), any());
+        verify(vectorStoreService, never()).addDocuments(any(), any());
+    }
+
+    @Test
+    void shouldIgnoreMessageWhenAgentMismatched() {
+        AgentKnowledgeEntity knowledge = new AgentKnowledgeEntity();
+        knowledge.setId(10);
+        knowledge.setAgentId(2);
+        when(knowledgeMapper.selectById(10)).thenReturn(knowledge);
+
+        consumer.onMessage(message);
+
+        verify(chunkMapper, never()).claimVectorProcessing(any(), any(), any(), any());
+        verify(vectorStoreService, never()).addDocuments(any(), any());
     }
 }

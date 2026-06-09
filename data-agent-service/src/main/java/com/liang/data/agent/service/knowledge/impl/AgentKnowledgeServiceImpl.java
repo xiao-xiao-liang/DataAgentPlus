@@ -14,15 +14,15 @@ import com.liang.data.agent.dal.mapper.AgentKnowledgeChunkMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeJobMapper;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
 import com.liang.data.agent.service.knowledge.AgentKnowledgeService;
-import com.liang.data.agent.service.knowledge.job.AgentKnowledgeJobEvent;
+import com.liang.data.agent.service.knowledge.job.KnowledgeJobAsyncPublisher;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeChunkVO;
 import com.liang.data.agent.service.knowledge.vo.AgentKnowledgeVO;
+import com.liang.data.agent.service.knowledge.vo.KnowledgeJobQueueVO;
 import com.liang.data.agent.service.storage.FileObjectNameGenerator;
 import com.liang.data.agent.service.storage.FileStorageService;
 import com.liang.data.agent.service.storage.StoredFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +50,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
     private final AgentKnowledgeJobMapper agentKnowledgeJobMapper;
     private final FileStorageService fileStorageService;
     private final FileObjectNameGenerator objectNameGenerator;
-    private final ApplicationEventPublisher eventPublisher;
+    private final KnowledgeJobAsyncPublisher jobAsyncPublisher;
     private static final long MAX_UPLOAD_FILE_SIZE = 50L * 1024 * 1024;
     private static final Set<String> SUPPORTED_FILE_TYPES = Set.of(
             "md", "markdown", "txt", "log", "sql", "csv", "json", "pdf", "doc", "docx", "xls", "xlsx"
@@ -78,10 +78,11 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
      * 上传接口逻辑：将远程网络 RPC 剥离在事务外部，防高并发数据库连接池耗尽风险
      */
     @Override
-    public AgentKnowledgeVO upload(Integer agentId, String title, String sourceFilename, InputStream inputStream,
+    public AgentKnowledgeVO upload(Integer agentId, String userId, String title, String sourceFilename, InputStream inputStream,
                                    long contentLength, String splitterType) {
         validateAgentId(agentId);
         validateUpload(sourceFilename, inputStream, contentLength);
+        String normalizedUserId = normalizeUserId(userId);
 
         String fileType = resolveFileType(sourceFilename);
         validateFileType(fileType);
@@ -95,7 +96,7 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
                     objectNameGenerator.generate(STORAGE_PREFIX_KNOWLEDGE, agentId, sourceFilename),
                     resolveContentType(fileType)
             );
-            return self.saveKnowledgeMetadataInTransaction(agentId, title, sourceFilename, contentLength, fileType, splitterType, storedFile.objectName());
+            return self.saveKnowledgeMetadataInTransaction(agentId, normalizedUserId, title, sourceFilename, contentLength, fileType, splitterType, storedFile.objectName());
         } catch (RuntimeException e) {
             if (storedFile != null) {
                 try {
@@ -112,16 +113,16 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
      * 细粒度持久化事务
      */
     @Transactional(rollbackFor = Exception.class)
-    public AgentKnowledgeVO saveKnowledgeMetadataInTransaction(Integer agentId, String title, String sourceFilename,
+    public AgentKnowledgeVO saveKnowledgeMetadataInTransaction(Integer agentId, String userId, String title, String sourceFilename,
                                                                long fileSize, String fileType, String splitterType, String filePath) {
         AgentKnowledgeEntity entity = buildPendingEntity(agentId, title, sourceFilename, fileSize, fileType, splitterType);
         entity.setFilePath(filePath);
         save(entity);
 
-        AgentKnowledgeJobEntity job = buildPendingJob(entity, JOB_TYPE_UPLOAD_VECTORIZE);
+        AgentKnowledgeJobEntity job = buildPendingJob(entity, userId, JOB_TYPE_UPLOAD_VECTORIZE);
         agentKnowledgeJobMapper.insert(job);
-        eventPublisher.publishEvent(new AgentKnowledgeJobEvent(job.getId()));
-        return toVO(entity);
+        jobAsyncPublisher.publish(job.getId());
+        return toVO(entity).setJobQueue(buildJobQueue(job));
     }
 
     @Override
@@ -151,9 +152,9 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
         entity.setUpdateTime(LocalDateTime.now());
         updateById(entity);
 
-        AgentKnowledgeJobEntity job = buildPendingJob(entity, JOB_TYPE_DELETE_CLEANUP);
+        AgentKnowledgeJobEntity job = buildPendingJob(entity, "default-user", JOB_TYPE_DELETE_CLEANUP);
         agentKnowledgeJobMapper.insert(job);
-        eventPublisher.publishEvent(new AgentKnowledgeJobEvent(job.getId()));
+        jobAsyncPublisher.publish(job.getId());
     }
 
     /**
@@ -179,16 +180,32 @@ public class AgentKnowledgeServiceImpl extends ServiceImpl<AgentKnowledgeMapper,
     /**
      * 构建待执行的异步任务。
      */
-    private AgentKnowledgeJobEntity buildPendingJob(AgentKnowledgeEntity entity, String jobType) {
+    private AgentKnowledgeJobEntity buildPendingJob(AgentKnowledgeEntity entity, String userId, String jobType) {
         AgentKnowledgeJobEntity job = AgentKnowledgeJobEntity.builder()
                 .knowledgeId(entity.getId())
                 .agentId(entity.getAgentId())
+                .userId(normalizeUserId(userId))
                 .jobType(jobType)
                 .status(JOB_STATUS_PENDING)
                 .retryCount(0)
                 .maxRetryCount(DEFAULT_MAX_RETRY_COUNT)
                 .build();
         return job;
+    }
+
+    private KnowledgeJobQueueVO buildJobQueue(AgentKnowledgeJobEntity job) {
+        if (job == null || job.getId() == null) {
+            return null;
+        }
+        return new KnowledgeJobQueueVO()
+                .setJobId(job.getId())
+                .setStatus(job.getStatus())
+                .setAheadTaskCount(agentKnowledgeJobMapper.countAheadJobs(job.getAgentId(), job.getJobType(), job.getId()))
+                .setAheadUserCount(agentKnowledgeJobMapper.countAheadUsers(job.getAgentId(), job.getJobType(), job.getId()));
+    }
+
+    private String normalizeUserId(String userId) {
+        return StringUtils.hasText(userId) ? userId.trim() : "default-user";
     }
 
     private AgentKnowledgeEntity getKnowledge(Integer agentId, Integer id) {

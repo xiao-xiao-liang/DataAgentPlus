@@ -7,7 +7,9 @@ export type WorkflowEventType =
   | 'node_completed'
   | 'waiting_user_input'
   | 'workflow_error'
-  | 'workflow_done';
+  | 'workflow_done'
+  | 'queue_waiting'
+  | 'queue_running';
 
 export interface WorkflowEvent<T = any> {
   eventType: WorkflowEventType;

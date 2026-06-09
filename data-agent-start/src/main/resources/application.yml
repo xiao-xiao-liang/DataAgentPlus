@@ -107,3 +107,9 @@ knowledge:
     vector-recovery-interval: 1m
     ai-name-timeout: 30s
     recovery-batch-size: 100
+
+chat:
+  workflow:
+    queue:
+      max-user-running: 2
+      max-global-running: 10
