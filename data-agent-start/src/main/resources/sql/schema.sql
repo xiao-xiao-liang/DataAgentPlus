@@ -344,6 +344,7 @@ CREATE TABLE IF NOT EXISTS chat_workflow_run
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '运行记录主键',
     session_id          VARCHAR(36)  NOT NULL COMMENT '会话ID',
     agent_id            INT          DEFAULT NULL COMMENT '智能体ID',
+    user_id             VARCHAR(64)  NOT NULL DEFAULT 'default-user' COMMENT '用户ID',
     query               TEXT COMMENT '用户原始问题',
     status              VARCHAR(32)  NOT NULL DEFAULT 'running' COMMENT '运行状态：running、interrupted、completed、failed',
     last_node_name      VARCHAR(128) DEFAULT NULL COMMENT '最近完成的节点名称',
@@ -360,6 +361,33 @@ CREATE TABLE IF NOT EXISTS chat_workflow_run
     INDEX idx_update_time (update_time)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT = '工作流运行快照表';
+
+-- ----------------------------
+-- 11.2. 分析任务准入队列表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS chat_workflow_queue
+(
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '队列记录主键',
+    queue_id      VARCHAR(36)  NOT NULL COMMENT '队列任务ID',
+    user_id       VARCHAR(64)  NOT NULL DEFAULT 'default-user' COMMENT '用户ID',
+    session_id    VARCHAR(36)  NOT NULL COMMENT '会话ID',
+    agent_id      INT          NOT NULL COMMENT '智能体ID',
+    query         TEXT COMMENT '用户原始问题',
+    status        VARCHAR(32)  NOT NULL COMMENT '队列状态：WAITING、RUNNING、COMPLETED、FAILED、CANCELLED',
+    queue_scope   VARCHAR(64)  NOT NULL COMMENT '队列范围，例如 CHAT_WORKFLOW',
+    queued_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '入队时间',
+    started_at    TIMESTAMP    DEFAULT NULL COMMENT '开始运行时间',
+    finished_at   TIMESTAMP    DEFAULT NULL COMMENT '结束时间',
+    cancel_reason VARCHAR(255) DEFAULT NULL COMMENT '取消原因',
+    create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_queue_id (queue_id),
+    INDEX idx_scope_status_queue (queue_scope, status, queued_at, id),
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_session_status (session_id, status)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT = '分析任务准入队列表';
 
 -- ----------------------------
 -- 12. 用户 Prompt 配置表
@@ -424,6 +452,7 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_job
     id              BIGINT       NOT NULL AUTO_INCREMENT,
     knowledge_id    INT          NOT NULL COMMENT '所属知识源ID',
     agent_id        INT          NOT NULL COMMENT '关联的智能体ID',
+    user_id         VARCHAR(64)  NOT NULL DEFAULT 'default-user' COMMENT '用户ID',
     job_type        VARCHAR(50)  NOT NULL COMMENT '任务类型：UPLOAD_VECTORIZE、DELETE_CLEANUP',
     status          VARCHAR(32)  NOT NULL COMMENT '任务状态：PENDING、RUNNING、RETRYING、SUCCESS、FAILED',
     retry_count     INT          DEFAULT 0 COMMENT '当前重试次数',
@@ -436,6 +465,7 @@ CREATE TABLE IF NOT EXISTS agent_knowledge_job
     update_time     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     INDEX idx_status_retry (status, next_retry_time),
-    INDEX idx_knowledge_type (knowledge_id, job_type)
+    INDEX idx_knowledge_type (knowledge_id, job_type),
+    INDEX idx_agent_type_status (agent_id, job_type, status, id)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT = '智能体知识异步任务表';
