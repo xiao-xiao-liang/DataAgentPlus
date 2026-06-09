@@ -9,6 +9,14 @@ export interface KnowledgeFile {
   uploadedAt: string;
   splitterType?: string;
   errorMsg?: string;
+  queueInfo?: KnowledgeJobQueue;
+}
+
+export interface KnowledgeJobQueue {
+  jobId: number;
+  status: string;
+  aheadTaskCount: number;
+  aheadUserCount: number;
 }
 
 export interface KnowledgeChunk {

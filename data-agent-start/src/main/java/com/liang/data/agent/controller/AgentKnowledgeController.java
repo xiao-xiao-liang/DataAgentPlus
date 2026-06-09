@@ -36,11 +36,13 @@ public class AgentKnowledgeController {
 
     @PostMapping("/upload")
     public Result<AgentKnowledgeVO> upload(@RequestParam Integer agentId,
+                                           @RequestParam(defaultValue = "default-user") String userId,
                                            @RequestParam(required = false) String title,
                                            @RequestParam(defaultValue = "title") String splitterType,
                                            @RequestParam("file") MultipartFile file) throws IOException {
         return Results.success(agentKnowledgeService.upload(
                 agentId,
+                userId,
                 title,
                 file.getOriginalFilename(),
                 file.getInputStream(),

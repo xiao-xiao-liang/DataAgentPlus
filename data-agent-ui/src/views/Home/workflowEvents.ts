@@ -1,4 +1,9 @@
-export type WorkflowEventType = 'clarification_request' | 'clarification_confirmation' | 'memory_candidate';
+export type WorkflowEventType =
+  | 'clarification_request'
+  | 'clarification_confirmation'
+  | 'memory_candidate'
+  | 'queue_waiting'
+  | 'queue_running';
 
 export interface WorkflowEvent<T = any> {
   eventType: WorkflowEventType;

@@ -30,15 +30,15 @@ class AgentKnowledgeControllerTest {
         when(file.getOriginalFilename()).thenReturn("metro.md");
         when(file.getSize()).thenReturn(12L);
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream("hello".getBytes()));
-        when(service.upload(eq(1), eq("metro"), eq("metro.md"), any(InputStream.class), eq(12L), eq("title")))
+        when(service.upload(eq(1), eq("default-user"), eq("metro"), eq("metro.md"), any(InputStream.class), eq(12L), eq("title")))
                 .thenReturn(new AgentKnowledgeVO().setId(7));
 
-        controller.upload(1, "metro", "title", file);
+        controller.upload(1, "default-user", "metro", "title", file);
 
         verify(file).getInputStream();
         verify(file, never()).getBytes();
         ArgumentCaptor<InputStream> streamCaptor = ArgumentCaptor.forClass(InputStream.class);
-        verify(service).upload(eq(1), eq("metro"), eq("metro.md"), streamCaptor.capture(), eq(12L), eq("title"));
+        verify(service).upload(eq(1), eq("default-user"), eq("metro"), eq("metro.md"), streamCaptor.capture(), eq(12L), eq("title"));
         assertThat(streamCaptor.getValue()).isNotNull();
     }
 }

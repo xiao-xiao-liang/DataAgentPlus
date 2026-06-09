@@ -36,6 +36,8 @@ const splitterOptions = [
 
 type SplitterType = typeof splitterOptions[number]['value'];
 
+const DEFAULT_USER_ID = 'default-user';
+
 export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   kb,
   agentId,
@@ -128,6 +130,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     splitterType?: string;
     errorMsg?: string;
     embeddingStatus?: string;
+    jobQueue?: KnowledgeFile['queueInfo'];
   }): KnowledgeFile => ({
     id: `knowledge-${item.id}`,
     backendId: item.id,
@@ -138,6 +141,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     uploadedAt: getFormattedNow(),
     splitterType: item.splitterType,
     errorMsg: item.errorMsg,
+    queueInfo: item.jobQueue,
   });
 
   React.useEffect(() => {
@@ -191,6 +195,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     formData.append('agentId', agentId);
     formData.append('title', file.name);
     formData.append('splitterType', currentSplitterType);
+    formData.append('userId', DEFAULT_USER_ID);
     formData.append('file', file);
 
     try {
@@ -809,7 +814,10 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
 
                         {/* 描述 */}
                         <td className="py-3 pr-2 text-gray-400 font-medium truncate max-w-[8rem] align-middle">
-                          {file.errorMsg || file.splitterType || '-'}
+                          {file.errorMsg
+                            || (file.queueInfo ? `前方还有 ${file.queueInfo.aheadTaskCount ?? 0} 个任务 / ${file.queueInfo.aheadUserCount ?? 0} 位用户` : '')
+                            || file.splitterType
+                            || '-'}
                         </td>
 
                         {/* 操作栏 */}

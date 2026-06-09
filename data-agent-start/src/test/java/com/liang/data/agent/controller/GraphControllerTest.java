@@ -9,6 +9,7 @@ import com.liang.data.agent.service.chat.vo.ChatSessionVO;
 import com.liang.data.agent.workflow.dto.GraphRequest;
 import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.service.GraphService;
+import com.liang.data.agent.workflow.service.WorkflowAdmissionService;
 import com.liang.data.agent.workflow.service.WorkflowRunService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +34,7 @@ class GraphControllerTest {
     private final SessionTitleService sessionTitleService = mock(SessionTitleService.class);
     private final AgentService agentService = mock(AgentService.class);
     private final WorkflowRunService workflowRunService = mock(WorkflowRunService.class);
+    private final WorkflowAdmissionService workflowAdmissionService = mock(WorkflowAdmissionService.class);
 
     private final GraphController controller = new GraphController(
             graphService,
@@ -40,7 +42,8 @@ class GraphControllerTest {
             chatMessageService,
             sessionTitleService,
             agentService,
-            workflowRunService
+            workflowRunService,
+            workflowAdmissionService
     );
 
     @Test

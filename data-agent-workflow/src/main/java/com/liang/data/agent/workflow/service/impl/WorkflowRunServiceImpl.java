@@ -32,13 +32,14 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public void startRun(String sessionId, Integer agentId, String query) {
+    public void startRun(String sessionId, Integer agentId, String userId, String query) {
         if (!StringUtils.hasText(sessionId)) {
             return;
         }
         ChatWorkflowRunEntity entity = ChatWorkflowRunEntity.builder()
                 .sessionId(sessionId)
                 .agentId(agentId)
+                .userId(StringUtils.hasText(userId) ? userId.trim() : "default-user")
                 .query(query)
                 .status(STATUS_RUNNING)
                 .build();
@@ -120,6 +121,7 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
                 .id(entity.getId())
                 .sessionId(entity.getSessionId())
                 .agentId(entity.getAgentId())
+                .userId(entity.getUserId())
                 .query(entity.getQuery())
                 .status(entity.getStatus())
                 .lastNodeName(entity.getLastNodeName())

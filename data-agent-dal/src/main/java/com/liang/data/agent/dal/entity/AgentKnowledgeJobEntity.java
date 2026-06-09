@@ -33,6 +33,9 @@ public class AgentKnowledgeJobEntity {
     /** 关联的智能体 ID */
     private Integer agentId;
 
+    /** 用户 ID */
+    private String userId;
+
     /** 任务类型：UPLOAD_VECTORIZE、DELETE_CLEANUP */
     private String jobType;
 

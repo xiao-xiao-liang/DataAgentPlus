@@ -31,7 +31,7 @@ public interface AgentKnowledgeService {
      * @param splitterType   切分策略
      * @return 知识文件信息
      */
-    AgentKnowledgeVO upload(Integer agentId, String title, String sourceFilename, InputStream inputStream,
+    AgentKnowledgeVO upload(Integer agentId, String userId, String title, String sourceFilename, InputStream inputStream,
                             long contentLength, String splitterType);
 
     /**
