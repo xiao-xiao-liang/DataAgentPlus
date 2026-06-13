@@ -67,7 +67,7 @@ data-agent:
     default-topk-limit: 5
     enable-hybrid-search: false
   file-storage:
-    type: ${FILE_STORAGE_TYPE:LOCAL}
+    type: ${FILE_STORAGE_TYPE:MINIO}
     local:
       root-path: data-agent-storage
     minio:
