@@ -29,6 +29,7 @@ import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
+import com.liang.data.agent.workflow.util.SensitiveDataMasker;
 import com.liang.data.agent.workflow.util.SqlStatementGuard;
 import com.liang.data.agent.workflow.util.SqlTableAccessGuard;
 import com.liang.data.agent.workflow.util.StateUtil;
@@ -125,7 +126,7 @@ public class SqlExecuteNode implements NodeAction {
         // ======================== 阶段二：SQL 执行与图表智能推荐 ========================
         try {
             // 1. 执行 SQL 并得到结果集 ResultSetBO
-            ResultSetBO resultSetBO = databaseAccessor.executeSql(agentDbConfig, sql);
+            ResultSetBO resultSetBO = SensitiveDataMasker.mask(databaseAccessor.executeSql(agentDbConfig, sql));
 
             // 2. 调用大模型分析获取最契合的图表展示配置
             DisplayStyleBO displayStyleBO = enrichResultSetWithChartConfig(state, resultSetBO);
