@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.dispatcher;
 
+import static com.liang.data.agent.workflow.constants.PythonExecutionConstants.MAX_TRIES;
+
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.EdgeAction;
 import com.liang.data.agent.workflow.util.StateUtil;
@@ -15,7 +17,6 @@ import static com.liang.data.agent.common.constant.StateKey.PYTHON_GENERATE_NODE
  */
 @Slf4j
 public class PythonExecutorDispatcher implements EdgeAction {
-    private static final int MAX_PYTHON_TRIES = 3;
 
     @Override
     public String apply(OverAllState state) throws Exception {
@@ -27,7 +28,7 @@ public class PythonExecutorDispatcher implements EdgeAction {
         boolean ok = StateUtil.getObjectValue(state, PYTHON_IS_SUCCESS, Boolean.class, false);
         if (!ok) {
             int tries = StateUtil.getObjectValue(state, PYTHON_TRIES_COUNT, Integer.class, 0);
-            if (tries >= MAX_PYTHON_TRIES) {
+            if (tries >= MAX_TRIES) {
                 return END;
             }
             return PYTHON_GENERATE_NODE;

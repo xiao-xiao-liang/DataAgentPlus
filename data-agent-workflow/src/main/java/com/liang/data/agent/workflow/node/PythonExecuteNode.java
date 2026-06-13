@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.workflow.constants.PythonExecutionConstants.MAX_TRIES;
+
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
@@ -49,7 +51,6 @@ public class PythonExecuteNode implements NodeAction {
     private final PythonCodeExecutor pythonCodeExecutor;
     private final ResourceGate resourceGate;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final int MAX_PYTHON_TRIES = 3;
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
@@ -101,15 +102,15 @@ public class PythonExecuteNode implements NodeAction {
                 // 执行失败：防乱码转换 stderr，标记为失败以触发重试纠错路由
                 String cleanStderr = decodeUnicode(response.getStderr());
                 int nextTries = triesCount + 1;
-                log.warn("Python 脚本执行失败。尝试次数: {}/{}。报错详情: {}", nextTries, MAX_PYTHON_TRIES, cleanStderr);
+                log.warn("Python 脚本执行失败。尝试次数: {}/{}。报错详情: {}", nextTries, MAX_TRIES, cleanStderr);
 
                 stateUpdate.put(PYTHON_EXECUTE_NODE_OUTPUT, cleanStderr);
                 stateUpdate.put(PYTHON_IS_SUCCESS, false);
                 stateUpdate.put(PYTHON_TRIES_COUNT, nextTries);
 
-                if (nextTries >= MAX_PYTHON_TRIES) {
+                if (nextTries >= MAX_TRIES) {
                     // 已经达到了最大重试限制，为了保证工作流不戛然而止而导致用户无法获取最终报告，我们直接标记为进入降级模式
-                    log.error("已达到 Python 脚本执行重试限制 ({} 次)，触发优雅降级流程，流转向分析汇总", MAX_PYTHON_TRIES);
+                    log.error("已达到 Python 脚本执行重试限制 ({} 次)，触发优雅降级流程，流转向分析汇总", MAX_TRIES);
                     stateUpdate.put(PYTHON_FALLBACK_MODE, true);
 
                     displayFlux = Flux.just(

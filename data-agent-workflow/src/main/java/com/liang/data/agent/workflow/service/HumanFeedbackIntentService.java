@@ -1,5 +1,12 @@
 package com.liang.data.agent.workflow.service;
 
+import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.APPROVE_CONTAINS_PHRASES;
+import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.APPROVE_EXACT_PHRASES;
+import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.MODIFICATION_SIGNALS;
+
+import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.APPROVE_CONFIDENCE_THRESHOLD;
+import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.MODEL_TIMEOUT;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntent;
@@ -12,8 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
-import java.time.Duration;
-import java.util.List;
 
 /**
  * 人工反馈意图识别服务。
@@ -27,26 +32,9 @@ import java.util.List;
 public class HumanFeedbackIntentService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final double APPROVE_CONFIDENCE_THRESHOLD = 0.9D;
-    private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(15);
 
-    private static final List<String> MODIFICATION_SIGNALS = List.of(
-            "但是", "不过", "但", "只是", "另外", "顺便",
-            "改", "修改", "调整", "换成", "改成", "重新",
-            "不要", "别", "不用", "取消", "去掉",
-            "增加", "补充", "加上", "减少", "删除",
-            "不对", "有问题", "存在问题", "不准确", "不是", "优化"
-    );
 
-    private static final List<String> APPROVE_EXACT_PHRASES = List.of(
-            "可以", "可以的", "确认", "确认执行", "没问题", "同意",
-            "好的", "好", "ok", "okay", "yes", "行", "就这样", "对的"
-    );
 
-    private static final List<String> APPROVE_CONTAINS_PHRASES = List.of(
-            "按你说的来", "按这个来", "就这样", "就这么办", "开始吧",
-            "执行吧", "继续执行", "照此执行", "开始任务", "开始执行"
-    );
 
     private final LlmService llmService;
 

@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.dispatcher;
 
+import static com.liang.data.agent.workflow.constants.PlanConstants.MAX_REPAIR_COUNT;
+
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.action.EdgeAction;
@@ -16,8 +18,6 @@ import static com.liang.data.agent.common.constant.StateKey.PLANNER_NODE;
 @Slf4j
 public class PlanExecutorDispatcher implements EdgeAction {
 
-    private static final int MAX_REPAIR = 2;
-
     @Override
     public String apply(OverAllState state) {
         boolean ok = StateUtil.getObjectValue(state, PLAN_VALIDATION_STATUS, Boolean.class, false);
@@ -27,7 +27,7 @@ public class PlanExecutorDispatcher implements EdgeAction {
         }
 
         int repair = StateUtil.getObjectValue(state, PLAN_REPAIR_COUNT, Integer.class, 0);
-        if (repair > MAX_REPAIR) {
+        if (repair > MAX_REPAIR_COUNT) {
             return END;
         }
         

@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.dto;
 
+import com.liang.data.agent.workflow.constants.WorkflowEventConstants;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,7 +12,7 @@ class GraphStreamChunkTest {
     void shouldMarkContentAsNodeOutputEvent() {
         GraphStreamChunk chunk = GraphStreamChunk.content("输出", "node-1");
 
-        assertThat(chunk.eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_OUTPUT);
+        assertThat(chunk.eventType()).isEqualTo(WorkflowEventConstants.EVENT_NODE_OUTPUT);
         assertThat(chunk.hasContent()).isTrue();
         assertThat(chunk.nodeCompleted()).isFalse();
     }
@@ -19,7 +21,7 @@ class GraphStreamChunkTest {
     void shouldMarkNodeCompletedAsStructuredEventWithoutVisibleContent() {
         GraphStreamChunk chunk = GraphStreamChunk.nodeCompleted("node-1");
 
-        assertThat(chunk.eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_COMPLETED);
+        assertThat(chunk.eventType()).isEqualTo(WorkflowEventConstants.EVENT_NODE_COMPLETED);
         assertThat(chunk.hasContent()).isFalse();
         assertThat(chunk.nodeCompleted()).isTrue();
     }
@@ -27,12 +29,12 @@ class GraphStreamChunkTest {
     @Test
     void shouldCreateAllStructuredWorkflowEvents() {
         assertThat(GraphStreamChunk.nodeStarted("node-1").eventType())
-                .isEqualTo(GraphStreamChunk.EVENT_NODE_STARTED);
+                .isEqualTo(WorkflowEventConstants.EVENT_NODE_STARTED);
         assertThat(GraphStreamChunk.waitingUserInput("node-1", "等待确认").eventType())
-                .isEqualTo(GraphStreamChunk.EVENT_WAITING_USER_INPUT);
+                .isEqualTo(WorkflowEventConstants.EVENT_WAITING_USER_INPUT);
         assertThat(GraphStreamChunk.error("失败", "node-1").eventType())
-                .isEqualTo(GraphStreamChunk.EVENT_WORKFLOW_ERROR);
+                .isEqualTo(WorkflowEventConstants.EVENT_WORKFLOW_ERROR);
         assertThat(GraphStreamChunk.done().eventType())
-                .isEqualTo(GraphStreamChunk.EVENT_WORKFLOW_DONE);
+                .isEqualTo(WorkflowEventConstants.EVENT_WORKFLOW_DONE);
     }
 }

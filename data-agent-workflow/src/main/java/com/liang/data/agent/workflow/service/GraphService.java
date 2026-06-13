@@ -1,5 +1,9 @@
 package com.liang.data.agent.workflow.service;
 
+import com.liang.data.agent.workflow.constants.WorkflowRunConstants;
+
+import com.liang.data.agent.workflow.constants.WorkflowEventConstants;
+
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.GraphRepresentation;
@@ -267,7 +271,7 @@ public class GraphService {
 
         return contentEvents.publish(sharedContentEvents -> {
                     Flux<GraphStreamChunk> fallbackPersistEvents = Flux.interval(
-                                    Duration.ofMillis(StreamContext.FALLBACK_PERSIST_INTERVAL_MILLIS))
+                                    Duration.ofMillis(WorkflowRunConstants.FALLBACK_PERSIST_INTERVAL_MILLIS))
                             .takeUntilOther(sharedContentEvents.ignoreElements())
                             .doOnNext(ignored -> {
                                 String nodeName = currentNode.get();
@@ -306,7 +310,7 @@ public class GraphService {
 
     private boolean isTextOutputEvent(GraphStreamChunk event) {
         return event != null
-                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && WorkflowEventConstants.EVENT_NODE_OUTPUT.equals(event.eventType())
                 && StringUtils.hasLength(event.content())
                 && !isWorkflowEventContent(event.content());
     }
@@ -319,7 +323,7 @@ public class GraphService {
     }
 
     private boolean isWorkflowEventContent(String content) {
-        return StringUtils.hasLength(content) && content.contains(WorkflowEventUtil.EVENT_PREFIX);
+        return StringUtils.hasLength(content) && content.contains(WorkflowEventConstants.EVENT_PREFIX);
     }
 
     private void persistCheckpoint(String threadId, String nodeName, RunnableConfig config, StreamContext streamContext) {

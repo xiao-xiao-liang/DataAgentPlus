@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.service;
 
+import static com.liang.data.agent.workflow.constants.WorkflowRunConstants.FALLBACK_PERSIST_INTERVAL_MILLIS;
+
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -12,11 +14,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class StreamContext {
-
-    /**
-     * 流式输出时间兜底保存间隔，单位毫秒
-     */
-    public static final long FALLBACK_PERSIST_INTERVAL_MILLIS = 2000L;
 
     /**
      * 累积的输出内容

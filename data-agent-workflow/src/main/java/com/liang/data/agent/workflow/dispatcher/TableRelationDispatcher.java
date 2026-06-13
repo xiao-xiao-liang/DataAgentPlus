@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.dispatcher;
 
+import static com.liang.data.agent.workflow.constants.TableRelationConstants.MAX_RETRY_COUNT;
+
 import com.liang.data.agent.common.constant.StateKey;
 import com.liang.data.agent.workflow.util.StateUtil;
 import com.alibaba.cloud.ai.graph.OverAllState;
@@ -17,8 +19,6 @@ import static com.liang.data.agent.common.constant.StateKey.TABLE_RELATION_NODE;
  * 表关系推理路由: 有结果→Feasibility, 有可重试错误→重试, 否则→END
  */
 public class TableRelationDispatcher implements EdgeAction {
-
-    private static final int MAX_RETRY_COUNT = 3;
 
     @Override
     public String apply(OverAllState state) throws Exception {

@@ -1,5 +1,8 @@
 package com.liang.data.agent.workflow.util;
 
+import static com.liang.data.agent.workflow.constants.JsonParseConstants.MAX_RETRY_COUNT;
+import static com.liang.data.agent.workflow.constants.JsonParseConstants.THINK_END_TAG;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,9 +27,6 @@ import java.util.Objects;
 @Component
 @RequiredArgsConstructor
 public class JsonParseUtil {
-
-    private static final int MAX_RETRY_COUNT = 3;
-    private static final String THINK_END_TAG = "</think>";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final LlmService llmService;

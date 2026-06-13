@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.workflow.constants.PlanConstants.SUPPORTED_NODES;
+
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
@@ -19,7 +21,6 @@ import reactor.core.publisher.Flux;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.liang.data.agent.common.constant.ControlFlowKey.*;
@@ -36,13 +37,6 @@ import static com.liang.data.agent.common.constant.StateKey.*;
 @Slf4j
 @Component
 public class PlanExecutorNode implements NodeAction {
-
-    // 支持的分发节点集合
-    private static final Set<String> SUPPORTED_NODES = Set.of(
-            SQL_GENERATE_NODE,
-            PYTHON_GENERATE_NODE,
-            REPORT_GENERATOR_NODE
-    );
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {

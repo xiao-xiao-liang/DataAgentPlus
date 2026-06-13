@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.workflow.constants.SqlExecutionConstants.SAMPLE_DATA_LIMIT;
+
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
@@ -67,7 +69,6 @@ public class SqlExecuteNode implements NodeAction {
     private final ResourceGate resourceGate;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final int SAMPLE_DATA_LIMIT = 20;
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {

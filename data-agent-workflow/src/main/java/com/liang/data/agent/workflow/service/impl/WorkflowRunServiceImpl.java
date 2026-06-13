@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.service.impl;
 
+import static com.liang.data.agent.workflow.constants.WorkflowRunConstants.*;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,11 +24,6 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class WorkflowRunServiceImpl implements WorkflowRunService {
-
-    private static final String STATUS_RUNNING = "running";
-    private static final String STATUS_INTERRUPTED = "interrupted";
-    private static final String STATUS_COMPLETED = "completed";
-    private static final String STATUS_FAILED = "failed";
 
     private final ChatWorkflowRunMapper chatWorkflowRunMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();

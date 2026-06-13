@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.service;
 
+import com.liang.data.agent.workflow.constants.WorkflowEventConstants;
+
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.GraphResponse;
@@ -139,9 +141,9 @@ class GraphServiceTest {
         List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
 
         assertThat(chunks).isNotNull();
-        assertThat(chunks.getLast().eventType()).isEqualTo(GraphStreamChunk.EVENT_WORKFLOW_DONE);
+        assertThat(chunks.getLast().eventType()).isEqualTo(WorkflowEventConstants.EVENT_WORKFLOW_DONE);
         assertThat(chunks.getLast().hasContent()).isFalse();
-        assertThat(chunks.get(chunks.size() - 2).eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_COMPLETED);
+        assertThat(chunks.get(chunks.size() - 2).eventType()).isEqualTo(WorkflowEventConstants.EVENT_NODE_COMPLETED);
     }
 
     @Test
@@ -167,9 +169,9 @@ class GraphServiceTest {
         List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
 
         assertThat(chunks).isNotNull();
-        assertThat(chunks.getFirst().eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_STARTED);
+        assertThat(chunks.getFirst().eventType()).isEqualTo(WorkflowEventConstants.EVENT_NODE_STARTED);
         assertThat(chunks.getFirst().nodeName()).isEqualTo("LongStreamingNode");
-        assertThat(chunks.get(1).eventType()).isEqualTo(GraphStreamChunk.EVENT_NODE_OUTPUT);
+        assertThat(chunks.get(1).eventType()).isEqualTo(WorkflowEventConstants.EVENT_NODE_OUTPUT);
     }
 
     @Test
@@ -236,7 +238,7 @@ class GraphServiceTest {
 
         assertThat(chunks).isNotNull();
         assertThat(chunks).anySatisfy(chunk -> {
-            assertThat(chunk.eventType()).isEqualTo(GraphStreamChunk.EVENT_WAITING_USER_INPUT);
+            assertThat(chunk.eventType()).isEqualTo(WorkflowEventConstants.EVENT_WAITING_USER_INPUT);
             assertThat(chunk.nodeName()).isEqualTo("ClarificationAskNode");
             assertThat(chunk.content()).contains("clarification_request");
         });

@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.dto;
 
+import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.*;
+
 import org.springframework.util.StringUtils;
 
 /**
@@ -11,36 +13,6 @@ import org.springframework.util.StringUtils;
  * @param nodeCompleted 是否表示节点已经完成
  */
 public record GraphStreamChunk(String eventType, String content, String nodeName, boolean nodeCompleted) {
-
-    /**
-     * 节点输出事件
-     */
-    public static final String EVENT_NODE_OUTPUT = "node_output";
-
-    /**
-     * 节点开始事件
-     */
-    public static final String EVENT_NODE_STARTED = "node_started";
-
-    /**
-     * 节点完成事件
-     */
-    public static final String EVENT_NODE_COMPLETED = "node_completed";
-
-    /**
-     * 等待用户输入事件
-     */
-    public static final String EVENT_WAITING_USER_INPUT = "waiting_user_input";
-
-    /**
-     * 工作流错误事件
-     */
-    public static final String EVENT_WORKFLOW_ERROR = "workflow_error";
-
-    /**
-     * 工作流完成事件
-     */
-    public static final String EVENT_WORKFLOW_DONE = "workflow_done";
 
     /**
      * 构建普通文本输出事件。

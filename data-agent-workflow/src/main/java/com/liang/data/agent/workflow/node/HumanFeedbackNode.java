@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.workflow.constants.PlanConstants.MAX_HUMAN_REPAIR_COUNT;
+
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.StateUtil;
@@ -33,16 +35,14 @@ import static com.liang.data.agent.common.constant.StateKey.PLANNER_NODE;
 @Component
 public class HumanFeedbackNode implements NodeAction {
 
-    private static final int MAX_REPAIR_LIMIT = 3;
-
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
         log.info("开始执行人工反馈审核节点...");
 
         // 1. 检查最大修复次数限制，防止死循环
         int repairCount = StateUtil.getObjectValue(state, PLAN_REPAIR_COUNT, Integer.class, 0);
-        if (repairCount >= MAX_REPAIR_LIMIT) {
-            log.warn("人工计划修复次数已达到上限 ({} 次)，强制终止流程", MAX_REPAIR_LIMIT);
+        if (repairCount >= MAX_HUMAN_REPAIR_COUNT) {
+            log.warn("人工计划修复次数已达到上限 ({} 次)，强制终止流程", MAX_HUMAN_REPAIR_COUNT);
             Flux<ChatResponse> responseFlux = Flux.just(ChatResponseUtil.createResponse("[警告] 计划修复次数已超限，工作流终止。"));
             Flux<GraphResponse<StreamingOutput<ChatResponse>>> gen = FluxUtil.createStreamingGeneratorWithMessages(
                     this.getClass(), state, v -> Map.of(HUMAN_NEXT_NODE, "END"), responseFlux);

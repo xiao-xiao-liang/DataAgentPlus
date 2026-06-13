@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.service.impl;
 
+import static com.liang.data.agent.workflow.constants.WorkflowQueueConstants.QUEUE_SCOPE_CHAT_WORKFLOW;
+
 import com.liang.data.agent.dal.entity.ChatWorkflowQueueEntity;
 import com.liang.data.agent.dal.mapper.ChatWorkflowQueueMapper;
 import com.liang.data.agent.workflow.enums.WorkflowQueueStatus;
@@ -20,8 +22,6 @@ import java.util.UUID;
 @Slf4j
 @Service
 public class WorkflowAdmissionServiceImpl implements WorkflowAdmissionService {
-
-    private static final String QUEUE_SCOPE_CHAT_WORKFLOW = "CHAT_WORKFLOW";
 
     private final ChatWorkflowQueueMapper chatWorkflowQueueMapper;
     private final int maxUserRunning;

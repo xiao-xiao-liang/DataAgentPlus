@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.util;
 
+import static com.liang.data.agent.workflow.constants.PlanConstants.STEP_PREFIX;
+
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.workflow.dto.planner.ExecutionStep;
@@ -23,8 +25,6 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.PLANNER_NODE_OU
  */
 @NoArgsConstructor
 public final class PlanProcessUtil {
-
-    private static final String STEP_PREFIX = "step_";
 
     private static final BeanOutputConverter<Plan> CONVERTER;
 

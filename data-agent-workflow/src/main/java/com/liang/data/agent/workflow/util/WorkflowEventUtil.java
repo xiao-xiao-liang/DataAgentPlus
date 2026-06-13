@@ -1,5 +1,8 @@
 package com.liang.data.agent.workflow.util;
 
+import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_PREFIX;
+import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_SUFFIX;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.workflow.dto.GraphNodeResponse;
@@ -7,9 +10,6 @@ import lombok.NoArgsConstructor;
 
 @NoArgsConstructor
 public final class WorkflowEventUtil {
-
-    public static final String EVENT_PREFIX = "@@DATA_AGENT_EVENT@@";
-    public static final String EVENT_SUFFIX = "@@END_DATA_AGENT_EVENT@@";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 

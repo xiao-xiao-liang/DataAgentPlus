@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.prompt;
 
+import static com.liang.data.agent.workflow.constants.PromptConstants.DISPLAY_STYLE_FORMAT;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -407,10 +409,4 @@ public final class PromptHelper {
         return sb.toString();
     }
 
-    /**
-     * DisplayStyleBO 的 JSON 格式描述（用于 LLM 输出约束）
-     */
-    private static final String DISPLAY_STYLE_FORMAT = """
-            {"type": "图表类型(table/column/bar/line/pie)", "title": "图表标题", "x": "X轴字段名", "y": "Y轴字段名"}
-            """;
 }

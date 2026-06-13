@@ -1,5 +1,8 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.workflow.constants.EvidenceConstants.METADATA_KNOWLEDGE_ID;
+import static com.liang.data.agent.workflow.constants.EvidenceConstants.METADATA_KNOWLEDGE_TYPE;
+
 import com.alibaba.cloud.ai.graph.GraphResponse;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
@@ -57,8 +60,6 @@ public class EvidenceRecallNode implements NodeAction {
     private final AgentKnowledgeMapper agentKnowledgeMapper;
 
     // 元数据常量定义
-    private static final String METADATA_KNOWLEDGE_ID = "agentKnowledgeId";
-    private static final String METADATA_KNOWLEDGE_TYPE = "concreteAgentKnowledgeType";
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
