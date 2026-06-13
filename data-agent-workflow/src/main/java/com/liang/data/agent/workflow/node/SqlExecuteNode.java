@@ -19,6 +19,7 @@ import com.liang.data.agent.dal.connector.bo.ResultBO;
 import com.liang.data.agent.dal.connector.bo.ResultSetBO;
 import com.liang.data.agent.dal.entity.DatasourceEntity;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
+import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
 import com.liang.data.agent.service.ratelimit.ResourceGate;
 import com.liang.data.agent.service.ratelimit.ResourcePermit;
@@ -29,6 +30,7 @@ import com.liang.data.agent.workflow.util.JsonParseUtil;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
 import com.liang.data.agent.workflow.util.SqlStatementGuard;
+import com.liang.data.agent.workflow.util.SqlTableAccessGuard;
 import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
 import static com.liang.data.agent.common.constant.ControlFlowKey.SQL_GENERATE_COUNT;
@@ -63,6 +66,7 @@ public class SqlExecuteNode implements NodeAction {
     private final DatabaseAccessor databaseAccessor;
     private final DatasourceMapper datasourceMapper;
     private final AgentDatasourceMapper agentDatasourceMapper;
+    private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
     private final LlmService llmService;
     private final DataAgentProperties properties;
     private final JsonParseUtil jsonParseUtil;
@@ -105,6 +109,14 @@ public class SqlExecuteNode implements NodeAction {
         if (datasource == null) {
             log.warn("数据源配置未找到，数据源 ID: {}", datasourceId);
             return buildErrorResponse(state, "关联数据源配置缺失，ID: " + datasourceId, null);
+        }
+
+        Integer bindingId = agentDatasourceMapper.getActiveBindingId(Integer.valueOf(agentId));
+        List<String> allowedTables = agentDatasourceTablesMapper.selectTablesByAgentDatasourceId(bindingId);
+        Set<String> unauthorizedTables = SqlTableAccessGuard.findUnauthorizedTables(sql, datasource.getType(), allowedTables);
+        if (!unauthorizedTables.isEmpty()) {
+            log.warn("智能体 {} 尝试访问未授权数据表: {}", agentId, unauthorizedTables);
+            return buildErrorResponse(state, "SQL 访问了未授权数据表: " + String.join(", ", unauthorizedTables), null);
         }
 
         DbConfigBO agentDbConfig = DbConfigBO.from(datasource);

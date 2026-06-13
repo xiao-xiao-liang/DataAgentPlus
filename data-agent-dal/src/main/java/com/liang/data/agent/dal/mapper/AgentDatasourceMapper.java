@@ -14,4 +14,7 @@ public interface AgentDatasourceMapper extends BaseMapper<AgentDatasourceEntity>
 
     @Select("SELECT datasource_id FROM agent_datasource WHERE agent_id = #{agentId} AND is_active = 1")
     Integer getActiveDatasource(@Param("agentId") Integer agentId);
+
+    @Select("SELECT id FROM agent_datasource WHERE agent_id = #{agentId} AND is_active = 1")
+    Integer getActiveBindingId(@Param("agentId") Integer agentId);
 }
