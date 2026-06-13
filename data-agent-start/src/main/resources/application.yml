@@ -94,7 +94,8 @@ data-agent:
   python-memory-limit: 256
   python-timeout: 30
   code-executor:
-    type: AI_SIM
+    allow-local-fallback-in-production: false
+    docker-image: data-agent-sandbox-py:3.10
   enrich-sql-result-timeout: 30000
 
 logging:

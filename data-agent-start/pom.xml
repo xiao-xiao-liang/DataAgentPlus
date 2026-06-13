@@ -58,6 +58,16 @@
             <artifactId>python</artifactId>
             <type>pom</type>
         </dependency>
+
+        <!-- Docker Python 沙箱运行时 -->
+        <dependency>
+            <groupId>com.github.docker-java</groupId>
+            <artifactId>docker-java-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.docker-java</groupId>
+            <artifactId>docker-java-transport-zerodep</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

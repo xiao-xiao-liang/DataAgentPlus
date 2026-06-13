@@ -46,6 +46,11 @@ public class DataAgentProperties {
     private ResourceGateProperties resourceGate = new ResourceGateProperties();
 
     /**
+     * Python 代码执行器配置
+     */
+    private CodeExecutorProperties codeExecutor = new CodeExecutorProperties();
+
+    /**
      * SQL 执行失败最大重试次数
      */
     private int maxSqlRetryCount = 10;
@@ -127,6 +132,25 @@ public class DataAgentProperties {
          * 是否启用混合搜索 (Milvus + ES)
          */
         private boolean enableHybridSearch = false;
+    }
+
+    /**
+     * Python 代码执行器配置
+     */
+    @Getter
+    @Setter
+    public static class CodeExecutorProperties {
+
+        /**
+         * 生产环境是否允许降级到本地 Python
+         */
+        private boolean allowLocalFallbackInProduction = false;
+
+        /**
+         * Docker 沙箱镜像
+         */
+        private String dockerImage = "data-agent-sandbox-py:3.10";
+
     }
 
     @Getter

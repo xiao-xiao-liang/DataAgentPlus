@@ -24,6 +24,22 @@ class PythonCodeExecutorTest {
         assertEquals("{\"ok\":true}", response.getStdout());
     }
 
+    @Test
+    void shouldExecuteIocStrategiesByOrderUntilSuccess() {
+        List<Integer> executedOrders = new java.util.ArrayList<>();
+        PythonCodeExecutor executor = new PythonCodeExecutor(List.of(
+                new RecordingStrategy(3, false, executedOrders),
+                new RecordingStrategy(1, false, executedOrders),
+                new RecordingStrategy(2, true, executedOrders)
+        ));
+        executor.init();
+
+        TaskResponse response = executor.execute("print('ok')", "[]", 5);
+
+        assertTrue(response.isSuccess());
+        assertEquals(List.of(1, 2), executedOrders);
+    }
+
     private static class BrokenStrategy implements PythonExecutionStrategy {
         @Override
         public int getOrder() {
@@ -55,6 +71,29 @@ class PythonCodeExecutorTest {
         @Override
         public TaskResponse execute(String code, String inputJson, int timeoutSeconds) {
             return TaskResponse.success("{\"ok\":true}", 1);
+        }
+    }
+
+    private record RecordingStrategy(
+            int order,
+            boolean success,
+            List<Integer> executedOrders
+    ) implements PythonExecutionStrategy {
+
+        @Override
+        public int getOrder() {
+            return order;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public TaskResponse execute(String code, String inputJson, int timeoutSeconds) {
+            executedOrders.add(order);
+            return success ? TaskResponse.success("{}", 1) : TaskResponse.failure("", "失败", 1);
         }
     }
 }

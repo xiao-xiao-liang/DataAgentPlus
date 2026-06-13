@@ -2,7 +2,10 @@ package com.liang.data.agent.ai.code.strategy;
 
 import com.liang.data.agent.ai.code.PythonExecutionStrategy;
 import com.liang.data.agent.ai.code.model.TaskResponse;
+import com.liang.data.agent.common.config.DataAgentProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -15,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -27,7 +31,15 @@ public class LocalPythonExecutor implements PythonExecutionStrategy {
 
     private final String pythonExecutable;
 
-    public LocalPythonExecutor() {
+    private final DataAgentProperties properties;
+
+    private final Environment environment;
+
+    private final AtomicBoolean productionRiskLogged = new AtomicBoolean(false);
+
+    public LocalPythonExecutor(DataAgentProperties properties, Environment environment) {
+        this.properties = properties;
+        this.environment = environment;
         this.pythonExecutable = checkProgramExists();
         if (this.pythonExecutable != null) {
             log.info("Detected local Python executable: {}", this.pythonExecutable);
@@ -38,11 +50,23 @@ public class LocalPythonExecutor implements PythonExecutionStrategy {
 
     @Override
     public int getOrder() {
-        return 1;
+        return 3;
     }
 
     @Override
     public boolean isAvailable() {
+        if (!hasLocalPython()) {
+            return false;
+        }
+        boolean production = environment.acceptsProfiles(Profiles.of("prod", "production"));
+        boolean allowed = !production || properties.getCodeExecutor().isAllowLocalFallbackInProduction();
+        if (production && allowed && productionRiskLogged.compareAndSet(false, true)) {
+            log.warn("生产环境已显式允许降级到本地 Python，模型生成代码将直接在宿主机执行");
+        }
+        return allowed;
+    }
+
+    boolean hasLocalPython() {
         return this.pythonExecutable != null;
     }
 

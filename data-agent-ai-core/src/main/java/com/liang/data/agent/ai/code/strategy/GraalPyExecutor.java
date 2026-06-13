@@ -28,6 +28,10 @@ public class GraalPyExecutor implements PythonExecutionStrategy {
 
     @Override
     public boolean isAvailable() {
+        return hasGraalPyRuntime();
+    }
+
+    boolean hasGraalPyRuntime() {
         return ClassUtils.isPresent("org.graalvm.polyglot.Context", getClass().getClassLoader())
                 && ClassUtils.isPresent("com.oracle.graal.python.PythonLanguage", getClass().getClassLoader());
     }

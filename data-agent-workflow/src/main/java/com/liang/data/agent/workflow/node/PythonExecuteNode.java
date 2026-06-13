@@ -39,7 +39,7 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_RESULT_LIST
 /**
  * Python 执行节点
  *
- * <p>通过统一的 PythonCodeExecutor 门面，在本地或 GraalVM 沙箱中执行大模型生成的数据分析脚本。
+ * <p>通过统一的 PythonCodeExecutor 门面，按 Docker、GraalPy、本地 Python 的责任链执行大模型生成的数据分析脚本。
  * 自动捕获执行的 stdout/stderr 写入流，并在运行失败时递增重试次数以触发自动大模型重试纠错，
  * 达上限后启动优雅降级分析，并内置了双重 Unicode/十六进制转义解码以防御 Windows 下的进程输出乱码。</p>
  */
