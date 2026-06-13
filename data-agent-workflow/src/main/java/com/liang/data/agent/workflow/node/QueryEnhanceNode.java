@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
+import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
@@ -42,6 +44,8 @@ import static com.liang.data.agent.common.constant.StateKey.MULTI_TURN_CONTEXT;
 @RequiredArgsConstructor
 public class QueryEnhanceNode implements NodeAction {
 
+    private static final int MAX_EMPTY_RESPONSE_RETRY_COUNT = 1;
+
     private final LlmService llmService;
     private final JsonParseUtil jsonParseUtil;
 
@@ -54,7 +58,7 @@ public class QueryEnhanceNode implements NodeAction {
 
         // 构建 Prompt 并调用 LLM
         String prompt = PromptHelper.buildQueryEnhancePrompt(multiTurn, userInput, evidence);
-        Flux<ChatResponse> responseFlux = llmService.callUser(prompt);
+        Flux<ChatResponse> responseFlux = callQueryEnhance(prompt, 0);
 
         // 包装为流式响应
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGenerator(
@@ -71,6 +75,25 @@ public class QueryEnhanceNode implements NodeAction {
         );
 
         return Map.of(QUERY_ENHANCE_NODE_OUTPUT, generator);
+    }
+
+    /**
+     * 调用查询增强模型，并在响应正文为空时重试一次。
+     *
+     * @param prompt     查询增强提示词
+     * @param retryCount 当前已重试次数
+     * @return 包含有效正文的模型响应流
+     */
+    private Flux<ChatResponse> callQueryEnhance(String prompt, int retryCount) {
+        return Flux.defer(() -> llmService.callUser(prompt))
+                .filter(response -> StringUtils.hasText(ChatResponseUtil.getText(response)))
+                .switchIfEmpty(Flux.defer(() -> {
+                    if (retryCount < MAX_EMPTY_RESPONSE_RETRY_COUNT) {
+                        log.warn("查询增强模型返回空响应，准备进行第 {} 次重试", retryCount + 1);
+                        return callQueryEnhance(prompt, retryCount + 1);
+                    }
+                    return Flux.error(new ServiceException("查询增强模型连续返回空响应"));
+                }));
     }
 
     private Map<String, Object> handleQueryEnhance(String llmOutput) {
