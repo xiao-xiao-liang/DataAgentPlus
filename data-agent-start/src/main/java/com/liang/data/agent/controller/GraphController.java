@@ -33,6 +33,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_NODE_OUTPUT;
+import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_PREFIX;
+
 /**
  * 重构后的核心工作流流式图交互控制器。
  *
@@ -321,16 +324,16 @@ public class GraphController {
 
     private boolean isTextOutputEvent(GraphStreamChunk event) {
         return event != null
-                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && EVENT_NODE_OUTPUT.equals(event.eventType())
                 && event.hasContent()
-                && !event.content().contains(WorkflowEventUtil.EVENT_PREFIX);
+                && !event.content().contains(EVENT_PREFIX);
     }
 
     private boolean isWorkflowEventOutput(GraphStreamChunk event) {
         return event != null
-                && GraphStreamChunk.EVENT_NODE_OUTPUT.equals(event.eventType())
+                && EVENT_NODE_OUTPUT.equals(event.eventType())
                 && event.hasContent()
-                && event.content().contains(WorkflowEventUtil.EVENT_PREFIX);
+                && event.content().contains(EVENT_PREFIX);
     }
 
     private String safeMessage(Throwable throwable) {
