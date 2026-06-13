@@ -196,6 +196,7 @@ public final class PromptHelper {
         params.put("dialect", dto.getDialect()); // SQL 方言，比如 MySQL / PostgreSQL
         params.put("question", dto.getQuery());
         params.put("schema_info", schemaInfo);
+        params.put("table_access_scope", buildTableAccessScope(dto.getAllowedTables()));
         params.put("evidence", dto.getEvidence());
         params.put("execution_description", dto.getExecutionDescription()); // 执行步骤/计划上下文
         return PromptConstant.getNewSqlGeneratorPromptTemplate().render(params);
@@ -210,11 +211,28 @@ public final class PromptHelper {
         params.put("dialect", dto.getDialect());
         params.put("question", dto.getQuery());
         params.put("schema_info", schemaInfo);
+        params.put("table_access_scope", buildTableAccessScope(dto.getAllowedTables()));
         params.put("evidence", dto.getEvidence());
         params.put("error_sql", dto.getSql()); // SQL 修复场景下的错误输入
         params.put("error_message", dto.getExceptionMessage()); // SQL 修复场景下的错误输入
         params.put("execution_description", dto.getExecutionDescription());
         return PromptConstant.getSqlErrorFixerPromptTemplate().render(params);
+    }
+
+    private static String buildTableAccessScope(List<String> allowedTables) {
+        if (allowedTables == null || allowedTables.isEmpty()) {
+            return "允许访问数据库 Schema 中列出的所有物理表。";
+        }
+        return """
+            仅允许访问以下物理表：
+            %s
+            严禁查询任何其他物理表，即使用户问题或业务凭证（Evidence）中提及了其他表，也绝不允许访问。
+            """.formatted(allowedTables.stream()
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .map(table -> "- " + table)
+                .collect(Collectors.joining("\n")));
     }
 
     /**

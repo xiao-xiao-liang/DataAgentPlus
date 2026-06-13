@@ -6,6 +6,9 @@ You are a senior {dialect} SQL repair engineer.
 ## Database Schema
 {schema_info}
 
+## 表访问范围（硬约束）
+{table_access_scope}
+
 ## Business Evidence
 {evidence}
 

@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * SQL 生成输入参数
  *
@@ -29,6 +31,11 @@ public class SqlGenerationDTO {
      * Schema 信息
      */
     private SchemaDTO schemaInfo;
+
+    /**
+     * 当前智能体允许访问的物理表；空列表表示允许 Schema 中全部表。
+     */
+    private List<String> allowedTables;
 
     /**
      * 上一次生成的 SQL (重试场景)

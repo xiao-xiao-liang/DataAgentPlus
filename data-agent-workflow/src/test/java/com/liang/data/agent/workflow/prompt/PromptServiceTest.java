@@ -44,6 +44,7 @@ class PromptServiceTest {
                 .evidence("证据")
                 .executionDescription("执行说明")
                 .schemaInfo(buildSchema())
+                .allowedTables(List.of("orders"))
                 .build();
 
         String prompt = PromptHelper.buildNewSqlGeneratorPrompt(dto);
@@ -52,6 +53,8 @@ class PromptServiceTest {
         assertTrue(prompt.contains("查询订单"));
         assertTrue(prompt.contains("# Table: orders, 订单表"));
         assertTrue(prompt.contains("order_id:BIGINT"));
+        assertTrue(prompt.contains("仅允许访问以下物理表"));
+        assertTrue(prompt.contains("- orders"));
     }
 
     @Test
@@ -62,6 +65,7 @@ class PromptServiceTest {
                 .evidence("evidence")
                 .executionDescription("execute current step")
                 .schemaInfo(buildSchema())
+                .allowedTables(List.of("orders"))
                 .sql("select * from orders; select * from users")
                 .exceptionMessage("multi-statement not allow")
                 .build();
@@ -71,6 +75,8 @@ class PromptServiceTest {
         assertTrue(prompt.contains("multi-statement not allow"));
         assertTrue(prompt.contains("select * from orders; select * from users"));
         assertTrue(prompt.contains("query orders"));
+        assertTrue(prompt.contains("仅允许访问以下物理表"));
+        assertTrue(prompt.contains("- orders"));
     }
 
     private SchemaDTO buildSchema() {

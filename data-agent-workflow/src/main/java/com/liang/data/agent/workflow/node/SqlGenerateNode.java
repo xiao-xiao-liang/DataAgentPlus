@@ -9,6 +9,8 @@ import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.schema.SchemaDTO;
+import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
+import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.workflow.dto.SqlRetryDTO;
 import com.liang.data.agent.workflow.dto.node.SqlGenerationDTO;
 import com.liang.data.agent.workflow.service.Nl2SqlService;
@@ -23,10 +25,12 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.liang.data.agent.common.constant.ControlFlowKey.*;
 import static com.liang.data.agent.common.constant.NodeOutputKey.*;
+import static com.liang.data.agent.common.constant.StateKey.AGENT_ID;
 
 /**
  * SQL 生成节点
@@ -40,6 +44,8 @@ public class SqlGenerateNode implements NodeAction {
 
     private final Nl2SqlService nl2SqlService;
     private final DataAgentProperties properties;
+    private final AgentDatasourceMapper agentDatasourceMapper;
+    private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
@@ -70,6 +76,14 @@ public class SqlGenerateNode implements NodeAction {
         SchemaDTO schemaDTO = StateUtil.getObjectValue(state, TABLE_RELATION_OUTPUT, SchemaDTO.class);
         String dialect = StateUtil.getStringValue(state, DB_DIALECT_TYPE, "MySQL");
         String semanticModel = StateUtil.getStringValue(state, GENERATED_SEMANTIC_MODEL_PROMPT, "");
+        Integer agentId = Integer.valueOf(StateUtil.getStringValue(state, AGENT_ID));
+        Integer bindingId = agentDatasourceMapper.getActiveBindingId(agentId);
+        List<String> allowedTables = bindingId == null
+                ? List.of()
+                : agentDatasourceTablesMapper.selectTablesByAgentDatasourceId(bindingId);
+        if (allowedTables == null) {
+            allowedTables = List.of();
+        }
 
         // 获取当前步骤的执行描述 (Plan 模式下)
         String executionDescription;
@@ -87,6 +101,7 @@ public class SqlGenerateNode implements NodeAction {
                 .evidence(evidence + "\n" + semanticModel)
                 .query(canonicalQuery)
                 .schemaInfo(schemaDTO)
+                .allowedTables(allowedTables)
                 .executionDescription(executionDescription)
                 .dialect(dialect)
                 .build();
