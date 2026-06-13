@@ -1,4 +1,4 @@
-package com.liang.data.agent.workflow.service;
+package com.liang.data.agent.workflow.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.liang.data.agent.ai.llm.LlmService;
@@ -8,6 +8,7 @@ import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.workflow.dto.node.SemanticConsistencyDTO;
 import com.liang.data.agent.workflow.dto.node.SqlGenerationDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
+import com.liang.data.agent.workflow.service.Nl2SqlService;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import lombok.RequiredArgsConstructor;
