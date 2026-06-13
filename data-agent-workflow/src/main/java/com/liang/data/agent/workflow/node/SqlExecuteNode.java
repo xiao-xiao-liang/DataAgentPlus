@@ -30,6 +30,7 @@ import com.liang.data.agent.workflow.util.JsonParseUtil;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
 import com.liang.data.agent.workflow.util.SensitiveDataMasker;
+import com.liang.data.agent.workflow.util.SqlQueryRiskGuard;
 import com.liang.data.agent.workflow.util.SqlStatementGuard;
 import com.liang.data.agent.workflow.util.SqlTableAccessGuard;
 import com.liang.data.agent.workflow.util.StateUtil;
@@ -118,6 +119,12 @@ public class SqlExecuteNode implements NodeAction {
         if (!unauthorizedTables.isEmpty()) {
             log.warn("智能体 {} 尝试访问未授权数据表: {}", agentId, unauthorizedTables);
             return buildErrorResponse(state, "SQL 访问了未授权数据表: " + String.join(", ", unauthorizedTables), null);
+        }
+
+        var queryRisk = SqlQueryRiskGuard.findRisk(sql, datasource.getType());
+        if (queryRisk.isPresent()) {
+            log.warn("智能体 {} 生成的 SQL 存在大表查询风险: {}", agentId, queryRisk.get());
+            return buildErrorResponse(state, queryRisk.get(), null);
         }
 
         DbConfigBO agentDbConfig = DbConfigBO.from(datasource);

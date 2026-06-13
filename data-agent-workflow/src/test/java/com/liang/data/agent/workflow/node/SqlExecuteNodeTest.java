@@ -158,4 +158,44 @@ class SqlExecuteNodeTest {
         assertThat(result).containsKey(SQL_EXECUTE_NODE_OUTPUT);
         verify(databaseAccessor, never()).executeSql(any(), anyString());
     }
+
+    @Test
+    void applyShouldNotExecuteSqlWhenQueryMayScanWholeTable() throws Exception {
+        DatabaseAccessor databaseAccessor = mock(DatabaseAccessor.class);
+        DatasourceMapper datasourceMapper = mock(DatasourceMapper.class);
+        AgentDatasourceMapper agentDatasourceMapper = mock(AgentDatasourceMapper.class);
+        AgentDatasourceTablesMapper tablesMapper = mock(AgentDatasourceTablesMapper.class);
+        ResourceGate resourceGate = mock(ResourceGate.class);
+
+        DatasourceEntity datasource = new DatasourceEntity();
+        datasource.setId(10);
+        datasource.setType("mysql");
+
+        when(resourceGate.tryAcquire(eq(ResourceType.SQL_EXECUTION), anyString(), any()))
+                .thenReturn(ResourcePermit.acquired(ResourceType.SQL_EXECUTION, "agent-1", () -> {
+                }));
+        when(agentDatasourceMapper.getActiveDatasource(1)).thenReturn(10);
+        when(agentDatasourceMapper.getActiveBindingId(1)).thenReturn(20);
+        when(datasourceMapper.selectById(10)).thenReturn(datasource);
+        when(tablesMapper.selectTablesByAgentDatasourceId(20)).thenReturn(List.of("orders"));
+
+        SqlExecuteNode node = new SqlExecuteNode(
+                databaseAccessor,
+                datasourceMapper,
+                agentDatasourceMapper,
+                tablesMapper,
+                mock(LlmService.class),
+                new DataAgentProperties(),
+                mock(JsonParseUtil.class),
+                resourceGate
+        );
+        OverAllState state = mock(OverAllState.class);
+        when(state.value(SQL_GENERATE_OUTPUT)).thenReturn(Optional.of("select * from orders"));
+        when(state.value(AGENT_ID)).thenReturn(Optional.of("1"));
+
+        Map<String, Object> result = node.apply(state);
+
+        assertThat(result).containsKey(SQL_EXECUTE_NODE_OUTPUT);
+        verify(databaseAccessor, never()).executeSql(any(), anyString());
+    }
 }
