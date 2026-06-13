@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 分析任务准入队列 Mapper。
@@ -23,6 +24,38 @@ public interface ChatWorkflowQueueMapper extends BaseMapper<ChatWorkflowQueueEnt
      */
     @Select("SELECT * FROM chat_workflow_queue WHERE queue_id = #{queueId} LIMIT 1")
     ChatWorkflowQueueEntity selectByQueueId(@Param("queueId") String queueId);
+
+    /**
+     * 查询指定范围内等待中的队列任务。
+     *
+     * @param queueScope 队列范围
+     * @param limit      最大查询数量
+     * @return 等待任务列表
+     */
+    @Select("""
+            SELECT * FROM chat_workflow_queue
+            WHERE queue_scope = #{queueScope}
+              AND status = 'WAITING'
+            ORDER BY queued_at ASC, id ASC
+            LIMIT #{limit}
+            """)
+    List<ChatWorkflowQueueEntity> selectWaitingByScope(@Param("queueScope") String queueScope, @Param("limit") int limit);
+
+    /**
+     * 查询指定范围内运行中的队列任务。
+     *
+     * @param queueScope 队列范围
+     * @param limit      最大查询数量
+     * @return 运行中任务列表
+     */
+    @Select("""
+            SELECT * FROM chat_workflow_queue
+            WHERE queue_scope = #{queueScope}
+              AND status = 'RUNNING'
+            ORDER BY started_at ASC, id ASC
+            LIMIT #{limit}
+            """)
+    List<ChatWorkflowQueueEntity> selectRunningByScope(@Param("queueScope") String queueScope, @Param("limit") int limit);
 
     /**
      * 统计用户运行中的分析任务数。

@@ -122,3 +122,5 @@ chat:
     queue:
       max-user-running: 2
       max-global-running: 10
+      redis:
+        enabled: true

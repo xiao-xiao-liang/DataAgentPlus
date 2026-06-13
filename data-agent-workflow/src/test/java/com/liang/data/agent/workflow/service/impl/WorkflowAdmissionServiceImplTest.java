@@ -25,6 +25,13 @@ class WorkflowAdmissionServiceImplTest {
             2,
             10
     );
+    private final RedisWorkflowQueueScheduler redisWorkflowQueueScheduler = mock(RedisWorkflowQueueScheduler.class);
+    private final WorkflowAdmissionServiceImpl redisService = new WorkflowAdmissionServiceImpl(
+            chatWorkflowQueueMapper,
+            redisWorkflowQueueScheduler,
+            2,
+            10
+    );
 
     @Test
     void enqueueShouldCreateWaitingQueueRecord() {
@@ -55,6 +62,61 @@ class WorkflowAdmissionServiceImplTest {
         assertThat(result.getAheadUserCount()).isZero();
         assertThat(result.getRunningTaskCount()).isZero();
         assertThat(result.getMaxUserRunningLimit()).isEqualTo(2);
+    }
+
+    @Test
+    void enqueueShouldWriteRedisQueueWhenRedisSchedulerEnabled() {
+        when(redisWorkflowQueueScheduler.isEnabled()).thenReturn(true);
+        when(chatWorkflowQueueMapper.insert(any(ChatWorkflowQueueEntity.class))).thenAnswer(invocation -> {
+            ChatWorkflowQueueEntity entity = invocation.getArgument(0);
+            entity.setId(1L);
+            return 1;
+        });
+        when(chatWorkflowQueueMapper.countAheadTasks(any(), any(), any())).thenReturn(0L);
+        when(chatWorkflowQueueMapper.countAheadUsers(any(), any(), any())).thenReturn(0L);
+        when(chatWorkflowQueueMapper.countRunningByUser(1001L, "CHAT_WORKFLOW")).thenReturn(0L);
+
+        redisService.enqueue(1001L, "session-1", 2, "分析客流");
+
+        ArgumentCaptor<ChatWorkflowQueueEntity> captor = ArgumentCaptor.forClass(ChatWorkflowQueueEntity.class);
+        verify(redisWorkflowQueueScheduler).enqueue(captor.capture());
+        assertThat(captor.getValue().getQueueId()).isNotBlank();
+        assertThat(captor.getValue().getUserId()).isEqualTo(1001L);
+    }
+
+    @Test
+    void tryPromoteShouldClaimRedisFairBatchBeforeReturningCurrentPosition() {
+        ChatWorkflowQueueEntity first = waitingQueue("queue-1", 1001L, 1L);
+        ChatWorkflowQueueEntity current = waitingQueue("queue-3", 1002L, 3L);
+        ChatWorkflowQueueEntity currentRunning = waitingQueue("queue-3", 1002L, 3L);
+        currentRunning.setStatus("RUNNING");
+        when(redisWorkflowQueueScheduler.isEnabled()).thenReturn(true);
+        when(redisWorkflowQueueScheduler.claimRunnableQueueIds()).thenReturn(java.util.List.of("queue-1", "queue-3"));
+        when(chatWorkflowQueueMapper.selectByQueueId("queue-3")).thenReturn(current, currentRunning);
+        when(chatWorkflowQueueMapper.markRunning("queue-1")).thenReturn(1);
+        when(chatWorkflowQueueMapper.markRunning("queue-3")).thenReturn(1);
+        when(chatWorkflowQueueMapper.countRunningByUser(1002L, "CHAT_WORKFLOW")).thenReturn(1L);
+
+        WorkflowQueueVO result = redisService.tryPromote("queue-3");
+
+        verify(redisWorkflowQueueScheduler).claimRunnableQueueIds();
+        verify(chatWorkflowQueueMapper).markRunning("queue-1");
+        verify(chatWorkflowQueueMapper).markRunning("queue-3");
+        assertThat(result.getStatus()).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void tryPromoteShouldEnsureCurrentWaitingQueueExistsInRedisBeforeClaim() {
+        ChatWorkflowQueueEntity current = waitingQueue("queue-4", 1004L, 4L);
+        when(redisWorkflowQueueScheduler.isEnabled()).thenReturn(true);
+        when(redisWorkflowQueueScheduler.claimRunnableQueueIds()).thenReturn(java.util.List.of());
+        when(chatWorkflowQueueMapper.selectByQueueId("queue-4")).thenReturn(current, current);
+        when(chatWorkflowQueueMapper.countRunningByUser(1004L, "CHAT_WORKFLOW")).thenReturn(0L);
+
+        redisService.tryPromote("queue-4");
+
+        verify(redisWorkflowQueueScheduler).enqueue(current);
+        verify(redisWorkflowQueueScheduler).claimRunnableQueueIds();
     }
 
     @Test

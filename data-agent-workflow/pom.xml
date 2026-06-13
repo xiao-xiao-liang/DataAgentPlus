@@ -22,6 +22,12 @@
             <artifactId>data-agent-service</artifactId>
         </dependency>
 
+        <!-- Redis 队列调度 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Reactor (Flux/Mono for SSE 流式输出, Spring MVC 支持响应式返回值) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
