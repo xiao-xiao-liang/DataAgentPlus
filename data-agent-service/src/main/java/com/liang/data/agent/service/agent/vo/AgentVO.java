@@ -41,6 +41,9 @@ public class AgentVO {
     /** 标签 */
     private String tags;
 
+    /** SQL 查询最大返回行数 */
+    private Integer maxResultRows;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 

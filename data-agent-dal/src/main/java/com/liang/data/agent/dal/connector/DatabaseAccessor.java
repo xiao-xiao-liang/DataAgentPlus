@@ -1,5 +1,6 @@
 package com.liang.data.agent.dal.connector;
 
+import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.bo.*;
@@ -58,9 +59,21 @@ public class DatabaseAccessor {
     }
 
     public ResultSetBO executeSql(DbConfigBO config, String sql) {
+        return executeSql(config, sql, SqlQueryLimitConstant.MAX_RESULT_ROWS);
+    }
+
+    /**
+     * 执行 SQL 查询，并限制最大返回行数。
+     *
+     * @param config 数据源配置
+     * @param sql 待执行 SQL
+     * @param maxRows 最大返回行数
+     * @return 查询结果
+     */
+    public ResultSetBO executeSql(DbConfigBO config, String sql, int maxRows) {
         try (Connection conn = dataSourceManager.getConnection(config)) {
             DatabaseDialect dialect = dataSourceManager.getDialect(config.type());
-            return SqlExecutor.execute(conn, config.schema(), dialect, sql);
+            return SqlExecutor.execute(conn, config.schema(), dialect, sql, maxRows);
         } catch (SQLException e) {
             log.error("执行 SQL 失败: sql={}, error={}", sql, e.getMessage());
             throw new ServiceException("执行 SQL 失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);

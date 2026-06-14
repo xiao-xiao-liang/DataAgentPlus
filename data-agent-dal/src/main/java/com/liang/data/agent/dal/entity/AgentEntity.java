@@ -51,6 +51,9 @@ public class AgentEntity {
     /** 标签, 逗号分隔 */
     private String tags;
 
+    /** SQL 查询最大返回行数 */
+    private Integer maxResultRows;
+
     /** 逻辑删除：0-未删除, 1-已删除 */
     @TableLogic
     private Integer delFlag;

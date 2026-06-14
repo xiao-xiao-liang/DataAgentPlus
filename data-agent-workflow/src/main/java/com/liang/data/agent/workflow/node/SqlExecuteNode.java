@@ -1,5 +1,7 @@
 package com.liang.data.agent.workflow.node;
 
+import static com.liang.data.agent.common.constant.SqlQueryLimitConstant.DEFAULT_MAX_RESULT_ROWS;
+import static com.liang.data.agent.common.constant.SqlQueryLimitConstant.MAX_RESULT_ROWS;
 import static com.liang.data.agent.workflow.constants.SqlExecutionConstants.SAMPLE_DATA_LIMIT;
 
 import com.alibaba.cloud.ai.graph.GraphResponse;
@@ -10,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
+import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.connector.DatabaseAccessor;
@@ -17,7 +20,9 @@ import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.DisplayStyleBO;
 import com.liang.data.agent.dal.connector.bo.ResultBO;
 import com.liang.data.agent.dal.connector.bo.ResultSetBO;
+import com.liang.data.agent.dal.entity.AgentEntity;
 import com.liang.data.agent.dal.entity.DatasourceEntity;
+import com.liang.data.agent.dal.mapper.AgentMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
@@ -69,6 +74,7 @@ public class SqlExecuteNode implements NodeAction {
     private final DatasourceMapper datasourceMapper;
     private final AgentDatasourceMapper agentDatasourceMapper;
     private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
+    private final AgentMapper agentMapper;
     private final LlmService llmService;
     private final DataAgentProperties properties;
     private final JsonParseUtil jsonParseUtil;
@@ -133,7 +139,9 @@ public class SqlExecuteNode implements NodeAction {
         // ======================== 阶段二：SQL 执行与图表智能推荐 ========================
         try {
             // 1. 执行 SQL 并得到结果集 ResultSetBO
-            ResultSetBO resultSetBO = SensitiveDataMasker.mask(databaseAccessor.executeSql(agentDbConfig, sql));
+            AgentEntity agent = agentMapper.selectById(Integer.valueOf(agentId));
+            int maxResultRows = resolveMaxResultRows(agent);
+            ResultSetBO resultSetBO = SensitiveDataMasker.mask(databaseAccessor.executeSql(agentDbConfig, sql, maxResultRows));
 
             // 2. 调用大模型分析获取最契合的图表展示配置
             DisplayStyleBO displayStyleBO = enrichResultSetWithChartConfig(state, resultSetBO);
@@ -257,6 +265,19 @@ public class SqlExecuteNode implements NodeAction {
             log.debug("SQL 结果图表推荐回退详情", e);
         }
         return DisplayStyleBO.tableDefault();
+    }
+
+    /**
+     * 获取智能体 SQL 查询最大返回行数。
+     *
+     * @param agent 智能体配置
+     * @return 1 到 1000 之间的最大返回行数
+     */
+    private int resolveMaxResultRows(AgentEntity agent) {
+        if (agent == null || agent.getMaxResultRows() == null) {
+            return DEFAULT_MAX_RESULT_ROWS;
+        }
+        return Math.max(1, Math.min(agent.getMaxResultRows(), MAX_RESULT_ROWS));
     }
 
     private boolean isTimeoutException(Throwable throwable) {

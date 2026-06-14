@@ -11,7 +11,9 @@ import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.connector.DatabaseAccessor;
 import com.liang.data.agent.dal.connector.bo.DisplayStyleBO;
 import com.liang.data.agent.dal.connector.bo.ResultSetBO;
+import com.liang.data.agent.dal.entity.AgentEntity;
 import com.liang.data.agent.dal.entity.DatasourceEntity;
+import com.liang.data.agent.dal.mapper.AgentMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
@@ -54,6 +56,7 @@ class SqlExecuteNodeTest {
         when(llmService.call(anyString(), anyString())).thenReturn(Flux.never());
 
         SqlExecuteNode node = new SqlExecuteNode(
+                null,
                 null,
                 null,
                 null,
@@ -104,6 +107,7 @@ class SqlExecuteNodeTest {
                 null,
                 null,
                 null,
+                null,
                 mock(LlmService.class),
                 new DataAgentProperties(),
                 mock(JsonParseUtil.class),
@@ -144,6 +148,7 @@ class SqlExecuteNodeTest {
                 datasourceMapper,
                 agentDatasourceMapper,
                 tablesMapper,
+                mock(AgentMapper.class),
                 mock(LlmService.class),
                 new DataAgentProperties(),
                 mock(JsonParseUtil.class),
@@ -184,6 +189,7 @@ class SqlExecuteNodeTest {
                 datasourceMapper,
                 agentDatasourceMapper,
                 tablesMapper,
+                mock(AgentMapper.class),
                 mock(LlmService.class),
                 new DataAgentProperties(),
                 mock(JsonParseUtil.class),
@@ -197,5 +203,77 @@ class SqlExecuteNodeTest {
 
         assertThat(result).containsKey(SQL_EXECUTE_NODE_OUTPUT);
         verify(databaseAccessor, never()).executeSql(any(), anyString());
+    }
+    @Test
+    void applyShouldUseAgentMaximumResultRowsWhenExecutingSql() throws Exception {
+        DatabaseAccessor databaseAccessor = mock(DatabaseAccessor.class);
+        DatasourceMapper datasourceMapper = mock(DatasourceMapper.class);
+        AgentDatasourceMapper agentDatasourceMapper = mock(AgentDatasourceMapper.class);
+        AgentDatasourceTablesMapper tablesMapper = mock(AgentDatasourceTablesMapper.class);
+        AgentMapper agentMapper = mock(AgentMapper.class);
+        ResourceGate resourceGate = mock(ResourceGate.class);
+
+        DatasourceEntity datasource = new DatasourceEntity();
+        datasource.setId(10);
+        datasource.setType("mysql");
+        AgentEntity agent = new AgentEntity();
+        agent.setMaxResultRows(25);
+
+        when(resourceGate.tryAcquire(eq(ResourceType.SQL_EXECUTION), anyString(), any()))
+                .thenReturn(ResourcePermit.acquired(ResourceType.SQL_EXECUTION, "agent-1", () -> {
+                }));
+        when(agentDatasourceMapper.getActiveDatasource(1)).thenReturn(10);
+        when(agentDatasourceMapper.getActiveBindingId(1)).thenReturn(20);
+        when(datasourceMapper.selectById(10)).thenReturn(datasource);
+        when(tablesMapper.selectTablesByAgentDatasourceId(20)).thenReturn(List.of("orders"));
+        when(agentMapper.selectById(1)).thenReturn(agent);
+        when(databaseAccessor.executeSql(any(), eq("select * from orders limit 10"), eq(25)))
+                .thenReturn(new ResultSetBO(List.of(), List.of()));
+
+        SqlExecuteNode node = new SqlExecuteNode(
+                databaseAccessor,
+                datasourceMapper,
+                agentDatasourceMapper,
+                tablesMapper,
+                agentMapper,
+                mock(LlmService.class),
+                new DataAgentProperties(),
+                mock(JsonParseUtil.class),
+                resourceGate
+        );
+        OverAllState state = mock(OverAllState.class);
+        when(state.value(SQL_GENERATE_OUTPUT)).thenReturn(Optional.of("select * from orders limit 10"));
+        when(state.value(AGENT_ID)).thenReturn(Optional.of("1"));
+
+        node.apply(state);
+
+        verify(databaseAccessor).executeSql(any(), eq("select * from orders limit 10"), eq(25));
+    }
+
+    @Test
+    void shouldResolveConfiguredMaximumResultRowsWithinSafeRange() {
+        SqlExecuteNode node = new SqlExecuteNode(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new DataAgentProperties(),
+                mock(JsonParseUtil.class),
+                mock(ResourceGate.class)
+        );
+        AgentEntity agent = new AgentEntity();
+
+        agent.setMaxResultRows(25);
+        Integer configuredRows = ReflectionTestUtils.invokeMethod(node, "resolveMaxResultRows", agent);
+        assertThat(configuredRows).isEqualTo(25);
+
+        agent.setMaxResultRows(2000);
+        Integer clampedRows = ReflectionTestUtils.invokeMethod(node, "resolveMaxResultRows", agent);
+        assertThat(clampedRows).isEqualTo(1000);
+
+        Integer defaultRows = ReflectionTestUtils.invokeMethod(node, "resolveMaxResultRows", (Object) null);
+        assertThat(defaultRows).isEqualTo(100);
     }
 }

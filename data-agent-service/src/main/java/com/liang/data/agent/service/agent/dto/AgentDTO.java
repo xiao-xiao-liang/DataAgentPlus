@@ -1,5 +1,8 @@
 package com.liang.data.agent.service.agent.dto;
 
+import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -35,4 +38,9 @@ public class AgentDTO {
 
     /** 标签，JSON 数组格式 */
     private String tags;
+
+    /** SQL 查询最大返回行数 */
+    @Min(value = 1, message = "最大返回行数不能小于 1")
+    @Max(value = SqlQueryLimitConstant.MAX_RESULT_ROWS, message = "最大返回行数不能超过 1000")
+    private Integer maxResultRows = SqlQueryLimitConstant.DEFAULT_MAX_RESULT_ROWS;
 }

@@ -9,12 +9,15 @@ import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
 import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.ast.statement.SQLUnionQuery;
 import com.alibaba.druid.sql.parser.ParserException;
+import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.query.safety.SqlSelectSafetyAuditor;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
+
+import static com.liang.data.agent.common.constant.SqlQueryLimitConstant.DEFAULT_MAX_RESULT_ROWS;
 
 /**
  * 基于 Druid AST 的 SELECT 查询处理器。
@@ -23,8 +26,6 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 public final class DruidSelectQueryProcessor implements QuerySqlProcessor {
-
-    private static final int DEFAULT_QUERY_LIMIT = 100;
 
     private final DbType dbType;
     private final SqlSelectSafetyAuditor safetyAuditor;
@@ -61,7 +62,7 @@ public final class DruidSelectQueryProcessor implements QuerySqlProcessor {
         // 2. 执行查询安全审计
         safetyAuditor.audit(statement);
         // 3. 已存在 LIMIT 时保留原始 SQL，否则追加默认 LIMIT
-        return hasLimit(statement) ? sql : stripTrailingSemicolon(sql) + " LIMIT " + DEFAULT_QUERY_LIMIT;
+        return hasLimit(statement) ? sql : stripTrailingSemicolon(sql) + " LIMIT " + DEFAULT_MAX_RESULT_ROWS;
     }
 
     private SQLSelectStatement parseSelectStatement(String sql) {

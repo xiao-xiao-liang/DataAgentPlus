@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS agent
     category        VARCHAR(100) COMMENT '分类',
     admin_id        BIGINT COMMENT '管理员ID',
     tags            TEXT COMMENT '标签, 逗号分隔',
+    max_result_rows INT          DEFAULT 100 COMMENT 'SQL 查询最大返回行数',
     del_flag        TINYINT      DEFAULT 0 COMMENT '逻辑删除：0-未删除, 1-已删除',
     create_time     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
