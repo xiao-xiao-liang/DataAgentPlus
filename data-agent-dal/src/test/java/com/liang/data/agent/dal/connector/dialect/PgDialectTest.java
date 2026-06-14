@@ -57,6 +57,36 @@ class PgDialectTest {
     }
 
     @Test
+    void shouldRejectDangerousFunctions() {
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT pg_sleep(10)"))
+                .hasMessageContaining("危险函数");
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT pg_read_file('/etc/passwd')"))
+                .hasMessageContaining("危险函数");
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT dblink_exec('conn', 'delete from users')"))
+                .hasMessageContaining("危险函数");
+    }
+
+    @Test
+    void shouldRejectLockingSelect() {
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT * FROM users FOR UPDATE"))
+                .hasMessageContaining("高危语法");
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT * FROM users FOR SHARE"))
+                .hasMessageContaining("高危语法");
+    }
+
+    @Test
+    void shouldRejectSecondStatementAfterComment() {
+        assertThatThrownBy(() -> pgDialect.prepareQuerySql("SELECT 1; /* 注释绕过 */ UPDATE users SET name = 'a'"))
+                .hasMessageContaining("SELECT");
+    }
+
+    @Test
+    void shouldAllowSafeCommentInSingleSelect() {
+        assertThat(pgDialect.prepareQuerySql("SELECT id FROM users /* 仅查询用户编号 */"))
+                .isEqualTo("SELECT id FROM users /* 仅查询用户编号 */ LIMIT 100");
+    }
+
+    @Test
     void shouldBuildSchemaValidationSql() {
         assertThat(pgDialect.buildSchemaValidationSql())
                 .isEqualTo("SELECT 1 FROM information_schema.schemata WHERE schema_name = ? LIMIT 1");

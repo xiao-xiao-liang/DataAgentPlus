@@ -57,6 +57,38 @@ class MysqlDialectTest {
     }
 
     @Test
+    void shouldRejectDangerousFunctions() {
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT LOAD_FILE('/etc/passwd')"))
+                .hasMessageContaining("危险函数");
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT SLEEP(10)"))
+                .hasMessageContaining("危险函数");
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT BENCHMARK(1000000, MD5('a'))"))
+                .hasMessageContaining("危险函数");
+    }
+
+    @Test
+    void shouldRejectSelectIntoOutfile() {
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT * FROM users INTO OUTFILE '/tmp/users.csv'"))
+                .hasMessageContaining("高危语法");
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT password FROM users INTO DUMPFILE '/tmp/passwords'"))
+                .hasMessageContaining("SQL");
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT * FROM users LOCK IN SHARE MODE"))
+                .hasMessageContaining("高危语法");
+    }
+
+    @Test
+    void shouldRejectSecondStatementAfterComment() {
+        assertThatThrownBy(() -> mysqlDialect.prepareQuerySql("SELECT 1; /* 注释绕过 */ DELETE FROM users"))
+                .hasMessageContaining("SELECT");
+    }
+
+    @Test
+    void shouldAllowSafeCommentInSingleSelect() {
+        assertThat(mysqlDialect.prepareQuerySql("SELECT id FROM users /* 仅查询用户编号 */"))
+                .isEqualTo("SELECT id FROM users /* 仅查询用户编号 */ LIMIT 100");
+    }
+
+    @Test
     void shouldBuildDatabaseValidationSql() {
         assertThat(mysqlDialect.buildDatabaseValidationSql())
                 .isEqualTo("SELECT 1 FROM information_schema.schemata WHERE schema_name = ? LIMIT 1");

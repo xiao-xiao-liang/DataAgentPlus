@@ -1,21 +1,12 @@
 package com.liang.data.agent.dal.connector.dialect;
 
-import com.alibaba.druid.DbType;
-import com.alibaba.druid.sql.SQLUtils;
-import com.alibaba.druid.sql.ast.SQLStatement;
-import com.alibaba.druid.sql.ast.statement.SQLSelect;
-import com.alibaba.druid.sql.ast.statement.SQLSelectQuery;
-import com.alibaba.druid.sql.ast.statement.SQLSelectQueryBlock;
-import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.druid.sql.ast.statement.SQLUnionQuery;
-import com.alibaba.druid.sql.parser.ParserException;
-import com.liang.data.agent.common.errorcode.BaseErrorCode;
-import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.DatabaseTypeEnum;
 import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.ForeignKeyInfoBO;
 import com.liang.data.agent.dal.connector.bo.TableInfoBO;
+import com.liang.data.agent.dal.connector.query.processor.DruidSelectQueryProcessor;
+import com.liang.data.agent.dal.connector.query.processor.QuerySqlProcessor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +32,7 @@ public class PgDialect implements DatabaseDialect {
 
     private static final DatabaseTypeEnum DB_TYPE = DatabaseTypeEnum.POSTGRESQL;
     private static final int SAMPLE_LIMIT = 10;
-    private static final int DEFAULT_QUERY_LIMIT = 100;
+    private static final QuerySqlProcessor QUERY_SQL_PROCESSOR = DruidSelectQueryProcessor.postgresql();
 
     @Override
     public String type() {
@@ -101,51 +92,7 @@ public class PgDialect implements DatabaseDialect {
 
     @Override
     public String prepareQuerySql(String sql) {
-        SQLSelectStatement statement = auditSelectQuery(sql);
-        if (hasLimit(statement)) {
-            return sql;
-        }
-        return stripTrailingSemicolon(sql) + " LIMIT " + DEFAULT_QUERY_LIMIT;
-    }
-
-    private SQLSelectStatement auditSelectQuery(String sql) {
-        List<SQLStatement> statements;
-        try {
-            statements = SQLUtils.parseStatements(sql, DbType.postgresql);
-        } catch (ParserException e) {
-            throw new ServiceException("SQL 语法解析失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);
-        }
-
-        if (statements.size() != 1) {
-            throw new ServiceException("SQL 安全审计失败: 仅允许执行单条 SELECT 查询");
-        }
-        if (!(statements.getFirst() instanceof SQLSelectStatement)) {
-            throw new ServiceException("SQL 安全审计失败: 仅允许执行 SELECT 查询");
-        }
-        return (SQLSelectStatement) statements.getFirst();
-    }
-
-    private boolean hasLimit(SQLSelectStatement statement) {
-        SQLSelect select = statement.getSelect();
-        if (select.getLimit() != null) {
-            return true;
-        }
-        SQLSelectQuery query = select.getQuery();
-        if (query instanceof SQLSelectQueryBlock queryBlock) {
-            return queryBlock.getLimit() != null;
-        }
-        if (query instanceof SQLUnionQuery unionQuery) {
-            return unionQuery.getLimit() != null;
-        }
-        return false;
-    }
-
-    private String stripTrailingSemicolon(String sql) {
-        String trimmed = sql.stripTrailing();
-        if (trimmed.endsWith(";")) {
-            return trimmed.substring(0, trimmed.length() - 1).stripTrailing();
-        }
-        return trimmed;
+        return QUERY_SQL_PROCESSOR.prepare(sql);
     }
 
     @Override
