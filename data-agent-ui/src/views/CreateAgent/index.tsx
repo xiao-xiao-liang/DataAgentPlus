@@ -34,6 +34,7 @@ interface FormState {
   prompt: string; // 系统提示词
   category: string; // 智能体分类
   tags: string; // 逗号分隔的标签字符串
+  maxResultRows: number;
 }
 
 interface AgentDatasourceVO {
@@ -118,6 +119,7 @@ export const CreateAgent: React.FC = () => {
     prompt: '',
     category: '',
     tags: '',
+    maxResultRows: 100,
   });
 
   // 标签交互管理
@@ -260,6 +262,7 @@ export const CreateAgent: React.FC = () => {
               prompt: data.data.prompt || '',
               category: data.data.category || '',
               tags: data.data.tags || '',
+              maxResultRows: data.data.maxResultRows ?? 100,
             });
             setApiKeyEnabled(data.data.apiKeyEnabled === 1);
             // 解析标签
@@ -572,6 +575,7 @@ export const CreateAgent: React.FC = () => {
       prompt: form.prompt.trim(),
       category: form.category.trim(),
       tags: tagsList.join(','),
+      maxResultRows: form.maxResultRows,
     };
 
     try {
@@ -1182,6 +1186,26 @@ message_resp = requests.post(
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none h-3.5 w-3.5 text-slate-400" />
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-[10px] text-slate-650 block">
+                        SQL 最大返回行数
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={form.maxResultRows}
+                        onChange={(e) => setForm({
+                          ...form,
+                          maxResultRows: Math.min(1000, Math.max(1, Number(e.target.value) || 1)),
+                        })}
+                        className="flex w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs h-8 placeholder:text-gray-400 focus:outline-none focus:border-[#2D336B] focus:ring-1 focus:ring-[#2D336B] transition-all"
+                      />
+                      <p className="text-[9px] leading-4 text-slate-400">
+                        限制单次分析可返回的数据行数，范围 1–1000。
+                      </p>
                     </div>
 
                     <div className="space-y-1.5">

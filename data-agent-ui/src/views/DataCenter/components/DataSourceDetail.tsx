@@ -18,6 +18,7 @@ import {
 import clsx from 'clsx';
 import type { DataSource } from '../types';
 import { LogicalRelationConfig } from './LogicalRelationConfig';
+import { useCurrentAgentStore } from '../../../stores/currentAgent';
 
 // 引入数据库 LOGO 静态资产
 import mysqlLogo from '../../../assets/logos/mysql.svg';
@@ -49,6 +50,10 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
 }) => {
   const { tableName } = useParams();
   const navigate = useNavigate();
+  const currentAgentId = useCurrentAgentStore(state => state.agentId);
+  const hasCurrentAgent = currentAgentId !== 'default' && /^\d+$/.test(currentAgentId);
+  const [analyticSaving, setAnalyticSaving] = useState(false);
+  const [columnPermissionAvailable, setColumnPermissionAvailable] = useState(false);
   // activeSubTable 用于存放下钻后查看的具体表名，为 null 表示查看库本身
   const [activeSubTable, setActiveSubTable] = useState<string | null>(null);
 
@@ -100,11 +105,18 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
   const fetchColumns = async () => {
     if (!activeSubTable) return;
     try {
-      const response = await fetch(`/api/datasource/${selectedItem.id}/tables/${activeSubTable}/columns`);
-      if (response.ok) {
-        const result = await response.json();
-        if (result.code === '0') {
-          const unanalyticCols = JSON.parse(localStorage.getItem(`ds_cols_unanalytic_${selectedItem.id}_${activeSubTable}`) || '[]');
+      let result: any = null;
+      if (hasCurrentAgent) {
+        const agentResponse = await fetch(`/api/agent/${currentAgentId}/datasource/${selectedItem.id}/tables/${activeSubTable}/columns`);
+        result = await agentResponse.json();
+        setColumnPermissionAvailable(result.code === '0' || result.success === true);
+      }
+      if (!result || (result.code !== '0' && result.success !== true)) {
+        const physicalResponse = await fetch(`/api/datasource/${selectedItem.id}/tables/${activeSubTable}/columns`);
+        result = await physicalResponse.json();
+        setColumnPermissionAvailable(false);
+      }
+      if (result.code === '0' || result.success === true) {
           const list = (result.data || []).map((col: any) => {
             const cacheKey = `col_asset_${selectedItem.id}_${activeSubTable}_${col.columnName}`;
             const localDesc = localStorage.getItem(cacheKey);
@@ -113,7 +125,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
               name: col.columnName,
               type: col.dataType,
               desc: displayDesc,
-              isAnalytic: !unanalyticCols.includes(col.columnName),
+              isAnalytic: col.isAnalytic !== false,
               nullable: col.nullable !== false,
               primaryKey: col.primaryKey === true || String(col.primaryKey) === 'true' || col.primaryKey === 1 || String(col.primaryKey) === '1' || col.columnName?.trim().toLowerCase() === 'id'
             };
@@ -121,7 +133,6 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
           setColumnsData(list);
           setSelectedColumns(list.map((c: any) => c.name));
           console.log('[Debug] fetchColumns columnsData:', list);
-        }
       }
     } catch (e) {
       console.error('加载字段列表失败:', e);
@@ -147,33 +158,35 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
     }
   };
 
-  // 设置参与/不参与分析状态 (本地持久化方案)
-  const handleSetAnalytic = (analytic: boolean) => {
+  // 设置当前智能体字段参与分析状态
+  const handleSetAnalytic = async (analytic: boolean) => {
     if (!activeSubTable || selectedColumns.length === 0) return;
-    const cacheKey = `ds_cols_unanalytic_${selectedItem.id}_${activeSubTable}`;
-    let unanalyticCols = JSON.parse(localStorage.getItem(cacheKey) || '[]') as string[];
-    
-    if (analytic) {
-      // 参与分析：从不参与列表中移除选中的列
-      unanalyticCols = unanalyticCols.filter(col => !selectedColumns.includes(col));
-    } else {
-      // 不参与分析：将选中的列加入到不参与列表中
-      selectedColumns.forEach(col => {
-        if (!unanalyticCols.includes(col)) {
-          unanalyticCols.push(col);
-        }
-      });
+    if (!hasCurrentAgent) {
+      onNotice?.('请先选择智能体');
+      return;
     }
-    
-    localStorage.setItem(cacheKey, JSON.stringify(unanalyticCols));
-    
-    // 更新 columnsData 状态以重新渲染
-    setColumnsData(prev => prev.map(col => {
-      if (selectedColumns.includes(col.name)) {
-        return { ...col, isAnalytic: analytic };
+
+    setAnalyticSaving(true);
+    try {
+      const result = await fetch(`/api/agent/${currentAgentId}/datasource/${selectedItem.id}/tables/${activeSubTable}/columns/analytic`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columnNames: selectedColumns, isAnalytic: analytic })
+      }).then(response => response.json());
+      if (result.success || result.code === '0') {
+        setColumnsData(prev => prev.map(col => selectedColumns.includes(col.name)
+          ? { ...col, isAnalytic: analytic }
+          : col));
+        onNotice?.(analytic ? '已设置为参与分析' : '已设置为不参与分析');
+      } else {
+        onNotice?.(result.message || '字段参与分析状态更新失败');
       }
-      return col;
-    }));
+    } catch (error) {
+      console.error('更新字段参与分析状态失败:', error);
+      onNotice?.('字段参与分析状态更新失败');
+    } finally {
+      setAnalyticSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -185,7 +198,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
     }
     // 切换表名或选中项时，重置之前的采样数据
     setTablePreviewData(null);
-  }, [activeSubTable, selectedItem]);
+  }, [activeSubTable, selectedItem, currentAgentId]);
 
 
 
@@ -642,10 +655,11 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
           /* ======================== 数据表级下钻页面 ======================== */
           <div className="flex-1 overflow-hidden flex flex-col">
             
-            {/* 关于此表面板 */}
-            <div className="flex-none pb-3 select-none">
-              <p className="my-5 text-sm font-bold text-gray-800">关于此表</p>
-              <div className="text-sm leading-8">
+            {/* 表信息与描述面板 */}
+            <div className="flex-none py-4 select-none grid grid-cols-[1fr_1px_1fr] gap-6">
+              <div>
+                <p className="mb-3 text-sm font-bold text-gray-800">关于此表</p>
+                <div className="text-sm leading-7">
                 <div className="text-gray-500 flex items-center">
                   <span className="mr-2 w-[120px]">建表描述</span>
                   <span className="text-gray-800">
@@ -664,11 +678,11 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                   <span className="mr-2 w-[120px]">更新时间</span>
                   <span className="text-gray-800 font-mono">{currentTableDetail?.updateTime}</span>
                 </div>
+                </div>
               </div>
-
-              <div className="shrink-0 bg-gray-200/80 h-[1px] w-full my-4"></div>
-
-              <p className="my-5 flex items-center text-sm font-bold text-gray-800 select-none cursor-default">
+              <div className="bg-gray-200/80 h-full min-h-28"></div>
+              <div>
+              <p className="mb-3 flex items-center text-sm font-bold text-gray-800 select-none cursor-default">
                 描述
                 <svg 
                   xmlns="http://www.w3.org/2000/svg" 
@@ -689,6 +703,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
               </p>
               <div className="flex items-center text-sm text-gray-500 font-medium select-text">
                 <span className="cursor-default">{tableDesc || "暂无描述"}</span>
+              </div>
               </div>
             </div>
 
@@ -728,14 +743,14 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                     <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => handleSetAnalytic(true)}
-                        disabled={selectedColumns.length === 0}
+                        disabled={selectedColumns.length === 0 || !columnPermissionAvailable || analyticSaving}
                         className="px-3 h-7 bg-[#151517] hover:bg-[#151517]/90 text-white text-xs font-semibold rounded-md shadow-xs flex items-center justify-center cursor-pointer disabled:opacity-50"
                       >
                         参与分析
                       </button>
                       <button 
                         onClick={() => handleSetAnalytic(false)}
-                        disabled={selectedColumns.length === 0}
+                        disabled={selectedColumns.length === 0 || !columnPermissionAvailable || analyticSaving}
                         className="px-3 h-7 bg-[#F3F3F5] hover:bg-[#EAEAEF] text-gray-700 text-xs font-semibold rounded-md flex items-center justify-center border-0 cursor-pointer disabled:opacity-50"
                       >
                         不参与分析
@@ -755,7 +770,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                     <table className="w-full text-left border-collapse text-sm">
                       <thead className="sticky top-0 bg-gray-50/90 backdrop-blur-xs z-10 border-b border-gray-200 select-none">
                         <tr>
-                          <th className="px-4 py-2.5 text-gray-600 w-12">
+                          <th className="px-4 py-2 text-gray-600 w-12">
                             <label className="relative flex items-center justify-center cursor-pointer select-none">
                               <input 
                                 type="checkbox" 
@@ -769,23 +784,23 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                               </svg>
                             </label>
                           </th>
-                          <th className="px-3 py-2.5 font-semibold text-gray-700 border-r border-gray-100/50 w-[22%] relative whitespace-nowrap">
+                          <th className="px-3 py-2 font-semibold text-gray-700 border-r border-gray-100/50 w-[22%] relative whitespace-nowrap">
                             列名
                             <span className="absolute right-0 top-3 inline-block h-3 w-px bg-gray-200"></span>
                           </th>
-                          <th className="px-3 py-2.5 font-semibold text-gray-700 border-r border-gray-100/50 w-[18%] relative whitespace-nowrap">
+                          <th className="px-3 py-2 font-semibold text-gray-700 border-r border-gray-100/50 w-[18%] relative whitespace-nowrap">
                             数据类型
                             <span className="absolute right-0 top-3 inline-block h-3 w-px bg-gray-200"></span>
                           </th>
-                          <th className="px-3 py-2.5 font-semibold text-gray-700 border-r border-gray-100/50 w-[14%] relative text-center whitespace-nowrap">
+                          <th className="px-3 py-2 font-semibold text-gray-700 border-r border-gray-100/50 w-[14%] relative text-center whitespace-nowrap">
                             可空性
                             <span className="absolute right-0 top-3 inline-block h-3 w-px bg-gray-200"></span>
                           </th>
-                          <th className="px-3 py-2.5 font-semibold text-gray-700 border-r border-gray-100/50 w-[16%] relative text-center whitespace-nowrap">
+                          <th className="px-3 py-2 font-semibold text-gray-700 border-r border-gray-100/50 w-[16%] relative text-center whitespace-nowrap">
                             是否参与分析
                             <span className="absolute right-0 top-3 inline-block h-3 w-px bg-gray-200"></span>
                           </th>
-                          <th className="px-3 py-2.5 font-semibold text-gray-700 w-[30%] whitespace-nowrap">
+                          <th className="px-3 py-2 font-semibold text-gray-700 w-[30%] whitespace-nowrap">
                             <span className="flex items-center gap-1">
                               描述
                               <CircleHelp className="h-3.5 w-3.5 text-gray-450 cursor-pointer" />
@@ -795,7 +810,7 @@ export const DataSourceDetail: React.FC<DataSourceDetailProps> = ({
                       </thead>
                       <tbody className="divide-y divide-gray-100 font-medium">
                         {columnsData.map(col => (
-                          <tr key={col.name} className="hover:bg-gray-50/50 transition-colors h-11">
+                          <tr key={col.name} className="hover:bg-gray-50/50 transition-colors h-9">
                             <td className="px-4 py-1.5">
                               <label className="relative flex items-center justify-center cursor-pointer select-none">
                                 <input 
