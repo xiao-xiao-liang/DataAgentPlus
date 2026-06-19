@@ -47,14 +47,31 @@ public class SqlExecutor {
      */
     public static ResultSetBO execute(Connection conn, String schema, DatabaseDialect dialect, String sql, int maxRows)
             throws SQLException {
+        return execute(conn, schema, dialect, sql, maxRows, STATEMENT_TIMEOUT);
+    }
+
+    /**
+     * 执行 SQL 查询，并应用指定查询超时。
+     *
+     * @param conn 数据库连接
+     * @param schema 数据库名或 Schema
+     * @param dialect 数据库方言
+     * @param sql 待执行 SQL
+     * @param maxRows 最大返回行数
+     * @param timeoutSeconds 查询超时秒数
+     * @return 结构化查询结果
+     */
+    public static ResultSetBO execute(Connection conn, String schema, DatabaseDialect dialect, String sql,
+                                      int maxRows, int timeoutSeconds) throws SQLException {
         dialect.switchSchema(conn, schema);
         String preparedSql = dialect.prepareQuerySql(sql);
 
-        // 创建 Statement
+        // 1. 创建 Statement 并应用结果行数与查询超时限制。
         try (Statement statement = conn.createStatement()) {
             statement.setMaxRows(maxRows);
-            statement.setQueryTimeout(STATEMENT_TIMEOUT);
+            statement.setQueryTimeout(timeoutSeconds);
 
+            // 2. 执行查询并转换结构化结果。
             try (ResultSet rs = statement.executeQuery(preparedSql)) {
                 return ResultSetBO.of(rs);
             }

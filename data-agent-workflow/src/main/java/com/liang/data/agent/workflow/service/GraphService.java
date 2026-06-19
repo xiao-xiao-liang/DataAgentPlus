@@ -15,6 +15,7 @@ import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.workflow.util.WorkflowEventUtil;
+import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.InteractionType;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntent;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntentResult;
@@ -33,6 +34,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.liang.data.agent.common.constant.ModeSwitch.HUMAN_FEEDBACK_DATA;
@@ -60,28 +62,40 @@ public class GraphService {
     private final CompiledGraph compiledGraph;
     private final WorkflowRunService workflowRunService;
     private final HumanFeedbackIntentService humanFeedbackIntentService;
+    private final Duration workflowTimeout;
 
     private final ConcurrentHashMap<String, StreamContext> streamContextMap = new ConcurrentHashMap<>();
 
     public GraphService(StateGraph nl2sqlGraph) {
-        this(nl2sqlGraph, WorkflowRunService.noop(), HumanFeedbackIntentService.withoutModel(), (BaseCheckpointSaver) null);
+        this(nl2sqlGraph, WorkflowRunService.noop(), HumanFeedbackIntentService.withoutModel(), null, Duration.ofSeconds(120));
     }
 
     @Autowired
     public GraphService(StateGraph nl2sqlGraph,
                         WorkflowRunService workflowRunService,
                         HumanFeedbackIntentService humanFeedbackIntentService,
-                        ObjectProvider<BaseCheckpointSaver> checkpointSaverProvider) {
+                        ObjectProvider<BaseCheckpointSaver> checkpointSaverProvider,
+                        DataAgentProperties properties) {
         this(nl2sqlGraph, workflowRunService, humanFeedbackIntentService,
-                checkpointSaverProvider != null ? checkpointSaverProvider.getIfAvailable() : null);
+                checkpointSaverProvider != null ? checkpointSaverProvider.getIfAvailable() : null,
+                Duration.ofSeconds(properties.getExecutionTimeout().getWorkflowSeconds()));
     }
 
     GraphService(StateGraph nl2sqlGraph,
                  WorkflowRunService workflowRunService,
                  HumanFeedbackIntentService humanFeedbackIntentService,
                  BaseCheckpointSaver checkpointSaver) {
+        this(nl2sqlGraph, workflowRunService, humanFeedbackIntentService, checkpointSaver, Duration.ofSeconds(120));
+    }
+
+    GraphService(StateGraph nl2sqlGraph,
+                 WorkflowRunService workflowRunService,
+                 HumanFeedbackIntentService humanFeedbackIntentService,
+                 BaseCheckpointSaver checkpointSaver,
+                 Duration workflowTimeout) {
         this.nl2sqlGraph = nl2sqlGraph;
         this.workflowRunService = workflowRunService;
+        this.workflowTimeout = workflowTimeout;
         this.humanFeedbackIntentService = humanFeedbackIntentService != null
                 ? humanFeedbackIntentService
                 : HumanFeedbackIntentService.withoutModel();
@@ -269,7 +283,7 @@ public class GraphService {
                     }
                 });
 
-        return contentEvents.publish(sharedContentEvents -> {
+        Flux<GraphStreamChunk> eventStream = contentEvents.publish(sharedContentEvents -> {
                     Flux<GraphStreamChunk> fallbackPersistEvents = Flux.interval(
                                     Duration.ofMillis(WorkflowRunConstants.FALLBACK_PERSIST_INTERVAL_MILLIS))
                             .takeUntilOther(sharedContentEvents.ignoreElements())
@@ -305,6 +319,17 @@ public class GraphService {
                 .doOnCancel(() -> {
                     log.info("{}被取消 - threadId: {}", label, threadId);
                     cleanupStreamContext(threadId);
+                });
+
+        return eventStream
+                .timeout(workflowTimeout)
+                .onErrorResume(TimeoutException.class, error -> {
+                    log.warn("{}超时 - threadId: {}, timeoutSeconds: {}",
+                            label, threadId, workflowTimeout.toSeconds());
+                    workflowRunService.markFailed(threadId, "工作流执行超时");
+                    cleanupStreamContext(threadId);
+                    String content = "{\"code\":\"B000100\",\"message\":\"工作流执行超时\"}";
+                    return Flux.just(GraphStreamChunk.error(content, currentNode.get()));
                 });
     }
 

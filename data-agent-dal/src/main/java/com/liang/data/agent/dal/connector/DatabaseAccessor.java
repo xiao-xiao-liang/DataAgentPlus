@@ -1,6 +1,7 @@
 package com.liang.data.agent.dal.connector;
 
 import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
+import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.errorcode.BaseErrorCode;
 import com.liang.data.agent.common.exception.ServiceException;
 import com.liang.data.agent.dal.connector.bo.*;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.util.List;
 
 /**
@@ -26,6 +28,7 @@ import java.util.List;
 public class DatabaseAccessor {
 
     private final DataSourceManager dataSourceManager;
+    private final DataAgentProperties properties;
 
     public String ping(DbConfigBO config) {
         return dataSourceManager.ping(config);
@@ -73,7 +76,12 @@ public class DatabaseAccessor {
     public ResultSetBO executeSql(DbConfigBO config, String sql, int maxRows) {
         try (Connection conn = dataSourceManager.getConnection(config)) {
             DatabaseDialect dialect = dataSourceManager.getDialect(config.type());
-            return SqlExecutor.execute(conn, config.schema(), dialect, sql, maxRows);
+            return SqlExecutor.execute(conn, config.schema(), dialect, sql, maxRows,
+                    properties.getExecutionTimeout().getSqlSeconds());
+        } catch (SQLTimeoutException e) {
+            log.warn("SQL 查询执行超时: sql={}, timeoutSeconds={}", sql,
+                    properties.getExecutionTimeout().getSqlSeconds());
+            throw new ServiceException("SQL 查询执行超时", e, BaseErrorCode.SERVICE_TIMEOUT_ERROR);
         } catch (SQLException e) {
             log.error("执行 SQL 失败: sql={}, error={}", sql, e.getMessage());
             throw new ServiceException("执行 SQL 失败: " + e.getMessage(), e, BaseErrorCode.SERVICE_ERROR);

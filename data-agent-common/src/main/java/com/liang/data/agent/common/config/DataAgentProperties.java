@@ -51,6 +51,11 @@ public class DataAgentProperties {
     private CodeExecutorProperties codeExecutor = new CodeExecutorProperties();
 
     /**
+     * 非模型执行链路超时配置
+     */
+    private ExecutionTimeoutProperties executionTimeout = new ExecutionTimeoutProperties();
+
+    /**
      * SQL 执行失败最大重试次数
      */
     private int maxSqlRetryCount = 10;
@@ -99,6 +104,23 @@ public class DataAgentProperties {
      * 执行SQL结果图表化超时时间，默认3000ms
      */
     private Long enrichSqlResultTimeout = 3000L;
+
+    /**
+     * 非模型执行链路超时配置。
+     */
+    @Getter
+    @Setter
+    public static class ExecutionTimeoutProperties {
+
+        /** 工作流总运行超时秒数 */
+        private int workflowSeconds = 120;
+
+        /** SQL 查询超时秒数 */
+        private int sqlSeconds = 30;
+
+        /** Python 执行超时秒数 */
+        private int pythonSeconds = 30;
+    }
 
     @Getter
     @Setter

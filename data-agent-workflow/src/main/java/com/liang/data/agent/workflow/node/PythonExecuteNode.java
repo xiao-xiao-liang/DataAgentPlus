@@ -9,6 +9,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.code.PythonCodeExecutor;
 import com.liang.data.agent.ai.code.model.TaskResponse;
+import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.ratelimit.ResourceType;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +52,7 @@ public class PythonExecuteNode implements NodeAction {
 
     private final PythonCodeExecutor pythonCodeExecutor;
     private final ResourceGate resourceGate;
+    private final DataAgentProperties properties;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Override
@@ -79,8 +82,9 @@ public class PythonExecuteNode implements NodeAction {
         Map<String, Object> stateUpdate = new HashMap<>();
 
         try (permit) {
-            // 4. 调用多策略引擎执行代码，限制最大超时时间为 30 秒
-            TaskResponse response = pythonCodeExecutor.execute(pythonCode, sqlResultJson, 30);
+            // 4. 使用统一配置的超时时间调用多策略执行引擎。
+            int timeoutSeconds = properties.getExecutionTimeout().getPythonSeconds();
+            TaskResponse response = pythonCodeExecutor.execute(pythonCode, sqlResultJson, timeoutSeconds);
 
             if (response.isSuccess()) {
                 // 执行成功：还原 stdout 并处理乱码，推进流程
@@ -204,7 +208,7 @@ public class PythonExecuteNode implements NodeAction {
                     }
                     out.write(c);
                 }
-                return out.toString("UTF-8");
+                return out.toString(StandardCharsets.UTF_8);
             } catch (Exception ignored) {}
         }
 

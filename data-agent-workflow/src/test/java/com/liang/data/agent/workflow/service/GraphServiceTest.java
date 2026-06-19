@@ -175,6 +175,34 @@ class GraphServiceTest {
     }
 
     @Test
+    void shouldEmitStructuredErrorAndMarkFailedWhenWorkflowTimesOut() throws Exception {
+        AsyncNodeAction noopNode = AsyncNodeAction.node_async(state -> Map.of());
+        StateGraph graph = new StateGraph("timeout_graph", () -> Map.of())
+                .addNode("LongStreamingNode", AsyncNodeAction.node_async(this::longRunningStreamingNode))
+                .addNode(CLARIFICATION_ASK_NODE, noopNode)
+                .addNode(CLARIFICATION_NORMALIZE_NODE, noopNode)
+                .addNode(CLARIFICATION_CONFIRM_NODE, noopNode)
+                .addNode(HUMAN_FEEDBACK_NODE, noopNode)
+                .addEdge(START, "LongStreamingNode")
+                .addEdge("LongStreamingNode", END);
+        WorkflowRunService workflowRunService = mock(WorkflowRunService.class);
+        GraphService graphService = new GraphService(graph, workflowRunService,
+                HumanFeedbackIntentService.withoutModel(), null, Duration.ofMillis(50));
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-timeout")
+                .query("超时测试")
+                .build();
+
+        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
+
+        assertThat(chunks).isNotNull();
+        assertThat(chunks.getLast().eventType()).isEqualTo(WorkflowEventConstants.EVENT_WORKFLOW_ERROR);
+        assertThat(chunks.getLast().content()).contains("B000100").contains("工作流执行超时");
+        verify(workflowRunService).markFailed("thread-timeout", "工作流执行超时");
+    }
+
+    @Test
     void shouldResumeFromClarificationAnswerIntoNormalizeNode() throws Exception {
         NodeBeanUtil nodeBeanUtil = mock(NodeBeanUtil.class);
         when(nodeBeanUtil.toAsyncNode(any())).thenAnswer(invocation -> {

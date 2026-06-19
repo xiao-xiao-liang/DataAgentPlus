@@ -62,6 +62,10 @@ spring.elasticsearch:
 # ==================== DataAgent 自定义配置 ====================
 data-agent:
   llm-service-mode: STREAM
+  execution-timeout:
+    workflow-seconds: 120
+    sql-seconds: 30
+    python-seconds: 30
   vector-store:
     default-similarity-threshold: 0.5
     default-topk-limit: 5

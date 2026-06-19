@@ -34,9 +34,11 @@ class SqlExecutorTest {
                 "analytics",
                 dialect,
                 "select * from orders limit 500",
-                25
+                25,
+                12
         )).isInstanceOf(SQLException.class);
 
         verify(statement).setMaxRows(25);
+        verify(statement).setQueryTimeout(12);
     }
 }
