@@ -3,13 +3,18 @@ package com.liang.data.agent.controller;
 import com.liang.data.agent.common.result.Result;
 import com.liang.data.agent.common.result.Results;
 import com.liang.data.agent.service.agentdatasource.AgentDatasourceService;
+import com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService;
+import com.liang.data.agent.service.agentdatasource.dto.ColumnAnalyticUpdateDTO;
+import com.liang.data.agent.service.agentdatasource.vo.AgentDatasourceColumnVO;
 import com.liang.data.agent.service.agentdatasource.vo.AgentDatasourceVO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +33,7 @@ import java.util.List;
 public class AgentDatasourceController {
 
     private final AgentDatasourceService agentDatasourceService;
+    private final AgentDatasourceColumnService agentDatasourceColumnService;
 
     /**
      * 绑定数据源到指定智能体
@@ -84,6 +90,29 @@ public class AgentDatasourceController {
                                    @RequestBody(required = false) List<String> tables) {
         log.info("触发 Schema 同步, agentId={}, tables={}", agentId, tables);
         agentDatasourceService.syncSchema(agentId, tables);
+        return Results.success();
+    }
+
+    /**
+     * 查询当前智能体指定数据表的字段配置。
+     */
+    @GetMapping("/datasource/{datasourceId}/tables/{tableName}/columns")
+    public Result<List<AgentDatasourceColumnVO>> getColumns(@PathVariable Integer agentId,
+                                                            @PathVariable Integer datasourceId,
+                                                            @PathVariable String tableName) {
+        return Results.success(agentDatasourceColumnService.listColumns(agentId, datasourceId, tableName));
+    }
+
+    /**
+     * 批量更新当前智能体字段参与分析状态。
+     */
+    @PutMapping("/datasource/{datasourceId}/tables/{tableName}/columns/analytic")
+    public Result<Void> updateColumnAnalytic(@PathVariable Integer agentId,
+                                             @PathVariable Integer datasourceId,
+                                             @PathVariable String tableName,
+                                             @Valid @RequestBody ColumnAnalyticUpdateDTO dto) {
+        agentDatasourceColumnService.updateAnalytic(agentId, datasourceId, tableName,
+                dto.getColumnNames(), dto.getIsAnalytic());
         return Results.success();
     }
 }

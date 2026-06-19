@@ -25,7 +25,9 @@ class SchemaServiceImplTest {
                 mock(VectorStore.class),
                 mock(DataAgentProperties.class),
                 mock(DatabaseAccessor.class),
-                mock(com.liang.data.agent.ai.vectorstore.AgentVectorStoreService.class)
+                mock(com.liang.data.agent.ai.vectorstore.AgentVectorStoreService.class),
+                mock(com.liang.data.agent.dal.mapper.AgentDatasourceMapper.class),
+                mock(com.liang.data.agent.dal.mapper.DatasourceTableColumnMapper.class)
         );
         Method method = SchemaServiceImpl.class.getDeclaredMethod(
                 "buildTableDocument",

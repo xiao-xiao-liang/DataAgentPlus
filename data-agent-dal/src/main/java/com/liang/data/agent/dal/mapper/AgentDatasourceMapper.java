@@ -17,4 +17,10 @@ public interface AgentDatasourceMapper extends BaseMapper<AgentDatasourceEntity>
 
     @Select("SELECT id FROM agent_datasource WHERE agent_id = #{agentId} AND is_active = 1")
     Integer getActiveBindingId(@Param("agentId") Integer agentId);
+
+    /**
+     * 根据智能体和数据源查询绑定 ID。
+     */
+    @Select("SELECT id FROM agent_datasource WHERE agent_id = #{agentId} AND datasource_id = #{datasourceId} AND del_flag = 0")
+    Integer getBindingId(@Param("agentId") Integer agentId, @Param("datasourceId") Integer datasourceId);
 }

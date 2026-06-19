@@ -61,6 +61,7 @@ class SqlExecuteNodeTest {
                 null,
                 null,
                 null,
+                null,
                 llmService,
                 properties,
                 mock(JsonParseUtil.class),
@@ -108,6 +109,7 @@ class SqlExecuteNodeTest {
                 null,
                 null,
                 null,
+                null,
                 mock(LlmService.class),
                 new DataAgentProperties(),
                 mock(JsonParseUtil.class),
@@ -148,6 +150,7 @@ class SqlExecuteNodeTest {
                 datasourceMapper,
                 agentDatasourceMapper,
                 tablesMapper,
+                mock(com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService.class),
                 mock(AgentMapper.class),
                 mock(LlmService.class),
                 new DataAgentProperties(),
@@ -189,6 +192,7 @@ class SqlExecuteNodeTest {
                 datasourceMapper,
                 agentDatasourceMapper,
                 tablesMapper,
+                mock(com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService.class),
                 mock(AgentMapper.class),
                 mock(LlmService.class),
                 new DataAgentProperties(),
@@ -235,6 +239,7 @@ class SqlExecuteNodeTest {
                 datasourceMapper,
                 agentDatasourceMapper,
                 tablesMapper,
+                mock(com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService.class),
                 agentMapper,
                 mock(LlmService.class),
                 new DataAgentProperties(),
@@ -253,6 +258,7 @@ class SqlExecuteNodeTest {
     @Test
     void shouldResolveConfiguredMaximumResultRowsWithinSafeRange() {
         SqlExecuteNode node = new SqlExecuteNode(
+                null,
                 null,
                 null,
                 null,

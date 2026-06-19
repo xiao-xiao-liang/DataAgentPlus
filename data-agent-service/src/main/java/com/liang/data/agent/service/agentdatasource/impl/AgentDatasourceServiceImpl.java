@@ -16,6 +16,8 @@ import com.liang.data.agent.dal.entity.AgentEntity;
 import com.liang.data.agent.dal.entity.DatasourceEntity;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
+import com.liang.data.agent.dal.mapper.DatasourceTableColumnMapper;
+import com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService;
 import com.liang.data.agent.service.agentdatasource.AgentDatasourceService;
 import com.liang.data.agent.service.agentdatasource.vo.AgentDatasourceVO;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,8 @@ public class AgentDatasourceServiceImpl extends ServiceImpl<AgentDatasourceMappe
     private final DatabaseAccessor databaseAccessor;
     private final AgentVectorStoreService agentVectorStoreService;
     private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
+    private final DatasourceTableColumnMapper datasourceTableColumnMapper;
+    private final AgentDatasourceColumnService agentDatasourceColumnService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -135,7 +139,10 @@ public class AgentDatasourceServiceImpl extends ServiceImpl<AgentDatasourceMappe
         // 2. 物理清理选中的表关联记录
         agentDatasourceTablesMapper.deleteByAgentDatasourceId(existing.getId());
 
-        // 3. 清除向量文档
+        // 3. 物理清理字段配置
+        datasourceTableColumnMapper.deleteByAgentDatasourceId(existing.getId());
+
+        // 4. 清除向量文档
         try {
             agentVectorStoreService.deleteDocumentsByMetadata(Map.of(
                     AGENT_ID, String.valueOf(agentId),
@@ -216,10 +223,13 @@ public class AgentDatasourceServiceImpl extends ServiceImpl<AgentDatasourceMappe
                 return;
             }
 
-            // 5. 调用 SchemaService 进行完整的 Schema 初始化与向量化写入
+            // 5. 同步当前智能体选中表的字段元数据与分析状态
+            agentDatasourceColumnService.syncColumns(binding.getId(), config, targetTables);
+
+            // 6. 调用 SchemaService 进行完整的 Schema 初始化与向量化写入
             schemaService.initializeSchema(agentId, datasource.getId(), config, targetTables);
 
-            // 6. 更新状态为成功
+            // 7. 更新状态为成功
             updateSyncStatus(binding, "success", "success");
             log.info("Schema 同步及向量化完成, agentId={}, tables={}", agentId, targetTables.size());
 

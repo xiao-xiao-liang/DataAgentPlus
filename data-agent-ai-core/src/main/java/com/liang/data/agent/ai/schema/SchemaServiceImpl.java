@@ -11,6 +11,8 @@ import com.liang.data.agent.dal.connector.bo.ColumnInfoBO;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
 import com.liang.data.agent.dal.connector.bo.ForeignKeyInfoBO;
 import com.liang.data.agent.dal.connector.bo.TableInfoBO;
+import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
+import com.liang.data.agent.dal.mapper.DatasourceTableColumnMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -40,16 +42,19 @@ public class SchemaServiceImpl implements SchemaService {
     private final DataAgentProperties properties;
     private final DatabaseAccessor databaseAccessor;
     private final AgentVectorStoreService vectorStoreService;
+    private final AgentDatasourceMapper agentDatasourceMapper;
+    private final DatasourceTableColumnMapper datasourceTableColumnMapper;
 
     // ==================== 检索 ====================
 
     @Override
-    public List<Document> recallTableDocuments(Integer datasourceId, String query) {
+    public List<Document> recallTableDocuments(Integer agentId, Integer datasourceId, String query) {
         if (datasourceId == null) {
             throw new IllegalArgumentException("datasourceId 不能为空");
         }
         var vs = properties.getVectorStore();
-        String filterExpr = String.format("%s == '%s' && %s == '%s'",
+        String filterExpr = String.format("%s == '%s' && %s == '%s' && %s == '%s'",
+                AGENT_ID, agentId,
                 DATASOURCE_ID, datasourceId,
                 VECTOR_TYPE, VectorType.TABLE.getCode());
 
@@ -63,12 +68,12 @@ public class SchemaServiceImpl implements SchemaService {
     }
 
     @Override
-    public List<Document> getColumnDocumentsByTableNames(Integer datasourceId, List<String> tableNames) {
+    public List<Document> getColumnDocumentsByTableNames(Integer agentId, Integer datasourceId, List<String> tableNames) {
         if (tableNames == null || tableNames.isEmpty()) {
             return Collections.emptyList();
         }
 
-        String filterExpr = buildColumnFilterExpression(datasourceId, tableNames);
+        String filterExpr = buildColumnFilterExpression(agentId, datasourceId, tableNames);
         int topK = tableNames.size() * 100;
 
         SearchRequest request = SearchRequest.builder()
@@ -111,7 +116,7 @@ public class SchemaServiceImpl implements SchemaService {
         log.info("开始初始化 Schema: agentId={}, datasourceId={}, tables={}", agentId, datasourceId, tables);
 
         // 1. 清理旧文档
-        clearSchemaDocuments(datasourceId);
+        clearSchemaDocuments(agentId, datasourceId);
 
         // 2. 拉取外键关系
         Map<String, List<String>> foreignKeyMap = fetchForeignKeyMap(dbConfig, tables);
@@ -134,12 +139,13 @@ public class SchemaServiceImpl implements SchemaService {
      * 构建列文档的过滤表达式
      * <p>格式: datasource_id == 'xxx' && vector_type == 'COLUMN' && (tableName == 't_user' || tableName == 't_order')</p>
      */
-    private String buildColumnFilterExpression(Integer datasourceId, List<String> tableNames) {
+    private String buildColumnFilterExpression(Integer agentId, Integer datasourceId, List<String> tableNames) {
         String tableNameFilter = tableNames.stream()
                 .map(name -> TABLE_NAME + " == '" + name + "'")
                 .collect(Collectors.joining(" || "));
 
-        return String.format("%s == '%s' && %s == '%s' && (%s)",
+        return String.format("%s == '%s' && %s == '%s' && %s == '%s' && (%s)",
+                AGENT_ID, agentId.toString(),
                 DATASOURCE_ID, datasourceId.toString(),
                 VECTOR_TYPE, VectorType.COLUMN.getCode(),
                 tableNameFilter);
@@ -196,12 +202,14 @@ public class SchemaServiceImpl implements SchemaService {
     /**
      * 清理指定数据源的 Schema 文档 (TABLE + COLUMN)
      */
-    private void clearSchemaDocuments(Integer datasourceId) {
+    private void clearSchemaDocuments(Integer agentId, Integer datasourceId) {
         vectorStoreService.deleteDocumentsByMetadata(
-                Map.of(DATASOURCE_ID, datasourceId.toString(), VECTOR_TYPE, VectorType.TABLE.getCode()));
+                Map.of(AGENT_ID, agentId.toString(), DATASOURCE_ID, datasourceId.toString(),
+                        VECTOR_TYPE, VectorType.TABLE.getCode()));
         vectorStoreService.deleteDocumentsByMetadata(
-                Map.of(DATASOURCE_ID, datasourceId.toString(), VECTOR_TYPE, VectorType.COLUMN.getCode()));
-        log.info("已清理 datasourceId={} 的旧 Schema 文档", datasourceId);
+                Map.of(AGENT_ID, agentId.toString(), DATASOURCE_ID, datasourceId.toString(),
+                        VECTOR_TYPE, VectorType.COLUMN.getCode()));
+        log.info("已清理 agentId={}, datasourceId={} 的旧 Schema 文档", agentId, datasourceId);
     }
 
     /**
@@ -235,6 +243,9 @@ public class SchemaServiceImpl implements SchemaService {
 
         String comment = Optional.ofNullable(tableInfos.getFirst().comment()).orElse("");
         List<ColumnInfoBO> columns = databaseAccessor.showColumns(dbConfig, tableName);
+        Integer bindingId = agentDatasourceMapper.getBindingId(agentId, datasourceId);
+        Set<String> analyticColumns = new HashSet<>(datasourceTableColumnMapper.selectAnalyticColumns(bindingId, tableName));
+        columns = columns.stream().filter(column -> analyticColumns.contains(column.columnName())).toList();
 
         // 构造表文档
         tableDocs.add(buildTableDocument(agentId, datasourceId, tableName, comment, columns, foreignKeyMap));
@@ -270,6 +281,7 @@ public class SchemaServiceImpl implements SchemaService {
         meta.put(DATASOURCE_ID, datasourceId.toString());
         meta.put(VECTOR_TYPE, VectorType.TABLE.getCode());
         meta.put(NAME, tableName);
+        meta.put(TABLE_NAME, tableName);
         meta.put(DESCRIPTION, comment);
         meta.put(PRIMARY_KEY, primaryKeys);
         meta.put(FOREIGN_KEY, String.join("、", fkList));

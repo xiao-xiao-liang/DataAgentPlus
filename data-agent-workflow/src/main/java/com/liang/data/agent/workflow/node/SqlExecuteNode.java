@@ -38,6 +38,8 @@ import com.liang.data.agent.workflow.util.SensitiveDataMasker;
 import com.liang.data.agent.workflow.util.SqlQueryRiskGuard;
 import com.liang.data.agent.workflow.util.SqlStatementGuard;
 import com.liang.data.agent.workflow.util.SqlTableAccessGuard;
+import com.liang.data.agent.workflow.util.SqlColumnAccessGuard;
+import com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService;
 import com.liang.data.agent.workflow.util.StateUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -74,6 +76,7 @@ public class SqlExecuteNode implements NodeAction {
     private final DatasourceMapper datasourceMapper;
     private final AgentDatasourceMapper agentDatasourceMapper;
     private final AgentDatasourceTablesMapper agentDatasourceTablesMapper;
+    private final AgentDatasourceColumnService agentDatasourceColumnService;
     private final AgentMapper agentMapper;
     private final LlmService llmService;
     private final DataAgentProperties properties;
@@ -125,6 +128,15 @@ public class SqlExecuteNode implements NodeAction {
         if (!unauthorizedTables.isEmpty()) {
             log.warn("智能体 {} 尝试访问未授权数据表: {}", agentId, unauthorizedTables);
             return buildErrorResponse(state, "SQL 访问了未授权数据表: " + String.join(", ", unauthorizedTables), null);
+        }
+
+        Map<String, Set<String>> analyticColumns = agentDatasourceColumnService
+                .getAnalyticColumns(bindingId, allowedTables);
+        Set<String> unauthorizedColumns = SqlColumnAccessGuard.findUnauthorizedColumns(
+                sql, datasource.getType(), analyticColumns);
+        if (!unauthorizedColumns.isEmpty()) {
+            log.warn("智能体 {} 尝试访问未授权字段: {}", agentId, unauthorizedColumns);
+            return buildErrorResponse(state, "SQL 访问了未授权字段: " + String.join(", ", unauthorizedColumns), null);
         }
 
         var queryRisk = SqlQueryRiskGuard.findRisk(sql, datasource.getType());

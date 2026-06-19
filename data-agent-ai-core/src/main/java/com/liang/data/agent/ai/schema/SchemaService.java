@@ -22,7 +22,7 @@ public interface SchemaService {
      * @param query        规范化查询
      * @return 召回的表文档列表
      */
-    List<Document> recallTableDocuments(Integer datasourceId, String query);
+    List<Document> recallTableDocuments(Integer agentId, Integer datasourceId, String query);
 
     /**
      * 根据表名精确检索列文档（元数据过滤，非语义检索）
@@ -31,7 +31,7 @@ public interface SchemaService {
      * @param tableNames   表名列表
      * @return 列文档列表
      */
-    List<Document> getColumnDocumentsByTableNames(Integer datasourceId, List<String> tableNames);
+    List<Document> getColumnDocumentsByTableNames(Integer agentId, Integer datasourceId, List<String> tableNames);
 
     /**
      * 从 Document 列表构建 SchemaDTO（含外键关系提取）

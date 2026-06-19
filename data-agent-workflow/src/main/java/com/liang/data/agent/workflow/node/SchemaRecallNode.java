@@ -85,7 +85,7 @@ public class SchemaRecallNode implements NodeAction {
 
         // 2.1 主查询检索
         try {
-            List<Document> mainDocs = schemaService.recallTableDocuments(datasourceId, recallInput);
+            List<Document> mainDocs = schemaService.recallTableDocuments(Integer.valueOf(agentId), datasourceId, recallInput);
             if (mainDocs != null) {
                 for (Document doc : mainDocs) {
                     if (doc != null && docIds.add(doc.getId())) {
@@ -104,7 +104,7 @@ public class SchemaRecallNode implements NodeAction {
             for (String query : expandedQueries) {
                 if (StringUtils.hasText(query)) {
                     try {
-                        List<Document> extDocs = schemaService.recallTableDocuments(datasourceId, query);
+                        List<Document> extDocs = schemaService.recallTableDocuments(Integer.valueOf(agentId), datasourceId, query);
                         if (extDocs != null) {
                             for (Document doc : extDocs) {
                                 if (doc != null && docIds.add(doc.getId())) {
@@ -121,7 +121,8 @@ public class SchemaRecallNode implements NodeAction {
 
         // 3. 从表文档提取表名, 按表名精确检索列文档
         List<String> recalledTableNames = extractTableNames(tableDocuments);
-        List<Document> columnDocuments = schemaService.getColumnDocumentsByTableNames(datasourceId, recalledTableNames);
+        List<Document> columnDocuments = schemaService.getColumnDocumentsByTableNames(
+                Integer.valueOf(agentId), datasourceId, recalledTableNames);
 
         // 4. 构建展示消息
         String message;
