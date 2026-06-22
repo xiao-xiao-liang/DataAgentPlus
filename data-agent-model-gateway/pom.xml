@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.liang.data.agent</groupId>
+        <artifactId>liang-data-agent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>data-agent-model-gateway</artifactId>
+    <name>Data Agent Model Gateway</name>
+    <description>模型调用协议、上下文与治理能力</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

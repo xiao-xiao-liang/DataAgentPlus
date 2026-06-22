@@ -15,6 +15,7 @@
         <module>data-agent-common</module>
         <module>data-agent-dal</module>
         <module>data-agent-ai-core</module>
+        <module>data-agent-model-gateway</module>
         <module>data-agent-workflow</module>
         <module>data-agent-service</module>
         <module>data-agent-start</module>
@@ -115,6 +116,11 @@
             <dependency>
                 <groupId>com.liang.data.agent</groupId>
                 <artifactId>data-agent-ai-core</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.liang.data.agent</groupId>
+                <artifactId>data-agent-model-gateway</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
