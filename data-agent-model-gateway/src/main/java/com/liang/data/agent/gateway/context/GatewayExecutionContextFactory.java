@@ -14,6 +14,7 @@ public class GatewayExecutionContextFactory {
      * 创建模型网关执行上下文工厂。
      *
      * @param traceIdProvider 链路追踪编号提供器
+     * @throws NullPointerException traceIdProvider 为空时抛出
      */
     public GatewayExecutionContextFactory(TraceIdProvider traceIdProvider) {
         this.traceIdProvider = Objects.requireNonNull(traceIdProvider, "链路追踪编号提供器不能为空");
@@ -27,6 +28,7 @@ public class GatewayExecutionContextFactory {
      * @param agentId 智能体编号，允许为 null
      * @param tenantId 租户编号，允许为 null
      * @return 模型网关执行上下文
+     * @throws IllegalArgumentException 上下文字段不合法时抛出
      */
     public GatewayExecutionContext create(String sessionId, Long userId, Integer agentId, String tenantId) {
         // 1. 生成本次工作流运行编号。
