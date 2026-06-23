@@ -28,6 +28,12 @@ public class ChatWorkflowRunEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 单次工作流运行ID */
+    private String runId;
+
+    /** OpenTelemetry追踪ID */
+    private String traceId;
+
     /** 会话 ID */
     private String sessionId;
 
@@ -60,6 +66,18 @@ public class ChatWorkflowRunEntity {
 
     /** 中断或失败原因 */
     private String interruptReason;
+
+    /** 开始时间 */
+    private LocalDateTime startTime;
+
+    /** 结束时间 */
+    private LocalDateTime endTime;
+
+    /** 运行耗时毫秒 */
+    private Long durationMs;
+
+    /** 失败节点名称 */
+    private String failedNodeName;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

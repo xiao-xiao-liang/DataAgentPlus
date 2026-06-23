@@ -365,6 +365,8 @@ CREATE TABLE IF NOT EXISTS chat_message
 CREATE TABLE IF NOT EXISTS chat_workflow_run
 (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '运行记录主键',
+    run_id              VARCHAR(36)  DEFAULT NULL COMMENT '单次工作流运行ID',
+    trace_id            VARCHAR(32)  DEFAULT NULL COMMENT 'OpenTelemetry追踪ID',
     session_id          VARCHAR(36)  NOT NULL COMMENT '会话ID',
     agent_id            INT          DEFAULT NULL COMMENT '智能体ID',
     user_id             BIGINT       NOT NULL DEFAULT 1 COMMENT '用户ID',
@@ -376,10 +378,16 @@ CREATE TABLE IF NOT EXISTS chat_workflow_run
     state_snapshot      JSON COMMENT '最近一次图状态快照',
     accumulated_content MEDIUMTEXT COMMENT '当前已累计输出内容',
     interrupt_reason    VARCHAR(512) DEFAULT NULL COMMENT '中断或失败原因',
+    start_time          TIMESTAMP    NULL DEFAULT NULL COMMENT '开始时间',
+    end_time            TIMESTAMP    NULL DEFAULT NULL COMMENT '结束时间',
+    duration_ms         BIGINT       DEFAULT NULL COMMENT '运行耗时毫秒',
+    failed_node_name    VARCHAR(128) DEFAULT NULL COMMENT '失败节点名称',
     create_time         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
+    UNIQUE KEY uk_run_id (run_id),
     INDEX idx_session_id (session_id),
+    INDEX idx_trace_id (trace_id),
     INDEX idx_status (status),
     INDEX idx_update_time (update_time)
 ) ENGINE = InnoDB
