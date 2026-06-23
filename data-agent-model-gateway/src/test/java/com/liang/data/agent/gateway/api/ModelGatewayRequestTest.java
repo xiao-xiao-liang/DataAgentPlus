@@ -7,6 +7,9 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.temporal.TemporalAccessor;
+import java.time.temporal.TemporalField;
+import java.time.temporal.TemporalQuery;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -72,6 +75,16 @@ class ModelGatewayRequestTest {
                 List.of(new ModelMessage(ModelMessageRole.USER, "查询销售额"))
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("必须且只能提供一种");
+    }
+
+    @Test
+    void shouldRejectTemplateVariablesInDirectMessageMode() {
+        assertThatThrownBy(() -> new ModelPrompt(
+                null,
+                Map.of("question", "查询销售额"),
+                List.of(new ModelMessage(ModelMessageRole.USER, "查询销售额"))
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("模板变量");
     }
 
     @Test
@@ -177,6 +190,29 @@ class ModelGatewayRequestTest {
         assertThatThrownBy(() -> ModelPrompt.template("sql-template", Map.of("counter", new AtomicInteger(1))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("模板变量");
+        assertThatThrownBy(() -> ModelPrompt.template("sql-template", Map.of("time", new MutableTemporalAccessor())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("模板变量");
+    }
+
+    @Test
+    void shouldRejectCircularTemplateVariableReferences() {
+        Map<String, Object> selfReferenceMap = new HashMap<>();
+        selfReferenceMap.put("self", selfReferenceMap);
+        List<Object> selfReferenceList = new ArrayList<>();
+        selfReferenceList.add(selfReferenceList);
+        Object[] selfReferenceArray = new Object[1];
+        selfReferenceArray[0] = selfReferenceArray;
+
+        assertThatThrownBy(() -> ModelPrompt.template("sql-template", Map.of("map", selfReferenceMap)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("循环引用");
+        assertThatThrownBy(() -> ModelPrompt.template("sql-template", Map.of("list", selfReferenceList)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("循环引用");
+        assertThatThrownBy(() -> ModelPrompt.template("sql-template", Map.of("array", selfReferenceArray)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("循环引用");
     }
 
     @Test
@@ -208,6 +244,9 @@ class ModelGatewayRequestTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Token");
         assertThatThrownBy(() -> new ModelUsage(1, 1, 3))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("总Token");
+        assertThatThrownBy(() -> new ModelUsage(Long.MAX_VALUE, 1, Long.MAX_VALUE))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("总Token");
     }
@@ -313,5 +352,23 @@ class ModelGatewayRequestTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> variableMap(ModelPrompt prompt, String key) {
         return (Map<String, Object>) prompt.variables().get(key);
+    }
+
+    private static class MutableTemporalAccessor implements TemporalAccessor {
+
+        @Override
+        public boolean isSupported(TemporalField field) {
+            return false;
+        }
+
+        @Override
+        public long getLong(TemporalField field) {
+            throw new UnsupportedOperationException("不支持的时间字段");
+        }
+
+        @Override
+        public <R> R query(TemporalQuery<R> query) {
+            return null;
+        }
     }
 }

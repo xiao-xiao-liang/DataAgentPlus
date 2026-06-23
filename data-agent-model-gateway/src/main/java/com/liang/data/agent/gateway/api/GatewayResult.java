@@ -3,7 +3,7 @@ package com.liang.data.agent.gateway.api;
 import java.util.Objects;
 
 /**
- * 模型网关阻塞调用结果，汇总内容、用量、路由与结束原因。
+ * 模型网关非流式聚合调用结果，汇总内容、用量、路由与结束原因。
  *
  * @param invocationId 调用标识
  * @param content 完整响应内容
