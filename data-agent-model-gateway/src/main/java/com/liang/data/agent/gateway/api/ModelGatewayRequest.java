@@ -28,4 +28,18 @@ public record ModelGatewayRequest(String sceneCode, ModelPrompt prompt, ModelCal
         // 4. 复制业务标签，避免请求构造后被外部修改。
         tags = tags == null ? Map.of() : Map.copyOf(tags);
     }
+
+    /**
+     * 要求请求调用模式与入口期望一致。
+     *
+     * @param expected 入口期望的调用模式
+     */
+    public void requireMode(ModelCallMode expected) {
+        // 1. 校验入口期望模式，避免调用方传入空期望导致误判。
+        Objects.requireNonNull(expected, "期望调用模式不能为空");
+        // 2. 对比请求模式与入口模式，显式拒绝 call/stream 混用。
+        if (mode != expected) {
+            throw new IllegalArgumentException("调用模式不匹配，期望：" + expected + "，实际：" + mode);
+        }
+    }
 }

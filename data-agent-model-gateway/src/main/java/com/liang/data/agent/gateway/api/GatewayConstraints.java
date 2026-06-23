@@ -8,7 +8,8 @@ import java.time.Duration;
  *
  * @param timeout 调用超时时间
  * @param maxOutputTokens 最大输出 Token 数
- * @param budgetLimit 预算上限
+ * @param budgetLimit 调用预算上限，按模型策略配置的统一计费币种表达；协议对象内不做舍入，
+ *                    策略层比较前负责统一币种和精度
  * @param allowFallback 是否允许降级
  */
 public record GatewayConstraints(Duration timeout, Integer maxOutputTokens,
