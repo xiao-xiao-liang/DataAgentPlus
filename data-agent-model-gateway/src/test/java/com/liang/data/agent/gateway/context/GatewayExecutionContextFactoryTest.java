@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.util.context.Context;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -56,6 +59,18 @@ class GatewayExecutionContextFactoryTest {
     }
 
     @Test
+    void shouldUseNullTraceIdWhenProviderThrowsRuntimeException() {
+        GatewayExecutionContextFactory factory = new GatewayExecutionContextFactory(() -> {
+            throw new IllegalStateException("链路追踪组件不可用");
+        });
+
+        GatewayExecutionContext context = factory.create("session-001", null, null, null);
+
+        assertThat(context.runId()).isNotBlank();
+        assertThat(context.traceId()).isNull();
+    }
+
+    @Test
     void shouldValidateExecutionContextFields() {
         assertThatThrownBy(() -> new GatewayExecutionContext(" ", "trace-001", "session-001", 1L, 1, "tenant-001"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -98,5 +113,31 @@ class GatewayExecutionContextFactoryTest {
         assertThatThrownBy(() -> GatewayReactorContext.with(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("执行上下文");
+    }
+
+    @Test
+    void shouldThrowChineseMessageWhenContextTypeIsWrong() throws ReflectiveOperationException {
+        Context context = Context.of(reactorContextKey(), "错误上下文");
+
+        assertThatThrownBy(() -> GatewayReactorContext.current(context).block())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("模型网关执行上下文类型错误")
+                .hasMessageContaining(String.class.getName());
+        assertThatThrownBy(() -> GatewayReactorContext.currentOrThrow(context))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("模型网关执行上下文类型错误")
+                .hasMessageContaining(String.class.getName());
+    }
+
+    private static Object reactorContextKey() throws ReflectiveOperationException {
+        // 1. 通过反射获取私有 key，覆盖外部无法正常构造的错误类型场景。
+        for (Field field : GatewayReactorContext.class.getDeclaredFields()) {
+            if (Object.class.equals(field.getType()) && Modifier.isStatic(field.getModifiers())) {
+                field.setAccessible(true);
+                return field.get(null);
+            }
+        }
+        // 2. 如果实现缺少私有 key，测试应明确失败。
+        throw new NoSuchFieldException("未找到模型网关执行上下文私有key");
     }
 }

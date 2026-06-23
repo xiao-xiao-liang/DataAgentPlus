@@ -9,6 +9,7 @@ package com.liang.data.agent.gateway.context;
  * @param userId 用户编号，允许为 null
  * @param agentId 智能体编号，允许为 null
  * @param tenantId 租户编号，允许为 null
+ * @throws IllegalArgumentException runId、sessionId 为空白，或可选字段存在但不符合取值规则时抛出
  */
 public record GatewayExecutionContext(String runId, String traceId, String sessionId,
                                       Long userId, Integer agentId, String tenantId) {
