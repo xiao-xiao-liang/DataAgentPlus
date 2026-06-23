@@ -46,7 +46,7 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
                 .startTime(startTime)
                 .build();
         chatWorkflowRunMapper.insert(entity);
-        log.info("创建工作流运行记录，会话ID: {}, 运行ID: {}", sessionId, entity.getId());
+        log.info("创建兼容工作流运行记录，会话ID: {}, 记录主键: {}", sessionId, entity.getId());
     }
 
     @Override
@@ -77,19 +77,28 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
         if (!StringUtils.hasText(runId)) {
             return;
         }
-        // 1. 序列化节点状态快照，避免在日志中记录完整响应内容。
+        // 1. 优先按运行ID定位，未命中时兼容旧调用方按会话ID查询最新记录。
+        ChatWorkflowRunEntity entity = findByRunId(runId);
+        boolean updateByRunId = entity != null;
+        if (entity == null) {
+            entity = findLatestEntity(runId);
+        }
+        if (entity == null) {
+            return;
+        }
+        // 2. 序列化节点状态快照，避免在日志中记录完整响应内容。
         String snapshotJson = toJson(stateSnapshot);
-        // 2. 使用运行ID定位单次工作流运行记录并更新节点进度。
+        // 3. 新入口按运行ID更新，旧入口回退后按主键更新。
         LambdaUpdateWrapper<ChatWorkflowRunEntity> wrapper = new LambdaUpdateWrapper<ChatWorkflowRunEntity>()
-                .eq(ChatWorkflowRunEntity::getRunId, runId)
                 .set(ChatWorkflowRunEntity::getStatus, STATUS_RUNNING)
                 .set(ChatWorkflowRunEntity::getLastNodeName, nodeName)
                 .set(ChatWorkflowRunEntity::getNextNodeName, nextNodeName)
                 .set(ChatWorkflowRunEntity::getCheckpointId, checkpointId)
                 .set(ChatWorkflowRunEntity::getStateSnapshot, snapshotJson)
                 .set(ChatWorkflowRunEntity::getAccumulatedContent, accumulatedContent);
+        applyUpdateCondition(wrapper, runId, entity, updateByRunId);
         chatWorkflowRunMapper.update(null, wrapper);
-        log.info("保存工作流节点快照，运行ID: {}, 节点: {}, 下一节点: {}", runId, nodeName, nextNodeName);
+        log.info("保存工作流节点快照，运行标识: {}, 节点: {}, 下一节点: {}", runId, nodeName, nextNodeName);
     }
 
     @Override
@@ -114,15 +123,18 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
 
     private void updateStatus(String runId, String status, String failedNodeName, String reason) {
         ChatWorkflowRunEntity entity = findByRunId(runId);
+        boolean updateByRunId = entity != null;
+        if (entity == null) {
+            entity = findLatestEntity(runId);
+        }
         if (entity == null) {
             return;
         }
         // 1. 使用实体开始时间计算耗时，避免混用毫秒时间戳与数据库时间。
         LocalDateTime endTime = LocalDateTime.now();
         Long durationMs = calculateDurationMs(entity.getStartTime(), endTime);
-        // 2. 按运行ID更新最终状态、结束时间和耗时。
+        // 2. 新入口按运行ID更新，旧入口回退后按主键更新。
         LambdaUpdateWrapper<ChatWorkflowRunEntity> wrapper = new LambdaUpdateWrapper<ChatWorkflowRunEntity>()
-                .eq(ChatWorkflowRunEntity::getRunId, runId)
                 .set(ChatWorkflowRunEntity::getStatus, status)
                 .set(ChatWorkflowRunEntity::getInterruptReason, reason)
                 .set(ChatWorkflowRunEntity::getEndTime, endTime)
@@ -130,8 +142,18 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
         if (STATUS_FAILED.equals(status)) {
             wrapper.set(ChatWorkflowRunEntity::getFailedNodeName, failedNodeName);
         }
+        applyUpdateCondition(wrapper, runId, entity, updateByRunId);
         chatWorkflowRunMapper.update(null, wrapper);
-        log.info("更新工作流运行状态，运行ID: {}, 状态: {}", runId, status);
+        log.info("更新工作流运行状态，运行标识: {}, 状态: {}", runId, status);
+    }
+
+    private void applyUpdateCondition(LambdaUpdateWrapper<ChatWorkflowRunEntity> wrapper, String runId,
+                                      ChatWorkflowRunEntity entity, boolean updateByRunId) {
+        if (updateByRunId) {
+            wrapper.eq(ChatWorkflowRunEntity::getRunId, runId);
+            return;
+        }
+        wrapper.eq(ChatWorkflowRunEntity::getId, entity.getId());
     }
 
     private ChatWorkflowRunEntity findByRunId(String runId) {

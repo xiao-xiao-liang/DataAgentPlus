@@ -13,13 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,11 +62,35 @@ class WorkflowRunServiceImplTest {
 
     @Test
     void markNodeCompletedShouldUpdateByRunId() {
+        when(chatWorkflowRunMapper.selectOne(any())).thenReturn(runningEntity());
+
         service.markNodeCompleted("run-1", "节点A", "节点B", "checkpoint-1", Map.of("step", 1), "内容");
 
+        Wrapper<ChatWorkflowRunEntity> queryWrapper = captureSelectWrapper();
         Wrapper<ChatWorkflowRunEntity> wrapper = captureUpdateWrapper();
+        assertThat(queryWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
         assertThat(wrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
-        verify(chatWorkflowRunMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void markNodeCompletedShouldFallbackToLatestSessionRunWhenRunIdNotFound() {
+        when(chatWorkflowRunMapper.insert(any(ChatWorkflowRunEntity.class))).thenAnswer(invocation -> {
+            ChatWorkflowRunEntity entity = invocation.getArgument(0);
+            entity.setId(9L);
+            return 1;
+        });
+        when(chatWorkflowRunMapper.selectOne(any())).thenReturn(null, sessionEntity());
+
+        service.startRun("session-1", 2, 1L, "查询");
+        service.markNodeCompleted("session-1", "节点A", "节点B", "checkpoint-1", Map.of("step", 1), "内容");
+
+        Wrapper<ChatWorkflowRunEntity> updateWrapper = captureUpdateWrapper();
+        assertThat(captureSelectWrappers()).satisfies(wrappers -> {
+            assertThat(wrappers.get(0).getSqlSegment()).contains("run_id").doesNotContain("session_id");
+            assertThat(wrappers.get(1).getSqlSegment()).contains("session_id").doesNotContain("run_id");
+        });
+        assertThat(updateWrapper.getSqlSegment()).contains("id").doesNotContain("run_id").doesNotContain("session_id");
+        assertThat(updateWrapper.getSqlSet()).contains("last_node_name", "next_node_name", "checkpoint_id");
     }
 
     @Test
@@ -78,6 +103,27 @@ class WorkflowRunServiceImplTest {
         Wrapper<ChatWorkflowRunEntity> updateWrapper = captureUpdateWrapper();
         assertThat(queryWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
         assertThat(updateWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
+        assertThat(updateWrapper.getSqlSet()).contains("status", "end_time", "duration_ms");
+    }
+
+    @Test
+    void markCompletedShouldFallbackToLatestSessionRunWhenRunIdNotFound() {
+        when(chatWorkflowRunMapper.insert(any(ChatWorkflowRunEntity.class))).thenAnswer(invocation -> {
+            ChatWorkflowRunEntity entity = invocation.getArgument(0);
+            entity.setId(9L);
+            return 1;
+        });
+        when(chatWorkflowRunMapper.selectOne(any())).thenReturn(null, sessionEntity());
+
+        service.startRun("session-1", 2, 1L, "查询");
+        service.markCompleted("session-1");
+
+        Wrapper<ChatWorkflowRunEntity> updateWrapper = captureUpdateWrapper();
+        assertThat(captureSelectWrappers()).satisfies(wrappers -> {
+            assertThat(wrappers.get(0).getSqlSegment()).contains("run_id").doesNotContain("session_id");
+            assertThat(wrappers.get(1).getSqlSegment()).contains("session_id").doesNotContain("run_id");
+        });
+        assertThat(updateWrapper.getSqlSegment()).contains("id").doesNotContain("run_id").doesNotContain("session_id");
         assertThat(updateWrapper.getSqlSet()).contains("status", "end_time", "duration_ms");
     }
 
@@ -136,6 +182,17 @@ class WorkflowRunServiceImplTest {
                 .build();
     }
 
+    private ChatWorkflowRunEntity sessionEntity() {
+        return ChatWorkflowRunEntity.builder()
+                .id(9L)
+                .sessionId("session-1")
+                .agentId(2)
+                .userId(1L)
+                .status("running")
+                .startTime(LocalDateTime.now().minusSeconds(3))
+                .build();
+    }
+
     @SuppressWarnings("unchecked")
     private Wrapper<ChatWorkflowRunEntity> captureUpdateWrapper() {
         ArgumentCaptor<Wrapper<ChatWorkflowRunEntity>> captor = ArgumentCaptor.forClass(Wrapper.class);
@@ -148,5 +205,12 @@ class WorkflowRunServiceImplTest {
         ArgumentCaptor<Wrapper<ChatWorkflowRunEntity>> captor = ArgumentCaptor.forClass(Wrapper.class);
         verify(chatWorkflowRunMapper).selectOne(captor.capture());
         return captor.getValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Wrapper<ChatWorkflowRunEntity>> captureSelectWrappers() {
+        ArgumentCaptor<Wrapper<ChatWorkflowRunEntity>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(chatWorkflowRunMapper, times(2)).selectOne(captor.capture());
+        return captor.getAllValues();
     }
 }
