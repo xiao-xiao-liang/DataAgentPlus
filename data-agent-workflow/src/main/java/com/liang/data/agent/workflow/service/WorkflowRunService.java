@@ -32,7 +32,7 @@ public interface WorkflowRunService {
     /**
      * 标记节点完成并保存图状态快照。
      *
-     * @param runId              单次工作流运行ID
+     * @param runId              单次工作流运行ID；兼容旧调用方传会话ID，后续上下文接入后统一传运行ID
      * @param nodeName           节点名称
      * @param nextNodeName       下一节点名称
      * @param checkpointId       checkpoint ID
@@ -45,23 +45,23 @@ public interface WorkflowRunService {
     /**
      * 标记运行完成。
      *
-     * @param runId 单次工作流运行ID
+     * @param runId 单次工作流运行ID；兼容旧调用方传会话ID，后续上下文接入后统一传运行ID
      */
     void markCompleted(String runId);
 
     /**
      * 标记运行中断。
      *
-     * @param runId  单次工作流运行ID
-     * @param reason    中断原因
+     * @param runId  单次工作流运行ID；兼容旧调用方传会话ID，后续上下文接入后统一传运行ID
+     * @param reason 中断原因
      */
     void markInterrupted(String runId, String reason);
 
     /**
      * 标记运行失败。
      *
-     * @param runId  单次工作流运行ID
-     * @param reason    失败原因
+     * @param runId  单次工作流运行ID；兼容旧调用方传会话ID，后续上下文接入后统一传运行ID
+     * @param reason 失败原因
      */
     default void markFailed(String runId, String reason) {
         markFailed(runId, null, reason);
@@ -70,7 +70,7 @@ public interface WorkflowRunService {
     /**
      * 标记运行失败，并记录失败节点名称。
      *
-     * @param runId          单次工作流运行ID
+     * @param runId          单次工作流运行ID；兼容旧调用方传会话ID，后续上下文接入后统一传运行ID
      * @param failedNodeName 失败节点名称
      * @param reason         失败原因
      */

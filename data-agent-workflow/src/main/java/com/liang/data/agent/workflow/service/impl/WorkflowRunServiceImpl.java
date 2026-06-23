@@ -130,10 +130,15 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
         if (entity == null) {
             return;
         }
-        // 1. 使用实体开始时间计算耗时，避免混用毫秒时间戳与数据库时间。
+        // 1. 仅允许运行中记录进入终态，避免失败、中断或完成状态被后续回调覆盖。
+        if (!STATUS_RUNNING.equals(entity.getStatus())) {
+            log.info("忽略工作流终态更新，运行标识: {}, 当前状态: {}, 目标状态: {}", runId, entity.getStatus(), status);
+            return;
+        }
+        // 2. 使用实体开始时间计算耗时，避免混用毫秒时间戳与数据库时间。
         LocalDateTime endTime = LocalDateTime.now();
         Long durationMs = calculateDurationMs(entity.getStartTime(), endTime);
-        // 2. 新入口按运行ID更新，旧入口回退后按主键更新。
+        // 3. 新入口按运行ID更新，旧入口回退后按主键更新。
         LambdaUpdateWrapper<ChatWorkflowRunEntity> wrapper = new LambdaUpdateWrapper<ChatWorkflowRunEntity>()
                 .set(ChatWorkflowRunEntity::getStatus, status)
                 .set(ChatWorkflowRunEntity::getInterruptReason, reason)

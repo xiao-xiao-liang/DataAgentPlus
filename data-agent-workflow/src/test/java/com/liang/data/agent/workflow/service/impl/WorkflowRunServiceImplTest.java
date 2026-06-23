@@ -12,6 +12,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -128,6 +132,16 @@ class WorkflowRunServiceImplTest {
     }
 
     @Test
+    void markCompletedShouldNotOverwriteFailedTerminalStatus() {
+        when(chatWorkflowRunMapper.selectOne(any())).thenReturn(failedEntity());
+
+        service.markCompleted("run-1");
+
+        verify(chatWorkflowRunMapper).selectOne(any());
+        verify(chatWorkflowRunMapper, never()).update(any(), any());
+    }
+
+    @Test
     void markInterruptedShouldUpdateEndTimeAndDurationByRunId() {
         when(chatWorkflowRunMapper.selectOne(any())).thenReturn(runningEntity());
 
@@ -148,6 +162,30 @@ class WorkflowRunServiceImplTest {
         assertThat(updateWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
         assertThat(updateWrapper.getSqlSet())
                 .contains("status", "interrupt_reason", "failed_node_name", "end_time", "duration_ms");
+    }
+
+    @Test
+    void workflowRunSqlShouldContainTraceIdentityColumnsAndManualConfirmationComment() throws IOException {
+        String schemaSql = Files.readString(resolveProjectPath("data-agent-start/src/main/resources/sql/schema.sql"));
+        String migrationSql = Files.readString(resolveProjectPath(
+                "data-agent-start/src/main/resources/sql/migration/V20260623_01__workflow_run_trace_identity.sql"
+        ));
+
+        assertThat(schemaSql)
+                .contains("run_id")
+                .contains("trace_id")
+                .contains("start_time")
+                .contains("end_time")
+                .contains("duration_ms")
+                .contains("failed_node_name")
+                .contains("UNIQUE KEY uk_run_id")
+                .contains("INDEX idx_trace_id");
+        assertThat(migrationSql)
+                .contains("执行前需由运维确认目标库尚未添加这些列和索引")
+                .contains("ADD COLUMN run_id")
+                .contains("ADD COLUMN trace_id")
+                .contains("ADD UNIQUE KEY uk_run_id")
+                .contains("ADD INDEX idx_trace_id");
     }
 
     @Test
@@ -182,6 +220,16 @@ class WorkflowRunServiceImplTest {
                 .build();
     }
 
+    private ChatWorkflowRunEntity failedEntity() {
+        ChatWorkflowRunEntity entity = runningEntity();
+        entity.setStatus("failed");
+        entity.setInterruptReason("已失败");
+        entity.setFailedNodeName("节点A");
+        entity.setEndTime(LocalDateTime.now().minusSeconds(1));
+        entity.setDurationMs(2000L);
+        return entity;
+    }
+
     private ChatWorkflowRunEntity sessionEntity() {
         return ChatWorkflowRunEntity.builder()
                 .id(9L)
@@ -212,5 +260,13 @@ class WorkflowRunServiceImplTest {
         ArgumentCaptor<Wrapper<ChatWorkflowRunEntity>> captor = ArgumentCaptor.forClass(Wrapper.class);
         verify(chatWorkflowRunMapper, times(2)).selectOne(captor.capture());
         return captor.getAllValues();
+    }
+
+    private Path resolveProjectPath(String relativePath) {
+        Path rootPath = Path.of(relativePath);
+        if (Files.exists(rootPath)) {
+            return rootPath;
+        }
+        return Path.of("..", relativePath);
     }
 }
