@@ -86,9 +86,14 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
         if (entity == null) {
             return;
         }
-        // 2. 序列化节点状态快照，避免在日志中记录完整响应内容。
+        // 2. 仅允许运行中记录保存节点进度，避免迟到回调把终态记录改回运行中。
+        if (!STATUS_RUNNING.equals(entity.getStatus())) {
+            log.info("忽略工作流节点快照更新，运行标识: {}, 当前状态: {}", runId, entity.getStatus());
+            return;
+        }
+        // 3. 序列化节点状态快照，避免在日志中记录完整响应内容。
         String snapshotJson = toJson(stateSnapshot);
-        // 3. 新入口按运行ID更新，旧入口回退后按主键更新。
+        // 4. 新入口按运行ID更新，旧入口回退后按主键更新。
         LambdaUpdateWrapper<ChatWorkflowRunEntity> wrapper = new LambdaUpdateWrapper<ChatWorkflowRunEntity>()
                 .set(ChatWorkflowRunEntity::getStatus, STATUS_RUNNING)
                 .set(ChatWorkflowRunEntity::getLastNodeName, nodeName)
@@ -156,9 +161,10 @@ public class WorkflowRunServiceImpl implements WorkflowRunService {
                                       ChatWorkflowRunEntity entity, boolean updateByRunId) {
         if (updateByRunId) {
             wrapper.eq(ChatWorkflowRunEntity::getRunId, runId);
-            return;
+        } else {
+            wrapper.eq(ChatWorkflowRunEntity::getId, entity.getId());
         }
-        wrapper.eq(ChatWorkflowRunEntity::getId, entity.getId());
+        wrapper.eq(ChatWorkflowRunEntity::getStatus, STATUS_RUNNING);
     }
 
     private ChatWorkflowRunEntity findByRunId(String runId) {

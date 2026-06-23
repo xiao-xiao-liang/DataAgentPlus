@@ -1,6 +1,7 @@
 package com.liang.data.agent.workflow.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.liang.data.agent.dal.entity.ChatWorkflowRunEntity;
@@ -74,6 +75,7 @@ class WorkflowRunServiceImplTest {
         Wrapper<ChatWorkflowRunEntity> wrapper = captureUpdateWrapper();
         assertThat(queryWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
         assertThat(wrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
+        assertRunningStatusCondition(wrapper);
     }
 
     @Test
@@ -98,6 +100,16 @@ class WorkflowRunServiceImplTest {
     }
 
     @Test
+    void markNodeCompletedShouldNotOverwriteFailedTerminalStatus() {
+        when(chatWorkflowRunMapper.selectOne(any())).thenReturn(failedEntity());
+
+        service.markNodeCompleted("run-1", "节点A", "节点B", "checkpoint-1", Map.of("step", 1), "内容");
+
+        verify(chatWorkflowRunMapper).selectOne(any());
+        verify(chatWorkflowRunMapper, never()).update(any(), any());
+    }
+
+    @Test
     void markCompletedShouldUpdateEndTimeAndDurationByRunId() {
         when(chatWorkflowRunMapper.selectOne(any())).thenReturn(runningEntity());
 
@@ -107,6 +119,7 @@ class WorkflowRunServiceImplTest {
         Wrapper<ChatWorkflowRunEntity> updateWrapper = captureUpdateWrapper();
         assertThat(queryWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
         assertThat(updateWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
+        assertRunningStatusCondition(updateWrapper);
         assertThat(updateWrapper.getSqlSet()).contains("status", "end_time", "duration_ms");
     }
 
@@ -160,6 +173,7 @@ class WorkflowRunServiceImplTest {
 
         Wrapper<ChatWorkflowRunEntity> updateWrapper = captureUpdateWrapper();
         assertThat(updateWrapper.getSqlSegment()).contains("run_id").doesNotContain("session_id");
+        assertRunningStatusCondition(updateWrapper);
         assertThat(updateWrapper.getSqlSet())
                 .contains("status", "interrupt_reason", "failed_node_name", "end_time", "duration_ms");
     }
@@ -184,6 +198,10 @@ class WorkflowRunServiceImplTest {
                 .contains("执行前需由运维确认目标库尚未添加这些列和索引")
                 .contains("ADD COLUMN run_id")
                 .contains("ADD COLUMN trace_id")
+                .contains("ADD COLUMN start_time")
+                .contains("ADD COLUMN end_time")
+                .contains("ADD COLUMN duration_ms")
+                .contains("ADD COLUMN failed_node_name")
                 .contains("ADD UNIQUE KEY uk_run_id")
                 .contains("ADD INDEX idx_trace_id");
     }
@@ -268,5 +286,12 @@ class WorkflowRunServiceImplTest {
             return rootPath;
         }
         return Path.of("..", relativePath);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertRunningStatusCondition(Wrapper<ChatWorkflowRunEntity> wrapper) {
+        assertThat(wrapper.getSqlSegment()).contains("status");
+        assertThat(((LambdaUpdateWrapper<ChatWorkflowRunEntity>) wrapper).getParamNameValuePairs())
+                .containsValue("running");
     }
 }
