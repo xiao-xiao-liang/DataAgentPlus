@@ -9,11 +9,15 @@ package com.liang.data.agent.gateway.context;
  * @param userId 用户编号，允许为 null
  * @param agentId 智能体编号，允许为 null
  * @param tenantId 租户编号，允许为 null
- * @throws IllegalArgumentException runId、sessionId 为空白，或可选字段存在但不符合取值规则时抛出
  */
 public record GatewayExecutionContext(String runId, String traceId, String sessionId,
                                       Long userId, Integer agentId, String tenantId) {
 
+    /**
+     * 创建模型网关执行上下文。
+     *
+     * @throws IllegalArgumentException runId、sessionId 为空白，或可选字段存在但不符合取值规则时抛出
+     */
     public GatewayExecutionContext {
         // 1. 校验运行编号，确保每次工作流执行都具备可定位的唯一标识。
         if (runId == null || runId.isBlank()) {
