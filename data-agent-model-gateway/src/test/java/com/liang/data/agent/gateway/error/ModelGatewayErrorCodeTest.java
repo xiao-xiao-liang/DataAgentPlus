@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,8 +33,18 @@ class ModelGatewayErrorCodeTest {
         for (ModelGatewayErrorCode errorCode : ModelGatewayErrorCode.values()) {
             assertThat(errorCode.code()).isNotBlank();
             assertThat(errorCode.message()).isNotBlank();
-            assertThat(errorCode.code()).matches("^[ABC].+");
+            assertThat(errorCode.code()).matches("^[ABC]\\d{6}$");
         }
+    }
+
+    @Test
+    void shouldKeepErrorCodeUnique() {
+        Set<String> codes = List.of(ModelGatewayErrorCode.values())
+                .stream()
+                .map(ModelGatewayErrorCode::code)
+                .collect(Collectors.toSet());
+
+        assertThat(codes).hasSize(ModelGatewayErrorCode.values().length);
     }
 
     @Test
@@ -40,7 +52,28 @@ class ModelGatewayErrorCodeTest {
         ModelGatewayException exception = new ModelGatewayException(ModelGatewayErrorCode.PROVIDER_TIMEOUT);
 
         assertThat(exception.getMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
+        assertThat(exception.getErrorMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
         assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT);
+    }
+
+    @Test
+    void shouldFallbackBlankExceptionMessageToErrorCodeMessage() {
+        ModelGatewayException emptyMessageException = new ModelGatewayException(
+                ModelGatewayErrorCode.PROVIDER_TIMEOUT,
+                ""
+        );
+        RuntimeException cause = new RuntimeException("连接超时");
+        ModelGatewayException blankMessageException = new ModelGatewayException(
+                ModelGatewayErrorCode.PROVIDER_TIMEOUT,
+                "   ",
+                cause
+        );
+
+        assertThat(emptyMessageException.getMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
+        assertThat(emptyMessageException.getErrorMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
+        assertThat(blankMessageException.getMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
+        assertThat(blankMessageException.getErrorMessage()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT.message());
+        assertThat(blankMessageException.getCause()).isSameAs(cause);
     }
 
     @Test
@@ -85,11 +118,20 @@ class ModelGatewayErrorCodeTest {
         assertThatThrownBy(() -> new ResolvedPrompt(" ", "v1", messages))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("模板标识");
+        assertThatThrownBy(() -> new ResolvedPrompt(null, "v1", messages))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("模板标识");
         assertThatThrownBy(() -> new ResolvedPrompt("sql-template", " ", messages))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("模板版本");
+        assertThatThrownBy(() -> new ResolvedPrompt("sql-template", null, messages))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("模板版本");
         assertThatThrownBy(() -> new ResolvedPrompt("sql-template", "v1", List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("提示词消息");
+        assertThatThrownBy(() -> new ResolvedPrompt("sql-template", "v1", null))
+                .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("提示词消息");
     }
 
