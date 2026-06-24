@@ -297,13 +297,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le))",
-          "legendFormat": "HTTP P95",
+          "expr": "sum(rate(http_server_requests_seconds_sum[5m])) / sum(rate(http_server_requests_seconds_count[5m]))",
+          "legendFormat": "HTTP 平均耗时",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "HTTP P95",
+      "title": "HTTP 平均耗时",
       "type": "timeseries"
     }
   ],
