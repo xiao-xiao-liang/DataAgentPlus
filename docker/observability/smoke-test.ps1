@@ -3,10 +3,10 @@ $ErrorActionPreference = 'Stop'
 
 $deadline = (Get-Date).AddSeconds(60)
 $healthChecks = @(
-    @{ Name = 'Collector health'; Url = 'http://localhost:13133/' },
-    @{ Name = 'Tempo ready'; Url = 'http://localhost:3200/ready' },
-    @{ Name = 'Prometheus ready'; Url = 'http://localhost:9090/-/ready' },
-    @{ Name = 'Grafana health'; Url = 'http://localhost:3000/api/health' }
+    @{ Name = 'Collector 健康检查'; Url = 'http://localhost:13133/' },
+    @{ Name = 'Tempo 就绪检查'; Url = 'http://localhost:3200/ready' },
+    @{ Name = 'Prometheus 就绪检查'; Url = 'http://localhost:9090/-/ready' },
+    @{ Name = 'Grafana 健康检查'; Url = 'http://localhost:3000/api/health' }
 )
 
 function ConvertFrom-CodePoint {
@@ -32,11 +32,11 @@ foreach ($healthCheck in $healthChecks) {
                 break
             }
 
-            $lastError = "$($healthCheck.Name) status code: $($response.StatusCode)"
+            $lastError = "$($healthCheck.Name) 返回非 2xx 状态码：$($response.StatusCode)"
         }
         catch {
             # 3. 捕获连接异常，避免组件启动中的瞬时失败直接中断脚本。
-            $lastError = "$($healthCheck.Name) request failed: $($_.Exception.Message)"
+            $lastError = "$($healthCheck.Name)不可访问"
         }
 
         if ((Get-Date) -lt $deadline) {
@@ -45,7 +45,7 @@ foreach ($healthCheck in $healthChecks) {
     } while ((Get-Date) -lt $deadline)
 
     if ($null -ne $lastError) {
-        Write-Error $lastError
+        Write-Output "冒烟检查失败：$lastError，请确认已执行 docker compose up -d，且 Docker Engine 正在运行。"
         exit 1
     }
 }

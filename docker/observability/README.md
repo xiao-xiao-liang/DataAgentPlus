@@ -58,7 +58,9 @@ host.docker.internal:18080/actuator/prometheus
 密码：admin
 ```
 
-Grafana 会自动配置 Prometheus 和 Tempo 数据源，并加载 `Data Agent Overview` 仪表盘。仪表盘包含 JVM 堆内存、HTTP 请求量和 HTTP P95 面板。
+安全提示：`admin/admin` 仅限本地开发使用，不要将 Grafana 暴露到公网。必要时请在 `docker-compose.yml` 中通过 `GF_SECURITY_ADMIN_USER` 和 `GF_SECURITY_ADMIN_PASSWORD` 修改默认账号密码。
+
+Grafana 会自动配置 Prometheus 和 Tempo 数据源，并加载 `Data Agent Overview` 仪表盘。仪表盘包含 JVM 堆内存、HTTP 请求量和 HTTP P95 面板。HTTP P95 面板依赖 `http_server_requests_seconds_bucket` 指标；如果应用未启用 HTTP server request histogram，该面板会没有数据。
 
 ## 冒烟检查
 
@@ -84,6 +86,7 @@ powershell -ExecutionPolicy Bypass -File docker/observability/smoke-test.ps1
 ## 常见问题
 
 1. 端口已被占用：请确认本机 `3000`、`9090`、`3200`、`4317`、`4318`、`13133` 未被其他进程占用。
-2. Prometheus 看不到应用指标：请确认应用已在本机 `18080` 暴露 `/actuator/prometheus`，并且 Docker 可以访问 `host.docker.internal`。
-3. Grafana 无数据：请先确认 Prometheus Targets 页面中 `data-agent` 目标可用，再刷新仪表盘时间范围。
-4. Collector 无法写入 Tempo：请先检查 Tempo `/ready` 是否返回 2xx，再查看 Collector 容器日志。
+2. Docker Engine 不可用：如果看到 `无法连接 dockerDesktopLinuxEngine`、`Cannot connect to the Docker daemon` 或类似错误，先执行 `docker version` 和 `docker info` 检查 Docker Engine 是否可用。Windows/macOS 请启动 Docker Desktop 并等待 Engine 就绪；Linux 请确认 Docker 服务已启动，例如执行 `sudo systemctl status docker`，必要时执行 `sudo systemctl start docker`。
+3. Prometheus 看不到应用指标：请确认应用已在本机 `18080` 暴露 `/actuator/prometheus`，并且 Docker 可以访问 `host.docker.internal`。Windows/macOS Docker Desktop 通常内置支持 `host.docker.internal`；Linux 环境可能需要 Docker 支持 `host-gateway`，或在 compose 中额外配置 `extra_hosts`。
+4. Grafana 无数据：请先确认 Prometheus Targets 页面中 `data-agent` 目标可用，再刷新仪表盘时间范围。HTTP P95 面板还要求应用暴露 `http_server_requests_seconds_bucket`，未启用 HTTP server request histogram 时该面板为空是预期现象。
+5. Collector 无法写入 Tempo：请先检查 Tempo `/ready` 是否返回 2xx，再查看 Collector 容器日志。
