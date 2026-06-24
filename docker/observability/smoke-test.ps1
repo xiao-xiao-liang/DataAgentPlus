@@ -1,6 +1,7 @@
 ﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# 1. 设置全局 50 秒总等待上限，避免服务未启动时脚本无限或超长等待。
 $maxWaitSeconds = 50
 $deadline = (Get-Date).AddSeconds($maxWaitSeconds)
 $healthChecks = @(
@@ -24,10 +25,10 @@ foreach ($healthCheck in $healthChecks) {
 
     do {
         try {
-            # 1. 请求组件健康端点，单次请求最长等待 5 秒。
+            # 2. 请求组件健康端点，单次请求最长等待 5 秒。
             $response = Invoke-WebRequest -Uri $healthCheck.Url -UseBasicParsing -TimeoutSec 5
 
-            # 2. 校验 HTTP 状态码，任一非 2xx 状态立即记录并进入短重试。
+            # 3. 校验 HTTP 状态码，任一非 2xx 状态立即记录并进入短重试。
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
                 $lastError = $null
                 break
@@ -36,7 +37,7 @@ foreach ($healthCheck in $healthChecks) {
             $lastError = "$($healthCheck.Name) 返回非 2xx 状态码：$($response.StatusCode)"
         }
         catch {
-            # 3. 捕获连接异常，避免组件启动中的瞬时失败直接中断脚本。
+            # 4. 捕获连接异常，避免组件启动中的瞬时失败直接中断脚本。
             $lastError = "$($healthCheck.Name)不可访问"
         }
 
@@ -51,6 +52,6 @@ foreach ($healthCheck in $healthChecks) {
     }
 }
 
-# 4. 所有组件健康端点均通过后输出成功信息。
+# 5. 所有组件健康端点均通过后输出成功信息。
 $successMessage = ConvertFrom-CodePoint @(21487, 35266, 27979, 22522, 30784, 35774, 26045, 20882, 28895, 26816, 26597, 36890, 36807)
 Write-Output $successMessage

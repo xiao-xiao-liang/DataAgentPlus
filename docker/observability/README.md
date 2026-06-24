@@ -30,14 +30,16 @@ docker compose -f docker/observability/docker-compose.yml down -v
 
 ## 端口
 
+所有端口默认仅绑定 `127.0.0.1`，只允许本机访问，避免将 Grafana、Prometheus 和 OTLP 接收端口暴露到局域网或公网。如确需局域网访问，请自行修改 `docker-compose.yml` 的端口绑定，并自行承担认证、访问控制和网络暴露风险。
+
 | 组件 | 地址 | 说明 |
 | --- | --- | --- |
-| OpenTelemetry Collector | `localhost:4317` | OTLP gRPC 接收端口 |
-| OpenTelemetry Collector | `localhost:4318` | OTLP HTTP 接收端口 |
-| OpenTelemetry Collector | `localhost:13133` | Collector 健康检查 |
-| Tempo | `localhost:3200` | Tempo API 与 `/ready` |
-| Prometheus | `localhost:9090` | Prometheus 控制台 |
-| Grafana | `localhost:3000` | Grafana 控制台 |
+| OpenTelemetry Collector | `127.0.0.1:4317` | OTLP gRPC 接收端口 |
+| OpenTelemetry Collector | `127.0.0.1:4318` | OTLP HTTP 接收端口 |
+| OpenTelemetry Collector | `127.0.0.1:13133` | Collector 健康检查 |
+| Tempo | `127.0.0.1:3200` | Tempo API 与 `/ready` |
+| Prometheus | `127.0.0.1:9090` | Prometheus 控制台 |
+| Grafana | `127.0.0.1:3000` | Grafana 控制台 |
 
 ## Prometheus 抓取地址
 
@@ -70,7 +72,7 @@ Grafana 会自动配置 Prometheus 和 Tempo 数据源，并加载 `Data Agent O
 powershell -ExecutionPolicy Bypass -File docker/observability/smoke-test.ps1
 ```
 
-脚本会检查以下端点，任一端点非 2xx 或请求异常都会退出 1：
+脚本使用全局 50 秒总等待上限，会检查以下端点，任一端点非 2xx 或请求异常都会退出 1：
 
 - `http://localhost:13133/`
 - `http://localhost:3200/ready`
