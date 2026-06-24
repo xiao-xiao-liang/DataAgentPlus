@@ -2,6 +2,9 @@ package com.liang.data.agent.controller;
 
 import com.liang.data.agent.common.enums.InteractionType;
 import com.liang.data.agent.common.exception.ClientException;
+import com.liang.data.agent.gateway.context.GatewayExecutionContext;
+import com.liang.data.agent.gateway.context.GatewayExecutionContextFactory;
+import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.service.agent.AgentService;
 import com.liang.data.agent.service.chat.ChatMessageService;
 import com.liang.data.agent.service.chat.ChatSessionService;
@@ -15,6 +18,7 @@ import com.liang.data.agent.workflow.service.WorkflowAdmissionService;
 import com.liang.data.agent.workflow.service.WorkflowRunService;
 import com.liang.data.agent.workflow.util.WorkflowEventUtil;
 import com.liang.data.agent.workflow.vo.WorkflowQueueVO;
+import com.liang.data.agent.workflow.vo.WorkflowRunVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -58,6 +62,7 @@ public class GraphController {
     private final AgentService agentService;
     private final WorkflowRunService workflowRunService;
     private final WorkflowAdmissionService workflowAdmissionService;
+    private final GatewayExecutionContextFactory contextFactory;
 
     /**
      * 核心 SSE 流式对话接口。
@@ -130,6 +135,12 @@ public class GraphController {
         final InteractionType finalInteractionType = interactionType;
         final int finalAgentId = agentIdInt;
         final WorkflowQueueVO finalQueue = queue;
+        final GatewayExecutionContext executionContext = buildExecutionContext(
+                finalInteractionType,
+                finalSessionId,
+                userId,
+                finalAgentId
+        );
 
         StringBuilder accumulatedResponse = new StringBuilder();
         StringBuilder completedNodeResponse = new StringBuilder();
@@ -137,10 +148,11 @@ public class GraphController {
         Flux<String> queuePrefix = buildQueuePrefix(finalQueue);
         Flux<GraphStreamChunk> streamFlux = Mono.fromRunnable(() -> {
                     if (finalInteractionType == InteractionType.NEW_QUERY) {
-                        workflowRunService.startRun(finalSessionId, finalAgentId, userId, request.getQuery());
+                        workflowRunService.startRun(executionContext, request.getQuery());
                     }
                 })
-                .thenMany(Flux.defer(() -> graphService.chatStream(request, finalMultiTurnContext)));
+                .thenMany(Flux.defer(() -> graphService.chatStream(request, finalMultiTurnContext)))
+                .contextWrite(GatewayReactorContext.with(executionContext));
 
         Flux<String> graphStream = streamFlux
                 .doOnNext(event -> {
@@ -182,7 +194,7 @@ public class GraphController {
                             "text",
                             true
                     );
-                    workflowRunService.markCompleted(finalSessionId);
+                    workflowRunService.markCompleted(executionContext.runId());
                     completeQueue(finalQueue);
 
                     // 7. 更新会话时间，并在新会话首轮触发标题生成。
@@ -201,7 +213,7 @@ public class GraphController {
                             .messageType("error")
                             .build();
                     chatMessageService.saveMessageAsync(errorMsgDto, finalSessionId);
-                    workflowRunService.markFailed(finalSessionId, safeMessage(err));
+                    workflowRunService.markFailed(executionContext.runId(), null, safeMessage(err));
                     failQueue(finalQueue, safeMessage(err));
                 })
                 .onErrorResume(err -> Flux.just(encodeWorkflowStreamEvent(
@@ -219,7 +231,7 @@ public class GraphController {
                                 true
                         );
                     }
-                    workflowRunService.markInterrupted(finalSessionId, "客户端连接断开");
+                    workflowRunService.markInterrupted(executionContext.runId(), "客户端连接断开");
                     cancelQueue(finalQueue, "客户端连接断开");
                     graphService.stopStreamProcessing(finalSessionId);
                 });
@@ -334,6 +346,31 @@ public class GraphController {
                 && EVENT_NODE_OUTPUT.equals(event.eventType())
                 && event.hasContent()
                 && event.content().contains(EVENT_PREFIX);
+    }
+
+    private GatewayExecutionContext buildExecutionContext(InteractionType interactionType,
+                                                          String sessionId,
+                                                          Long userId,
+                                                          Integer agentId) {
+        // 1. 新分析请求直接创建新的运行上下文，后续由 startRun 持久化 runId 和 traceId。
+        if (interactionType == InteractionType.NEW_QUERY) {
+            return contextFactory.create(sessionId, userId, agentId, null);
+        }
+        // 2. 恢复类请求优先读取最近一次运行记录，确保继续沿用同一 runId 和 traceId。
+        WorkflowRunVO latestRun = workflowRunService.findLatest(sessionId);
+        if (latestRun != null && StringUtils.hasText(latestRun.getRunId())) {
+            return new GatewayExecutionContext(
+                    latestRun.getRunId(),
+                    latestRun.getTraceId(),
+                    StringUtils.hasText(latestRun.getSessionId()) ? latestRun.getSessionId() : sessionId,
+                    latestRun.getUserId() != null ? latestRun.getUserId() : userId,
+                    latestRun.getAgentId() != null ? latestRun.getAgentId() : agentId,
+                    null
+            );
+        }
+        // 3. 旧会话缺失运行记录时降级创建临时上下文，避免恢复入口直接中断。
+        log.warn("未找到可恢复的工作流运行上下文，已创建临时上下文继续处理 - sessionId: {}", sessionId);
+        return contextFactory.create(sessionId, userId, agentId, null);
     }
 
     private String safeMessage(Throwable throwable) {

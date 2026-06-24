@@ -14,6 +14,8 @@ import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.liang.data.agent.gateway.context.GatewayExecutionContext;
+import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.workflow.util.WorkflowEventUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.InteractionType;
@@ -27,6 +29,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
+import reactor.util.context.ContextView;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -133,20 +136,25 @@ public class GraphService {
      * @return 工作流流式事件
      */
     public Flux<GraphStreamChunk> chatStream(GraphRequest request, String multiTurnContext) {
-        InteractionType interactionType = InteractionType.fromCode(request.getInteractionType());
-        if (interactionType == InteractionType.NEW_QUERY && StringUtils.hasText(request.getHumanFeedbackContent())) {
-            interactionType = InteractionType.HUMAN_PLAN_FEEDBACK;
-        }
-        return switch (interactionType) {
-            case CONTINUE_ANALYSIS -> handleContinueAnalysis(request, multiTurnContext);
-            case CLARIFICATION_ANSWER -> handleClarificationAnswer(request, multiTurnContext);
-            case CLARIFICATION_CONFIRM -> handleClarificationConfirm(request, multiTurnContext);
-            case HUMAN_PLAN_FEEDBACK -> handleHumanFeedback(request, multiTurnContext);
-            default -> handleNewProcess(request, multiTurnContext);
-        };
+        return Flux.deferContextual(contextView -> {
+            // 1. 从 Reactor Context 中解析运行编号，缺失时兼容使用 threadId。
+            String runId = resolveRunId(request.getThreadId(), contextView);
+            // 2. 根据交互类型分发到新建或恢复流程，图 checkpoint 仍沿用 threadId。
+            InteractionType interactionType = InteractionType.fromCode(request.getInteractionType());
+            if (interactionType == InteractionType.NEW_QUERY && StringUtils.hasText(request.getHumanFeedbackContent())) {
+                interactionType = InteractionType.HUMAN_PLAN_FEEDBACK;
+            }
+            return switch (interactionType) {
+                case CONTINUE_ANALYSIS -> handleContinueAnalysis(request, multiTurnContext, runId);
+                case CLARIFICATION_ANSWER -> handleClarificationAnswer(request, multiTurnContext, runId);
+                case CLARIFICATION_CONFIRM -> handleClarificationConfirm(request, multiTurnContext, runId);
+                case HUMAN_PLAN_FEEDBACK -> handleHumanFeedback(request, multiTurnContext, runId);
+                default -> handleNewProcess(request, multiTurnContext, runId);
+            };
+        });
     }
 
-    private Flux<GraphStreamChunk> handleNewProcess(GraphRequest request, String multiTurnContext) {
+    private Flux<GraphStreamChunk> handleNewProcess(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
         boolean nl2sqlOnly = request.isNl2sqlOnly();
         boolean humanReviewEnabled = request.isHumanFeedback() && !nl2sqlOnly;
@@ -166,33 +174,33 @@ public class GraphService {
         log.info("开始执行工作流 - threadId: {}, input: {}, agentId: {}, nl2sqlOnly: {}, humanReviewEnabled: {}",
                 threadId, request.getQuery(), request.getAgentId(), nl2sqlOnly, humanReviewEnabled);
 
-        return streamGraph(threadId, compiledGraph.stream(initialState, config), config, "工作流执行");
+        return streamGraph(threadId, runId, compiledGraph.stream(initialState, config), config, "工作流执行");
     }
 
-    private Flux<GraphStreamChunk> handleContinueAnalysis(GraphRequest request, String multiTurnContext) {
+    private Flux<GraphStreamChunk> handleContinueAnalysis(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
         Map<String, Object> stateUpdate = new HashMap<>();
         stateUpdate.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
-        return resume(threadId, stateUpdate, "异常中断恢复");
+        return resume(threadId, runId, stateUpdate, "异常中断恢复");
     }
 
-    private Flux<GraphStreamChunk> handleClarificationAnswer(GraphRequest request, String multiTurnContext) {
+    private Flux<GraphStreamChunk> handleClarificationAnswer(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
         Map<String, Object> stateUpdate = new HashMap<>();
         stateUpdate.put(CLARIFICATION_FEEDBACK_DATA, Map.of("answer", safeInteractionContent(request)));
         stateUpdate.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
-        return resume(threadId, stateUpdate, "澄清回答恢复");
+        return resume(threadId, runId, stateUpdate, "澄清回答恢复");
     }
 
-    private Flux<GraphStreamChunk> handleClarificationConfirm(GraphRequest request, String multiTurnContext) {
+    private Flux<GraphStreamChunk> handleClarificationConfirm(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
         Map<String, Object> stateUpdate = new HashMap<>();
         stateUpdate.put(CLARIFICATION_CONFIRM_DATA, Map.of("content", safeInteractionContent(request)));
         stateUpdate.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
-        return resume(threadId, stateUpdate, "澄清确认恢复");
+        return resume(threadId, runId, stateUpdate, "澄清确认恢复");
     }
 
-    private Flux<GraphStreamChunk> handleHumanFeedback(GraphRequest request, String multiTurnContext) {
+    private Flux<GraphStreamChunk> handleHumanFeedback(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
         String feedbackContent = request.getHumanFeedbackContent() != null ? request.getHumanFeedbackContent() : "";
         boolean approved = resolveHumanFeedbackApproved(request, feedbackContent);
@@ -202,7 +210,7 @@ public class GraphService {
         Map<String, Object> stateUpdate = new HashMap<>();
         stateUpdate.put(HUMAN_FEEDBACK_DATA, feedbackData);
         stateUpdate.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
-        return resume(threadId, stateUpdate, "人工反馈恢复", feedbackData);
+        return resume(threadId, runId, stateUpdate, "人工反馈恢复", feedbackData);
     }
 
     private boolean resolveHumanFeedbackApproved(GraphRequest request, String feedbackContent) {
@@ -222,11 +230,12 @@ public class GraphService {
         return false;
     }
 
-    private Flux<GraphStreamChunk> resume(String threadId, Map<String, Object> stateUpdate, String label) {
-        return resume(threadId, stateUpdate, label, Map.of());
+    private Flux<GraphStreamChunk> resume(String threadId, String runId, Map<String, Object> stateUpdate, String label) {
+        return resume(threadId, runId, stateUpdate, label, Map.of());
     }
 
     private Flux<GraphStreamChunk> resume(String threadId,
+                                          String runId,
                                           Map<String, Object> stateUpdate,
                                           String label,
                                           Map<String, Object> metadata) {
@@ -240,14 +249,18 @@ public class GraphService {
                 resumeBuilder.addMetadata(RunnableConfig.HUMAN_FEEDBACK_METADATA_KEY, metadata);
             }
             RunnableConfig resumeConfig = resumeBuilder.build();
-            return streamGraph(threadId, compiledGraph.stream(null, resumeConfig), resumeConfig, label);
+            return streamGraph(threadId, runId, compiledGraph.stream(null, resumeConfig), resumeConfig, label);
         } catch (Exception e) {
             log.error("{}失败 - threadId: {}", label, threadId, e);
             return Flux.error(e);
         }
     }
 
-    private Flux<GraphStreamChunk> streamGraph(String threadId, Flux<?> graphFlux, RunnableConfig config, String label) {
+    private Flux<GraphStreamChunk> streamGraph(String threadId,
+                                               String runId,
+                                               Flux<?> graphFlux,
+                                               RunnableConfig config,
+                                               String label) {
         StreamContext streamContext = new StreamContext();
         streamContextMap.put(threadId, streamContext);
         AtomicReference<String> currentNode = new AtomicReference<>();
@@ -260,7 +273,7 @@ public class GraphService {
                         List<GraphStreamChunk> events = new ArrayList<>();
                         String previousNode = currentNode.get();
                         if (previousNode != null && !previousNode.equals(nodeName)) {
-                            persistCheckpoint(threadId, previousNode, config, streamContext);
+                            persistCheckpoint(runId, threadId, previousNode, config, streamContext);
                             events.add(GraphStreamChunk.nodeCompleted(previousNode));
                         }
                         if (previousNode == null || !previousNode.equals(nodeName)) {
@@ -291,7 +304,7 @@ public class GraphService {
                                 String nodeName = currentNode.get();
                                 if (nodeName != null
                                         && streamContext.shouldPersistByTimeFallback(System.currentTimeMillis())) {
-                                    persistCheckpoint(threadId, nodeName, config, streamContext);
+                                    persistCheckpoint(runId, threadId, nodeName, config, streamContext);
                                 }
                             })
                             .thenMany(Flux.empty());
@@ -307,7 +320,7 @@ public class GraphService {
                 .doOnComplete(() -> {
                     String nodeName = currentNode.get();
                     if (nodeName != null) {
-                        persistCheckpoint(threadId, nodeName, config, streamContext);
+                        persistCheckpoint(runId, threadId, nodeName, config, streamContext);
                     }
                     log.info("{}流式输出结束 - threadId: {}", label, threadId);
                     cleanupStreamContext(threadId);
@@ -326,7 +339,7 @@ public class GraphService {
                 .onErrorResume(TimeoutException.class, error -> {
                     log.warn("{}超时 - threadId: {}, timeoutSeconds: {}",
                             label, threadId, workflowTimeout.toSeconds());
-                    workflowRunService.markFailed(threadId, "工作流执行超时");
+                    workflowRunService.markFailed(runId, currentNode.get(), "工作流执行超时");
                     cleanupStreamContext(threadId);
                     String content = "{\"code\":\"B000100\",\"message\":\"工作流执行超时\"}";
                     return Flux.just(GraphStreamChunk.error(content, currentNode.get()));
@@ -351,7 +364,11 @@ public class GraphService {
         return StringUtils.hasLength(content) && content.contains(WorkflowEventConstants.EVENT_PREFIX);
     }
 
-    private void persistCheckpoint(String threadId, String nodeName, RunnableConfig config, StreamContext streamContext) {
+    private void persistCheckpoint(String runId,
+                                   String threadId,
+                                   String nodeName,
+                                   RunnableConfig config,
+                                   StreamContext streamContext) {
         try {
             StateSnapshot snapshot = compiledGraph.lastStateOf(config).orElse(null);
             if (snapshot == null) {
@@ -359,7 +376,7 @@ public class GraphService {
             }
             String checkpointId = snapshot.config().checkPointId().orElse(null);
             workflowRunService.markNodeCompleted(
-                    threadId,
+                    runId,
                     nodeName,
                     snapshot.next(),
                     checkpointId,
@@ -368,6 +385,19 @@ public class GraphService {
             );
         } catch (Exception e) {
             log.warn("保存工作流状态快照失败 - threadId: {}, node: {}, reason: {}", threadId, nodeName, e.getMessage());
+        }
+    }
+
+    private String resolveRunId(String threadId, ContextView contextView) {
+        try {
+            // 1. 主链路从 Reactor Context 读取模型网关执行上下文。
+            GatewayExecutionContext context = GatewayReactorContext.currentOrThrow(contextView);
+            // 2. 返回运行编号，后续运行状态持久化统一使用 runId。
+            return context.runId();
+        } catch (IllegalStateException exception) {
+            // 3. 兼容旧单元测试或直接调用入口，缺失上下文时临时使用 threadId。
+            log.warn("模型网关执行上下文缺失，兼容使用 threadId 更新运行状态 - threadId: {}", threadId);
+            return threadId;
         }
     }
 

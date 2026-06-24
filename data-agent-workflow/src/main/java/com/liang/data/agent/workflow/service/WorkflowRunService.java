@@ -17,6 +17,7 @@ public interface WorkflowRunService {
      *
      * @param sessionId 会话 ID
      * @param agentId   智能体 ID
+     * @param userId    用户 ID
      * @param query     用户问题
      */
     void startRun(String sessionId, Integer agentId, Long userId, String query);

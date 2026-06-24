@@ -13,6 +13,8 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
+import com.liang.data.agent.gateway.context.GatewayExecutionContext;
+import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.workflow.dto.GraphRequest;
 import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.dto.node.IntentRecognitionOutputDTO;
@@ -49,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -104,13 +107,18 @@ class GraphServiceTest {
                 .threadId("thread-long-stream")
                 .query("长耗时节点流式输出")
                 .build();
+        GatewayExecutionContext context = new GatewayExecutionContext(
+                "run-long-stream", "trace-long-stream", "thread-long-stream", 1L, 2, null);
 
-        List<String> chunks = graphService.chat(request, "(无)").collectList().block();
+        List<String> chunks = graphService.chat(request, "(无)")
+                .contextWrite(GatewayReactorContext.with(context))
+                .collectList()
+                .block();
 
         assertEquals("第一段第二段", String.join("", chunks).replaceAll("\\R", ""));
         ArgumentCaptor<String> accumulatedContentCaptor = ArgumentCaptor.forClass(String.class);
         verify(workflowRunService, atLeast(2)).markNodeCompleted(
-                anyString(), anyString(), any(), any(), anyMap(), accumulatedContentCaptor.capture());
+                eq("run-long-stream"), anyString(), any(), any(), anyMap(), accumulatedContentCaptor.capture());
         List<String> savedContents = accumulatedContentCaptor.getAllValues().stream()
                 .map(content -> content.replaceAll("\\R", ""))
                 .toList();
@@ -193,13 +201,18 @@ class GraphServiceTest {
                 .threadId("thread-timeout")
                 .query("超时测试")
                 .build();
+        GatewayExecutionContext context = new GatewayExecutionContext(
+                "run-timeout", "trace-timeout", "thread-timeout", 1L, 2, null);
 
-        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)").collectList().block();
+        List<GraphStreamChunk> chunks = graphService.chatStream(request, "(无)")
+                .contextWrite(GatewayReactorContext.with(context))
+                .collectList()
+                .block();
 
         assertThat(chunks).isNotNull();
         assertThat(chunks.getLast().eventType()).isEqualTo(WorkflowEventConstants.EVENT_WORKFLOW_ERROR);
         assertThat(chunks.getLast().content()).contains("B000100").contains("工作流执行超时");
-        verify(workflowRunService).markFailed("thread-timeout", "工作流执行超时");
+        verify(workflowRunService).markFailed("run-timeout", "LongStreamingNode", "工作流执行超时");
     }
 
     @Test

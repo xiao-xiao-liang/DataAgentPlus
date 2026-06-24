@@ -1,5 +1,8 @@
 package com.liang.data.agent.controller;
 
+import com.liang.data.agent.gateway.context.GatewayExecutionContext;
+import com.liang.data.agent.gateway.context.GatewayExecutionContextFactory;
+import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.service.agent.AgentService;
 import com.liang.data.agent.service.chat.ChatMessageService;
 import com.liang.data.agent.service.chat.ChatSessionService;
@@ -11,6 +14,7 @@ import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.service.GraphService;
 import com.liang.data.agent.workflow.service.WorkflowAdmissionService;
 import com.liang.data.agent.workflow.service.WorkflowRunService;
+import com.liang.data.agent.workflow.vo.WorkflowRunVO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import reactor.core.publisher.Flux;
@@ -35,6 +39,8 @@ class GraphControllerTest {
     private final AgentService agentService = mock(AgentService.class);
     private final WorkflowRunService workflowRunService = mock(WorkflowRunService.class);
     private final WorkflowAdmissionService workflowAdmissionService = mock(WorkflowAdmissionService.class);
+    private final GatewayExecutionContextFactory contextFactory =
+            new GatewayExecutionContextFactory(() -> "b".repeat(32));
 
     private final GraphController controller = new GraphController(
             graphService,
@@ -43,7 +49,8 @@ class GraphControllerTest {
             sessionTitleService,
             agentService,
             workflowRunService,
-            workflowAdmissionService
+            workflowAdmissionService,
+            contextFactory
     );
 
     @Test
@@ -66,6 +73,72 @@ class GraphControllerTest {
         assertThat(String.join("", chunks)).contains("\"eventType\":\"workflow_error\"");
         assertThat(String.join("", chunks)).contains("boom");
         verify(chatMessageService).saveMessageAsync(any(), anyString());
+    }
+
+    @Test
+    void chatStartsRunAndPropagatesContextForNewQuery() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .userId(8L)
+                .threadId("thread-new-context")
+                .query("query")
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-new-context"))
+                .thenReturn(ChatSessionVO.builder().id("thread-new-context").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-new-context", 10)).thenReturn("(none)");
+        when(graphService.chatStream(any(GraphRequest.class), anyString()))
+                .thenReturn(Flux.deferContextual(view -> {
+                    GatewayExecutionContext context = GatewayReactorContext.currentOrThrow(view);
+                    return Flux.just(GraphStreamChunk.content(context.runId(), "node-1"));
+                }));
+
+        List<String> chunks = controller.chat(request).collectList().block();
+
+        ArgumentCaptor<GatewayExecutionContext> contextCaptor =
+                ArgumentCaptor.forClass(GatewayExecutionContext.class);
+        verify(workflowRunService).startRun(contextCaptor.capture(), eq("query"));
+        GatewayExecutionContext context = contextCaptor.getValue();
+        assertThat(context.runId()).isNotBlank();
+        assertThat(context.traceId()).isEqualTo("b".repeat(32));
+        assertThat(context.sessionId()).isEqualTo("thread-new-context");
+        assertThat(context.userId()).isEqualTo(8L);
+        assertThat(context.agentId()).isEqualTo(2);
+        assertThat(String.join("", chunks)).contains(context.runId());
+    }
+
+    @Test
+    void chatRestoresRunContextForNonNewQuery() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .userId(8L)
+                .threadId("thread-restore-context")
+                .query("")
+                .interactionType("CLARIFICATION_ANSWER")
+                .interactionContent("按日统计")
+                .build();
+        WorkflowRunVO latestRun = WorkflowRunVO.builder()
+                .runId("run-restored")
+                .traceId("trace-restored")
+                .sessionId("thread-restore-context")
+                .userId(8L)
+                .agentId(2)
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-restore-context"))
+                .thenReturn(ChatSessionVO.builder().id("thread-restore-context").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-restore-context", 10)).thenReturn("(none)");
+        when(workflowRunService.findLatest("thread-restore-context")).thenReturn(latestRun);
+        when(graphService.chatStream(any(GraphRequest.class), anyString()))
+                .thenReturn(Flux.deferContextual(view -> {
+                    GatewayExecutionContext context = GatewayReactorContext.currentOrThrow(view);
+                    return Flux.just(GraphStreamChunk.content(context.runId(), "node-1"));
+                }));
+
+        List<String> chunks = controller.chat(request).collectList().block();
+
+        verify(workflowRunService, never()).startRun(any(GatewayExecutionContext.class), anyString());
+        assertThat(String.join("", chunks)).contains("run-restored");
     }
 
     @Test
@@ -318,12 +391,15 @@ class GraphControllerTest {
         List<String> chunks = controller.chat(request).take(1).collectList().block();
         assertThat(chunks).containsExactly("node-1-output");
 
+        ArgumentCaptor<GatewayExecutionContext> contextCaptor =
+                ArgumentCaptor.forClass(GatewayExecutionContext.class);
+        verify(workflowRunService).startRun(contextCaptor.capture(), eq("query"));
         verify(chatMessageService, never()).saveOrUpdateStreamingAssistantMessage(
                 eq("thread-running"),
                 anyString(),
                 anyString(),
                 eq(true)
         );
-        verify(workflowRunService).markInterrupted("thread-running", "客户端连接断开");
+        verify(workflowRunService).markInterrupted(contextCaptor.getValue().runId(), "客户端连接断开");
     }
 }
