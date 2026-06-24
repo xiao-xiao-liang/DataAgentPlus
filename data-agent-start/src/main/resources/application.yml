@@ -13,10 +13,12 @@ management:
   tracing:
     enabled: ${OBSERVABILITY_TRACING_ENABLED:true}
     sampling:
+      # 本地默认全量采样便于验证，生产环境应通过环境变量降低采样率。
       probability: ${OBSERVABILITY_SAMPLING_PROBABILITY:1.0}
   otlp:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      # 该变量必须配置为完整 traces endpoint，不能只配置 OTLP base URL。
+      endpoint: ${OBSERVABILITY_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   metrics:
     tags:
       application: liang-data-agent

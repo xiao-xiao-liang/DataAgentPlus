@@ -36,6 +36,13 @@
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <exclusions>
+                <!-- 排除 RocketMQ 传递引入的旧版 OTel alpha Prometheus exporter，避免与 Spring Boot 管理的 OTel 版本混用。 -->
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-prometheus</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- 校验 -->
