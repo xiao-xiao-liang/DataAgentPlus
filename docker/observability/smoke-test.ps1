@@ -1,7 +1,8 @@
 ﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$deadline = (Get-Date).AddSeconds(60)
+$maxWaitSeconds = 50
+$deadline = (Get-Date).AddSeconds($maxWaitSeconds)
 $healthChecks = @(
     @{ Name = 'Collector 健康检查'; Url = 'http://localhost:13133/' },
     @{ Name = 'Tempo 就绪检查'; Url = 'http://localhost:3200/ready' },
