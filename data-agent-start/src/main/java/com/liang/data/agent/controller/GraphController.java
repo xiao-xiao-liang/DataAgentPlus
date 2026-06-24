@@ -72,8 +72,12 @@ public class GraphController {
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> chat(@RequestBody GraphRequest request) {
-        log.info("收到图流对话请求，agentId：{}，threadId：{}，query：{}",
-                request.getAgentId(), request.getThreadId(), request.getQuery());
+        String requestQuery = request.getQuery();
+        int requestQueryLength = contentLength(requestQuery);
+        boolean requestQueryBlank = !StringUtils.hasText(requestQuery);
+        log.info("收到图流对话请求，agentId：{}，threadId：{}，interactionType：{}，query长度：{}，query为空：{}",
+                request.getAgentId(), request.getThreadId(), request.getInteractionType(),
+                requestQueryLength, requestQueryBlank);
 
         // 1. 校验并解析智能体 ID。
         int agentIdInt = parseAgentId(request);
@@ -368,9 +372,16 @@ public class GraphController {
                     null
             );
         }
-        // 3. 旧会话缺失运行记录时降级创建临时上下文，避免恢复入口直接中断。
-        log.warn("未找到可恢复的工作流运行上下文，已创建临时上下文继续处理 - sessionId: {}", sessionId);
-        return contextFactory.create(sessionId, userId, agentId, null);
+        // 3. 旧会话缺失运行编号时使用会话编号作为兼容运行标识，避免生成未持久化随机 runId。
+        log.warn("未找到可恢复的工作流运行编号，使用会话编号作为兼容运行标识 - sessionId: {}", sessionId);
+        return new GatewayExecutionContext(
+                sessionId,
+                latestRun != null ? latestRun.getTraceId() : null,
+                latestRun != null && StringUtils.hasText(latestRun.getSessionId()) ? latestRun.getSessionId() : sessionId,
+                latestRun != null && latestRun.getUserId() != null ? latestRun.getUserId() : userId,
+                latestRun != null && latestRun.getAgentId() != null ? latestRun.getAgentId() : agentId,
+                null
+        );
     }
 
     private String safeMessage(Throwable throwable) {
@@ -400,5 +411,9 @@ public class GraphController {
 
     private Long normalizeUserId(Long userId) {
         return userId != null ? userId : DEFAULT_USER_ID;
+    }
+
+    private int contentLength(String content) {
+        return content != null ? content.length() : 0;
     }
 }

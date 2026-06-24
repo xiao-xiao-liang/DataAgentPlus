@@ -156,11 +156,14 @@ public class GraphService {
 
     private Flux<GraphStreamChunk> handleNewProcess(GraphRequest request, String multiTurnContext, String runId) {
         String threadId = request.getThreadId();
+        String query = request.getQuery();
+        int queryLength = contentLength(query);
+        boolean queryBlank = !StringUtils.hasText(query);
         boolean nl2sqlOnly = request.isNl2sqlOnly();
         boolean humanReviewEnabled = request.isHumanFeedback() && !nl2sqlOnly;
 
         Map<String, Object> initialState = new HashMap<>();
-        initialState.put(INPUT_KEY, request.getQuery());
+        initialState.put(INPUT_KEY, query);
         initialState.put(AGENT_ID, request.getAgentId());
         initialState.put(THREAD_ID, threadId);
         initialState.put(MULTI_TURN_CONTEXT, multiTurnContext != null ? multiTurnContext : "(无)");
@@ -171,8 +174,8 @@ public class GraphService {
                 .threadId(threadId)
                 .build();
 
-        log.info("开始执行工作流 - threadId: {}, input: {}, agentId: {}, nl2sqlOnly: {}, humanReviewEnabled: {}",
-                threadId, request.getQuery(), request.getAgentId(), nl2sqlOnly, humanReviewEnabled);
+        log.info("开始执行工作流 - threadId: {}, runId: {}, agentId: {}, query长度: {}, query为空: {}, nl2sqlOnly: {}, humanReviewEnabled: {}",
+                threadId, runId, request.getAgentId(), queryLength, queryBlank, nl2sqlOnly, humanReviewEnabled);
 
         return streamGraph(threadId, runId, compiledGraph.stream(initialState, config), config, "工作流执行");
     }
@@ -218,15 +221,18 @@ public class GraphService {
             return true;
         }
 
+        int feedbackLength = contentLength(feedbackContent);
+        boolean feedbackBlank = !StringUtils.hasText(feedbackContent);
         HumanFeedbackIntentResult intentResult = humanFeedbackIntentService.classify(feedbackContent);
         if (intentResult.getIntent() == HumanFeedbackIntent.APPROVE) {
-            log.info("人工反馈文本识别为确认意图，按审核通过处理 - threadId: {}, confidence: {}, content: {}",
-                    request.getThreadId(), intentResult.getConfidence(), feedbackContent);
+            log.info("人工反馈文本识别为确认意图，按审核通过处理 - threadId: {}, feedback长度: {}, feedback为空: {}, confidence: {}",
+                    request.getThreadId(), feedbackLength, feedbackBlank, intentResult.getConfidence());
             return true;
         }
 
-        log.info("人工反馈文本未识别为确认意图，按驳回修改处理 - threadId: {}, intent: {}, confidence: {}, reason: {}",
-                request.getThreadId(), intentResult.getIntent(), intentResult.getConfidence(), intentResult.getReason());
+        log.info("人工反馈文本未识别为确认意图，按驳回修改处理 - threadId: {}, feedback长度: {}, feedback为空: {}, intent: {}, confidence: {}, reason: {}",
+                request.getThreadId(), feedbackLength, feedbackBlank, intentResult.getIntent(),
+                intentResult.getConfidence(), intentResult.getReason());
         return false;
     }
 
@@ -405,6 +411,10 @@ public class GraphService {
         return StringUtils.hasText(request.getInteractionContent())
                 ? request.getInteractionContent()
                 : "";
+    }
+
+    private int contentLength(String content) {
+        return content != null ? content.length() : 0;
     }
 
     public void stopStreamProcessing(String threadId) {

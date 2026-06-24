@@ -142,6 +142,69 @@ class GraphControllerTest {
     }
 
     @Test
+    void chatUsesSessionIdAsRunIdWhenRestoredRunMissing() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .userId(8L)
+                .threadId("thread-missing-run")
+                .query("")
+                .interactionType("CLARIFICATION_ANSWER")
+                .interactionContent("按周统计")
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-missing-run"))
+                .thenReturn(ChatSessionVO.builder().id("thread-missing-run").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-missing-run", 10)).thenReturn("(none)");
+        when(workflowRunService.findLatest("thread-missing-run")).thenReturn(null);
+        when(graphService.chatStream(any(GraphRequest.class), anyString()))
+                .thenReturn(Flux.deferContextual(view -> {
+                    GatewayExecutionContext context = GatewayReactorContext.currentOrThrow(view);
+                    return Flux.just(GraphStreamChunk.content(context.runId(), "node-1"));
+                }));
+
+        List<String> chunks = controller.chat(request).collectList().block();
+
+        verify(workflowRunService, never()).startRun(any(GatewayExecutionContext.class), anyString());
+        assertThat(chunks).isNotNull();
+        assertThat(chunks.getFirst()).isEqualTo("thread-missing-run");
+    }
+
+    @Test
+    void chatUsesSessionIdAsRunIdWhenRestoredRunIdBlank() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .userId(8L)
+                .threadId("thread-blank-run")
+                .query("")
+                .interactionType("CLARIFICATION_ANSWER")
+                .interactionContent("按月统计")
+                .build();
+        WorkflowRunVO latestRun = WorkflowRunVO.builder()
+                .runId("")
+                .traceId("trace-blank-run")
+                .sessionId("thread-blank-run")
+                .userId(9L)
+                .agentId(3)
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-blank-run"))
+                .thenReturn(ChatSessionVO.builder().id("thread-blank-run").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-blank-run", 10)).thenReturn("(none)");
+        when(workflowRunService.findLatest("thread-blank-run")).thenReturn(latestRun);
+        when(graphService.chatStream(any(GraphRequest.class), anyString()))
+                .thenReturn(Flux.deferContextual(view -> {
+                    GatewayExecutionContext context = GatewayReactorContext.currentOrThrow(view);
+                    return Flux.just(GraphStreamChunk.content(context.runId(), "node-1"));
+                }));
+
+        List<String> chunks = controller.chat(request).collectList().block();
+
+        verify(workflowRunService, never()).startRun(any(GatewayExecutionContext.class), anyString());
+        assertThat(chunks).isNotNull();
+        assertThat(chunks.getFirst()).isEqualTo("thread-blank-run");
+    }
+
+    @Test
     void chatPersistsAssistantContentOnceWhenStreamCompletes() {
         GraphRequest request = GraphRequest.builder()
                 .agentId("2")

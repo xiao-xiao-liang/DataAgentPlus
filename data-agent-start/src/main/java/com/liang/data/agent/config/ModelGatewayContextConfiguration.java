@@ -1,6 +1,8 @@
 package com.liang.data.agent.config;
 
 import com.liang.data.agent.gateway.context.GatewayExecutionContextFactory;
+import com.liang.data.agent.gateway.context.TraceIdProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,13 +15,27 @@ import org.springframework.context.annotation.Configuration;
 public class ModelGatewayContextConfiguration {
 
     /**
+     * 创建默认链路追踪编号提供器。
+     *
+     * @return 链路追踪编号提供器
+     */
+    @Bean
+    @ConditionalOnMissingBean(TraceIdProvider.class)
+    public TraceIdProvider traceIdProvider() {
+        // 1. 当前阶段不提前引入观测依赖，traceId 暂由后续观测配置提供。
+        return () -> null;
+    }
+
+    /**
      * 创建模型网关执行上下文工厂。
      *
+     * @param traceIdProvider 链路追踪编号提供器
      * @return 模型网关执行上下文工厂
      */
     @Bean
-    public GatewayExecutionContextFactory gatewayExecutionContextFactory() {
-        // 1. 当前阶段不提前引入观测依赖，traceId 暂由后续观测配置提供。
-        return new GatewayExecutionContextFactory(() -> null);
+    @ConditionalOnMissingBean(GatewayExecutionContextFactory.class)
+    public GatewayExecutionContextFactory gatewayExecutionContextFactory(TraceIdProvider traceIdProvider) {
+        // 1. 注入可替换的 traceId 提供器，后续观测配置可覆盖默认实现。
+        return new GatewayExecutionContextFactory(traceIdProvider);
     }
 }
