@@ -1,0 +1,65 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    container_name: data-agent-otel-collector
+    command:
+      - --config=/etc/otelcol-contrib/otel-collector.yml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    volumes:
+      - ./otel-collector.yml:/etc/otelcol-contrib/otel-collector.yml:ro
+    depends_on:
+      - tempo
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.7.1
+    container_name: data-agent-tempo
+    command:
+      - -config.file=/etc/tempo/tempo.yml
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: data-agent-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: data-agent-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+    restart: unless-stopped
+
+volumes:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
