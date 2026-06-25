@@ -150,4 +150,4 @@ chat:
       max-user-running: 2
       max-global-running: 10
       redis:
-        enabled: true
+        enabled: ${CHAT_WORKFLOW_QUEUE_REDIS_ENABLED:false}

@@ -17,6 +17,7 @@ import com.liang.data.agent.dal.mapper.AgentMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
+import com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService;
 import com.liang.data.agent.service.ratelimit.ResourceGate;
 import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
@@ -29,6 +30,7 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.liang.data.agent.common.constant.NodeOutputKey.QUERY_ENHANCE_NODE_OUTPUT;
 import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_EXECUTE_NODE_OUTPUT;
@@ -36,6 +38,7 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_GENERATE_OU
 import static com.liang.data.agent.common.constant.StateKey.AGENT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
@@ -253,6 +256,62 @@ class SqlExecuteNodeTest {
         node.apply(state);
 
         verify(databaseAccessor).executeSql(any(), eq("select * from orders limit 10"), eq(25));
+    }
+
+    @Test
+    void applyShouldSyncColumnPermissionsWhenSelectedTableHasNoColumnConfig() throws Exception {
+        DatabaseAccessor databaseAccessor = mock(DatabaseAccessor.class);
+        DatasourceMapper datasourceMapper = mock(DatasourceMapper.class);
+        AgentDatasourceMapper agentDatasourceMapper = mock(AgentDatasourceMapper.class);
+        AgentDatasourceTablesMapper tablesMapper = mock(AgentDatasourceTablesMapper.class);
+        AgentDatasourceColumnService columnService = mock(AgentDatasourceColumnService.class);
+        ResourceGate resourceGate = mock(ResourceGate.class);
+        DataAgentProperties properties = new DataAgentProperties();
+        properties.setEnableSqlResultChart(false);
+
+        DatasourceEntity datasource = new DatasourceEntity();
+        datasource.setId(10);
+        datasource.setType("mysql");
+        datasource.setHost("localhost");
+        datasource.setPort(3306);
+        datasource.setDatabaseName("analytics");
+        datasource.setUsername("root");
+        datasource.setPassword("root");
+
+        when(resourceGate.tryAcquire(eq(ResourceType.SQL_EXECUTION), anyString(), any()))
+                .thenReturn(ResourcePermit.acquired(ResourceType.SQL_EXECUTION, "agent-1", () -> {
+                }));
+        when(agentDatasourceMapper.getActiveDatasource(1)).thenReturn(10);
+        when(agentDatasourceMapper.getActiveBindingId(1)).thenReturn(20);
+        when(datasourceMapper.selectById(10)).thenReturn(datasource);
+        when(tablesMapper.selectTablesByAgentDatasourceId(20)).thenReturn(List.of("orders"));
+        when(columnService.listColumns(1, 10, "orders")).thenReturn(List.of());
+        when(columnService.getAnalyticColumns(20, List.of("orders")))
+                .thenReturn(Map.of("orders", Set.of()))
+                .thenReturn(Map.of("orders", Set.of("id")));
+        when(databaseAccessor.executeSql(any(), eq("select id from orders limit 10"), anyInt()))
+                .thenReturn(new ResultSetBO(List.of("id"), List.of(Map.of("id", "1"))));
+
+        SqlExecuteNode node = new SqlExecuteNode(
+                databaseAccessor,
+                datasourceMapper,
+                agentDatasourceMapper,
+                tablesMapper,
+                columnService,
+                mock(AgentMapper.class),
+                mock(LlmService.class),
+                properties,
+                mock(JsonParseUtil.class),
+                resourceGate
+        );
+        OverAllState state = mock(OverAllState.class);
+        when(state.value(SQL_GENERATE_OUTPUT)).thenReturn(Optional.of("select id from orders limit 10"));
+        when(state.value(AGENT_ID)).thenReturn(Optional.of("1"));
+
+        node.apply(state);
+
+        verify(columnService).syncColumns(eq(20), any(), eq(List.of("orders")));
+        verify(databaseAccessor).executeSql(any(), eq("select id from orders limit 10"), anyInt());
     }
 
     @Test

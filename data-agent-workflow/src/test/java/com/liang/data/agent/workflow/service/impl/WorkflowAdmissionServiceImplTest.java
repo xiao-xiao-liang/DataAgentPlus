@@ -120,6 +120,24 @@ class WorkflowAdmissionServiceImplTest {
     }
 
     @Test
+    void tryPromoteShouldFallbackToDatabaseWhenRedisKeepsCurrentWaiting() {
+        ChatWorkflowQueueEntity current = waitingQueue("queue-5", 1005L, 5L);
+        when(redisWorkflowQueueScheduler.isEnabled()).thenReturn(true);
+        when(redisWorkflowQueueScheduler.claimRunnableQueueIds()).thenReturn(java.util.List.of());
+        when(chatWorkflowQueueMapper.selectByQueueId("queue-5")).thenReturn(current, current);
+        when(chatWorkflowQueueMapper.countRunningByUser(1005L, "CHAT_WORKFLOW")).thenReturn(0L);
+        when(chatWorkflowQueueMapper.countRunningByScope("CHAT_WORKFLOW")).thenReturn(0L);
+        when(chatWorkflowQueueMapper.existsEarlierWaiting("CHAT_WORKFLOW", current.getQueuedAt(), current.getId()))
+                .thenReturn(false);
+        when(chatWorkflowQueueMapper.markRunning("queue-5")).thenReturn(1);
+
+        WorkflowQueueVO result = redisService.tryPromote("queue-5");
+
+        assertThat(result.getStatus()).isEqualTo("RUNNING");
+        verify(chatWorkflowQueueMapper).markRunning("queue-5");
+    }
+
+    @Test
     void tryPromoteShouldKeepWaitingWhenUserAlreadyHasTwoRunningTasks() {
         ChatWorkflowQueueEntity queue = waitingQueue("queue-1", 1001L, 1L);
         when(chatWorkflowQueueMapper.selectByQueueId("queue-1")).thenReturn(queue);

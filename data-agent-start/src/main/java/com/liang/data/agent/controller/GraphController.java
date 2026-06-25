@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_NODE_OUTPUT;
 import static com.liang.data.agent.workflow.constants.WorkflowEventConstants.EVENT_PREFIX;
@@ -148,6 +149,7 @@ public class GraphController {
 
         StringBuilder accumulatedResponse = new StringBuilder();
         StringBuilder completedNodeResponse = new StringBuilder();
+        AtomicBoolean cancelHandled = new AtomicBoolean(false);
 
         Flux<String> queuePrefix = buildQueuePrefix(finalQueue);
         Flux<GraphStreamChunk> streamFlux = Mono.fromRunnable(() -> {
@@ -226,21 +228,23 @@ public class GraphController {
                         GraphStreamChunk.error(safeMessage(err), "")
                 )))
                 .doOnCancel(() -> {
-                    log.info("客户端断开连接，threadId：{}", finalSessionId);
-                    if (!completedNodeResponse.isEmpty()) {
-                        chatMessageService.saveOrUpdateStreamingAssistantMessage(
-                                finalSessionId,
-                                completedNodeResponse.toString(),
-                                "text",
-                                true
-                        );
-                    }
-                    workflowRunService.markInterrupted(executionContext.runId(), "客户端连接断开");
-                    cancelQueue(finalQueue, "客户端连接断开");
-                    graphService.stopStreamProcessing(finalSessionId);
+                    handleClientCancel(
+                            finalSessionId,
+                            completedNodeResponse,
+                            executionContext,
+                            finalQueue,
+                            cancelHandled
+                    );
                 });
 
         return queuePrefix.concatWith(graphStream)
+                .doOnCancel(() -> handleClientCancel(
+                        finalSessionId,
+                        completedNodeResponse,
+                        executionContext,
+                        finalQueue,
+                        cancelHandled
+                ))
                 .onErrorResume(err -> Flux.just(formatSseData("系统繁忙，请稍后再试：" + safeMessage(err))));
     }
 
@@ -325,7 +329,33 @@ public class GraphController {
     }
 
     private String formatSseData(String message) {
-        return "data:" + message.replace("\r", " ").replace("\n", " ") + "\n\n";
+        return message.replace("\r", " ").replace("\n", " ");
+    }
+
+    private void handleClientCancel(String sessionId,
+                                    StringBuilder completedNodeResponse,
+                                    GatewayExecutionContext executionContext,
+                                    WorkflowQueueVO queue,
+                                    AtomicBoolean cancelHandled) {
+        if (!cancelHandled.compareAndSet(false, true)) {
+            return;
+        }
+        log.info("客户端断开连接，threadId：{}", sessionId);
+
+        // 1. 已完成节点内容先落库，避免用户刷新后丢失稳定输出。
+        if (!completedNodeResponse.isEmpty()) {
+            chatMessageService.saveOrUpdateStreamingAssistantMessage(
+                    sessionId,
+                    completedNodeResponse.toString(),
+                    "text",
+                    true
+            );
+        }
+
+        // 2. 中断运行记录并释放队列占用，等待排队阶段断开也要清理。
+        workflowRunService.markInterrupted(executionContext.runId(), "客户端连接断开");
+        cancelQueue(queue, "客户端连接断开");
+        graphService.stopStreamProcessing(sessionId);
     }
 
     private String encodeWorkflowStreamEvent(String agentId, String threadId, GraphStreamChunk event) {

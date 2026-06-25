@@ -14,6 +14,7 @@ import com.liang.data.agent.workflow.dto.GraphStreamChunk;
 import com.liang.data.agent.workflow.service.GraphService;
 import com.liang.data.agent.workflow.service.WorkflowAdmissionService;
 import com.liang.data.agent.workflow.service.WorkflowRunService;
+import com.liang.data.agent.workflow.vo.WorkflowQueueVO;
 import com.liang.data.agent.workflow.vo.WorkflowRunVO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -464,5 +465,60 @@ class GraphControllerTest {
                 eq(true)
         );
         verify(workflowRunService).markInterrupted(contextCaptor.getValue().runId(), "客户端连接断开");
+    }
+
+    @Test
+    void chatEmitsQueueEventWithoutManualSseDataPrefix() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-queue-running")
+                .query("query")
+                .build();
+        WorkflowQueueVO waitingQueue = WorkflowQueueVO.builder()
+                .queueId("queue-running")
+                .status("WAITING")
+                .build();
+        WorkflowQueueVO runningQueue = WorkflowQueueVO.builder()
+                .queueId("queue-running")
+                .status("RUNNING")
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-queue-running"))
+                .thenReturn(ChatSessionVO.builder().id("thread-queue-running").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-queue-running", 10)).thenReturn("(none)");
+        when(workflowAdmissionService.enqueue(1L, "thread-queue-running", 2, "query")).thenReturn(waitingQueue);
+        when(workflowAdmissionService.tryPromote("queue-running")).thenReturn(runningQueue);
+        when(graphService.chatStream(any(GraphRequest.class), anyString())).thenReturn(Flux.empty());
+
+        List<String> chunks = controller.chat(request).collectList().block();
+
+        assertThat(chunks).isNotEmpty();
+        assertThat(chunks.getFirst()).contains("\"eventType\":\"queue_running\"");
+        assertThat(chunks.getFirst()).doesNotStartWith("data:");
+    }
+
+    @Test
+    void chatCancelsQueueWhenClientDisconnectsDuringQueueWait() {
+        GraphRequest request = GraphRequest.builder()
+                .agentId("2")
+                .threadId("thread-queue-wait")
+                .query("query")
+                .build();
+        WorkflowQueueVO waitingQueue = WorkflowQueueVO.builder()
+                .queueId("queue-wait")
+                .status("WAITING")
+                .build();
+
+        when(chatSessionService.findBySessionId("thread-queue-wait"))
+                .thenReturn(ChatSessionVO.builder().id("thread-queue-wait").agentId(2).build());
+        when(chatMessageService.getMultiTurnContext("thread-queue-wait", 10)).thenReturn("(none)");
+        when(workflowAdmissionService.enqueue(1L, "thread-queue-wait", 2, "query")).thenReturn(waitingQueue);
+        when(workflowAdmissionService.tryPromote("queue-wait")).thenReturn(waitingQueue);
+
+        List<String> chunks = controller.chat(request).take(1).collectList().block();
+
+        assertThat(chunks).hasSize(1);
+        verify(workflowAdmissionService).cancel(eq("queue-wait"), anyString());
+        verify(graphService, never()).chatStream(any(GraphRequest.class), anyString());
     }
 }

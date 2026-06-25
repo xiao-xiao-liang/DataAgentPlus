@@ -132,6 +132,11 @@ public class SqlExecuteNode implements NodeAction {
 
         Map<String, Set<String>> analyticColumns = agentDatasourceColumnService
                 .getAnalyticColumns(bindingId, allowedTables);
+        if (hasMissingColumnConfig(Integer.valueOf(agentId), datasourceId, allowedTables)) {
+            log.warn("智能体 {} 的字段权限配置缺失，开始同步字段配置，数据源ID：{}，表：{}", agentId, datasourceId, allowedTables);
+            agentDatasourceColumnService.syncColumns(bindingId, DbConfigBO.from(datasource), allowedTables);
+            analyticColumns = agentDatasourceColumnService.getAnalyticColumns(bindingId, allowedTables);
+        }
         Set<String> unauthorizedColumns = SqlColumnAccessGuard.findUnauthorizedColumns(
                 sql, datasource.getType(), analyticColumns);
         if (!unauthorizedColumns.isEmpty()) {
@@ -220,6 +225,20 @@ public class SqlExecuteNode implements NodeAction {
         );
 
         return Map.of(SQL_EXECUTE_NODE_OUTPUT, generator);
+    }
+
+    private boolean hasMissingColumnConfig(Integer agentId, Integer datasourceId, List<String> allowedTables) {
+        if (allowedTables == null || allowedTables.isEmpty()) {
+            return false;
+        }
+        // 1. 仅在字段配置完全缺失时触发同步，避免覆盖用户主动关闭全部字段的权限选择。
+        for (String tableName : allowedTables) {
+            var columns = agentDatasourceColumnService.listColumns(agentId, datasourceId, tableName);
+            if (columns != null && columns.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -88,7 +88,10 @@ public class WorkflowAdmissionServiceImpl implements WorkflowAdmissionService {
 
         WorkflowQueueVO redisResult = tryPromoteByRedis(entity);
         if (redisResult != null) {
-            return redisResult;
+            if (!WorkflowQueueStatus.WAITING.name().equals(redisResult.getStatus())) {
+                return redisResult;
+            }
+            log.warn("Redis 队列未推进当前任务，降级使用 DB 准入判断，队列ID：{}", queueId);
         }
         return tryPromoteByDatabase(queueId, entity);
     }
