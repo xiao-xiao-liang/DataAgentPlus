@@ -508,7 +508,7 @@ CREATE TABLE IF NOT EXISTS model_gateway_invocation
     id            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '调用记录主键',
     invocation_id VARCHAR(36)   NOT NULL COMMENT '模型网关调用ID',
     run_id        VARCHAR(36)   DEFAULT NULL COMMENT '工作流运行ID',
-    trace_id      VARCHAR(64)   DEFAULT NULL COMMENT '链路追踪ID',
+    trace_id      VARCHAR(32)   DEFAULT NULL COMMENT '链路追踪ID',
     session_id    VARCHAR(36)   DEFAULT NULL COMMENT '会话ID',
     user_id       BIGINT        DEFAULT NULL COMMENT '用户ID',
     agent_id      INT           DEFAULT NULL COMMENT '智能体ID',

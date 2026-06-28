@@ -122,7 +122,7 @@ class ModelGatewaySchemaTest {
                 "id bigint not null auto_increment",
                 "invocation_id varchar(36) not null",
                 "run_id varchar(36) default null",
-                "trace_id varchar(64) default null",
+                "trace_id varchar(32) default null",
                 "session_id varchar(36) default null",
                 "user_id bigint default null",
                 "agent_id int default null",
@@ -146,11 +146,11 @@ class ModelGatewaySchemaTest {
 
     private static void assertInvocationIndexes(String ddl) {
         assertContainsAll(ddl,
-                "unique key uk_invocation_id",
-                "index idx_run_id",
-                "index idx_trace_id",
-                "index idx_scene_status_time",
-                "index idx_provider_model_time");
+                "unique key uk_invocation_id (invocation_id)",
+                "index idx_run_id (run_id)",
+                "index idx_trace_id (trace_id)",
+                "index idx_scene_status_time (scene_code, status, start_time)",
+                "index idx_provider_model_time (provider, model, start_time)");
     }
 
     private static void assertAttemptFields(String ddl) {
@@ -174,8 +174,8 @@ class ModelGatewaySchemaTest {
 
     private static void assertAttemptIndexes(String ddl) {
         assertContainsAll(ddl,
-                "unique key uk_attempt_id",
-                "index idx_invocation_id",
-                "index idx_provider_model_time");
+                "unique key uk_attempt_id (attempt_id)",
+                "index idx_invocation_id (invocation_id)",
+                "index idx_provider_model_time (provider, model, start_time)");
     }
 }
