@@ -56,6 +56,11 @@ public class DataAgentProperties {
     private ExecutionTimeoutProperties executionTimeout = new ExecutionTimeoutProperties();
 
     /**
+     * 模型网关配置
+     */
+    private ModelGatewayProperties modelGateway = new ModelGatewayProperties();
+
+    /**
      * SQL 执行失败最大重试次数
      */
     private int maxSqlRetryCount = 10;
@@ -120,6 +125,29 @@ public class DataAgentProperties {
 
         /** Python 执行超时秒数 */
         private int pythonSeconds = 30;
+    }
+
+    /**
+     * 模型网关配置属性，用于控制默认超时、持久化和指标开关。
+     */
+    @Getter
+    @Setter
+    public static class ModelGatewayProperties {
+
+        /**
+         * 默认模型调用超时秒数
+         */
+        private int defaultTimeoutSeconds = 30;
+
+        /**
+         * 是否启用调用明细持久化
+         */
+        private boolean persistenceEnabled = true;
+
+        /**
+         * 是否启用模型网关指标
+         */
+        private boolean metricsEnabled = true;
     }
 
     @Getter
