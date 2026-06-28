@@ -19,40 +19,41 @@ class ModelGatewaySchemaTest {
     private static final Path SCHEMA_PATH = Path.of("src/main/resources/sql/schema.sql");
     private static final Path MIGRATION_PATH = Path.of(
             "src/main/resources/sql/migration/V20260625_01__model_gateway_invocation_attempt.sql");
+    private static final String INVOCATION_TABLE_NAME = "model_gateway_invocation";
+    private static final String ATTEMPT_TABLE_NAME = "model_gateway_attempt";
 
     @Test
-    void shouldDefineInvocationAndAttemptTablesInSchemaAndMigration() throws IOException {
-        // 1. 读取初始化脚本和增量迁移脚本。
+    void shouldDefineRequiredInvocationFieldsAndIndexesInSchemaAndMigration() throws IOException {
+        // 1. 分别读取初始化脚本和增量迁移脚本。
         String schemaSql = readSql(SCHEMA_PATH);
         String migrationSql = readSql(MIGRATION_PATH);
 
-        // 2. 验证两份脚本都包含模型网关调用主表和尝试明细表。
-        assertThat(schemaSql).contains("create table if not exists model_gateway_invocation");
-        assertThat(schemaSql).contains("create table if not exists model_gateway_attempt");
-        assertThat(migrationSql).contains("create table if not exists model_gateway_invocation");
-        assertThat(migrationSql).contains("create table if not exists model_gateway_attempt");
+        // 2. 分别截取调用主表的建表语句，避免同名索引在其他表中误判通过。
+        String schemaInvocationDdl = extractTableDefinition(schemaSql, INVOCATION_TABLE_NAME);
+        String migrationInvocationDdl = extractTableDefinition(migrationSql, INVOCATION_TABLE_NAME);
+
+        // 3. 验证调用主表字段和索引完整性。
+        assertInvocationFields(schemaInvocationDdl);
+        assertInvocationFields(migrationInvocationDdl);
+        assertInvocationIndexes(schemaInvocationDdl);
+        assertInvocationIndexes(migrationInvocationDdl);
     }
 
     @Test
-    void shouldDefineRequiredInvocationIndexesInSchemaAndMigration() throws IOException {
-        // 1. 读取初始化脚本和增量迁移脚本。
+    void shouldDefineRequiredAttemptFieldsAndIndexesInSchemaAndMigration() throws IOException {
+        // 1. 分别读取初始化脚本和增量迁移脚本。
         String schemaSql = readSql(SCHEMA_PATH);
         String migrationSql = readSql(MIGRATION_PATH);
 
-        // 2. 验证调用主表的唯一索引和查询索引。
-        assertInvocationIndexes(schemaSql);
-        assertInvocationIndexes(migrationSql);
-    }
+        // 2. 分别截取尝试明细表的建表语句，避免同名索引在其他表中误判通过。
+        String schemaAttemptDdl = extractTableDefinition(schemaSql, ATTEMPT_TABLE_NAME);
+        String migrationAttemptDdl = extractTableDefinition(migrationSql, ATTEMPT_TABLE_NAME);
 
-    @Test
-    void shouldDefineRequiredAttemptIndexesInSchemaAndMigration() throws IOException {
-        // 1. 读取初始化脚本和增量迁移脚本。
-        String schemaSql = readSql(SCHEMA_PATH);
-        String migrationSql = readSql(MIGRATION_PATH);
-
-        // 2. 验证尝试明细表的唯一索引和查询索引。
-        assertAttemptIndexes(schemaSql);
-        assertAttemptIndexes(migrationSql);
+        // 3. 验证尝试明细表字段和索引完整性。
+        assertAttemptFields(schemaAttemptDdl);
+        assertAttemptFields(migrationAttemptDdl);
+        assertAttemptIndexes(schemaAttemptDdl);
+        assertAttemptIndexes(migrationAttemptDdl);
     }
 
     @Test
@@ -67,6 +68,13 @@ class ModelGatewaySchemaTest {
         assertThat(migrationSql).doesNotContain("proxy_password");
     }
 
+    /**
+     * 读取 SQL 文件内容，并统一为小写紧凑格式，降低大小写和空白字符差异对断言的影响。
+     *
+     * @param path SQL 文件路径
+     * @return 标准化后的 SQL 内容
+     * @throws IOException 文件读取失败时抛出
+     */
     private static String readSql(Path path) throws IOException {
         assertThat(path).exists();
         return Files.readString(path, StandardCharsets.UTF_8)
@@ -74,19 +82,100 @@ class ModelGatewaySchemaTest {
                 .replaceAll("\\s+", " ");
     }
 
-    private static void assertInvocationIndexes(String sql) {
-        assertThat(sql).contains("primary key (id)");
-        assertThat(sql).contains("unique key uk_invocation_id (invocation_id)");
-        assertThat(sql).contains("index idx_run_id (run_id)");
-        assertThat(sql).contains("index idx_trace_id (trace_id)");
-        assertThat(sql).contains("index idx_scene_status_time (scene_code, status, start_time)");
-        assertThat(sql).contains("index idx_provider_model_time (provider, model, start_time)");
+    /**
+     * 从 SQL 内容中截取指定表的建表语句。
+     *
+     * @param sql 标准化后的 SQL 内容
+     * @param tableName 表名
+     * @return 指定表的建表语句
+     */
+    private static String extractTableDefinition(String sql, String tableName) {
+        // 1. 定位目标表的建表语句起始位置。
+        String createTablePrefix = "create table if not exists " + tableName;
+        int startIndex = sql.indexOf(createTablePrefix);
+        assertThat(startIndex).as("应包含表 %s 的建表语句", tableName).isGreaterThanOrEqualTo(0);
+
+        // 2. 定位目标表建表语句结束分号。
+        int endIndex = sql.indexOf(';', startIndex);
+        assertThat(endIndex).as("表 %s 的建表语句应以分号结束", tableName).isGreaterThan(startIndex);
+
+        // 3. 返回目标表的完整建表片段。
+        return sql.substring(startIndex, endIndex + 1);
     }
 
-    private static void assertAttemptIndexes(String sql) {
-        assertThat(sql).contains("primary key (id)");
-        assertThat(sql).contains("unique key uk_attempt_id (attempt_id)");
-        assertThat(sql).contains("index idx_invocation_id (invocation_id)");
-        assertThat(sql).contains("index idx_provider_model_time (provider, model, start_time)");
+    /**
+     * 批量断言 DDL 片段包含全部指定内容。
+     *
+     * @param ddl DDL 片段
+     * @param snippets 需要包含的内容
+     */
+    private static void assertContainsAll(String ddl, String... snippets) {
+        // 1. 遍历每个预期片段。
+        for (String snippet : snippets) {
+            // 2. 逐项断言 DDL 中包含该片段。
+            assertThat(ddl).contains(snippet);
+        }
+    }
+
+    private static void assertInvocationFields(String ddl) {
+        assertContainsAll(ddl,
+                " id ",
+                " invocation_id ",
+                " run_id ",
+                " trace_id ",
+                " session_id ",
+                " user_id ",
+                " agent_id ",
+                " tenant_id ",
+                " scene_code ",
+                " call_mode ",
+                " status ",
+                " provider ",
+                " model ",
+                " start_time ",
+                " end_time ",
+                " duration_ms ",
+                " input_tokens ",
+                " output_tokens ",
+                " total_tokens ",
+                " error_code ",
+                " error_message ",
+                " create_time ",
+                " update_time ");
+    }
+
+    private static void assertInvocationIndexes(String ddl) {
+        assertContainsAll(ddl,
+                "unique key uk_invocation_id",
+                "index idx_run_id",
+                "index idx_trace_id",
+                "index idx_scene_status_time",
+                "index idx_provider_model_time");
+    }
+
+    private static void assertAttemptFields(String ddl) {
+        assertContainsAll(ddl,
+                " id ",
+                " attempt_id ",
+                " invocation_id ",
+                " attempt_no ",
+                " provider ",
+                " model ",
+                " status ",
+                " start_time ",
+                " end_time ",
+                " duration_ms ",
+                " http_status ",
+                " error_code ",
+                " error_message ",
+                " create_time ",
+                " update_time ");
+    }
+
+    private static void assertAttemptIndexes(String ddl) {
+        assertContainsAll(ddl,
+                "unique key uk_attempt_id",
+                "index idx_invocation_id",
+                "index idx_provider_model_time");
     }
 }
