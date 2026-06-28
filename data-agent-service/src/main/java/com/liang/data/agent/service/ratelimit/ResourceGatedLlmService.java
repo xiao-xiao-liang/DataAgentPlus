@@ -29,13 +29,28 @@ public class ResourceGatedLlmService implements LlmService {
     }
 
     @Override
+    public Flux<ChatResponse> call(String sceneCode, String system, String user) {
+        return callWithPermit("llm-call:" + sceneCode, () -> delegate.call(sceneCode, system, user));
+    }
+
+    @Override
     public Flux<ChatResponse> callSystem(String system) {
         return callWithPermit("llm-call-system", () -> delegate.callSystem(system));
     }
 
     @Override
+    public Flux<ChatResponse> callSystem(String sceneCode, String system) {
+        return callWithPermit("llm-call-system:" + sceneCode, () -> delegate.callSystem(sceneCode, system));
+    }
+
+    @Override
     public Flux<ChatResponse> callUser(String user) {
         return callWithPermit("llm-call-user", () -> delegate.callUser(user));
+    }
+
+    @Override
+    public Flux<ChatResponse> callUser(String sceneCode, String user) {
+        return callWithPermit("llm-call-user:" + sceneCode, () -> delegate.callUser(sceneCode, user));
     }
 
     private Flux<ChatResponse> callWithPermit(String ownerId, Supplier<Flux<ChatResponse>> supplier) {
