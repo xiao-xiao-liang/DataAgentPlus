@@ -103,7 +103,34 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
-    void callShouldMap401Or403MessageToAuthenticationFailed() {
+    void streamShouldMapTimeoutExceptionToProviderTimeout() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.error(new RuntimeException(new TimeoutException("请求超时"))),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-stream-timeout", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.PROVIDER_TIMEOUT);
+    }
+
+    @Test
+    void callShouldMap401MessageToAuthenticationFailed() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> {
+                    throw new IllegalStateException("HTTP 401 unauthorized");
+                },
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.call("invocation-auth-401", request(ModelCallMode.BLOCK)),
+                ModelGatewayErrorCode.AUTHENTICATION_FAILED);
+    }
+
+    @Test
+    void callShouldMap403MessageToAuthenticationFailed() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> {
                     throw new IllegalStateException("HTTP 403 forbidden");
@@ -131,7 +158,45 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
-    void callShouldMapNullOrBlankResponseTextToResponseInvalid() {
+    void streamShouldMap403MessageToAuthenticationFailed() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.error(new IllegalStateException("HTTP 403 forbidden")),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-stream-auth", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.AUTHENTICATION_FAILED);
+    }
+
+    @Test
+    void streamShouldMap429MessageToRateLimited() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.error(new IllegalStateException("HTTP 429 too many requests")),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-stream-rate", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.RATE_LIMITED);
+    }
+
+    @Test
+    void callShouldMapNullResponseToResponseInvalid() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> null,
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.call("invocation-null", request(ModelCallMode.BLOCK)),
+                ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void callShouldMapBlankResponseTextToResponseInvalid() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> chatResponse("   ", 0, 0, 0),
                 messages -> Flux.empty(),
@@ -139,6 +204,18 @@ class OpenAiCompatibleGatewayProviderTest {
         );
 
         assertGatewayException(() -> provider.call("invocation-empty", request(ModelCallMode.BLOCK)),
+                ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void callShouldMapEmptyResponseTextToResponseInvalid() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("", 0, 0, 0),
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.call("invocation-empty-text", request(ModelCallMode.BLOCK)),
                 ModelGatewayErrorCode.RESPONSE_INVALID);
     }
 
@@ -236,6 +313,50 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
+    void streamShouldMap503UnavailableSignalToProviderUnavailable() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.error(new IllegalStateException("connect refused 503 unavailable")),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-stream-unavailable", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    void callShouldMapUnexpectedExceptionToProviderUnavailable() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> {
+                    throw new IllegalStateException("unexpected provider failure");
+                },
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.call("invocation-unexpected", request(ModelCallMode.BLOCK)),
+                ModelGatewayErrorCode.PROVIDER_UNAVAILABLE);
+    }
+
+    @Test
+    void streamShouldPropagateExistingModelGatewayException() {
+        ModelGatewayException expectedException = new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID);
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.error(expectedException),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertThatThrownBy(() -> provider.stream("invocation-stream-existing-exception", request(ModelCallMode.STREAM))
+                .collectList()
+                .block())
+                .isSameAs(expectedException)
+                .isInstanceOfSatisfying(ModelGatewayException.class, exception ->
+                        assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.RESPONSE_INVALID));
+    }
+
+    @Test
     void streamShouldKeepModeMismatchIllegalArgumentException() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> chatResponse("模型回答", 0, 0, 0),
@@ -285,6 +406,7 @@ class OpenAiCompatibleGatewayProviderTest {
         activeConfig.setProxyPassword("proxy-secret");
         activeConfig.setProxyUsername("proxy-user");
         activeConfig.setProxyHost("proxy.example.com");
+        activeConfig.setProxyPort(8080);
         ModelConfigQueryService queryService = mock(ModelConfigQueryService.class);
         when(queryService.getActiveConfig(ModelType.CHAT)).thenReturn(Optional.of(activeConfig));
 
@@ -301,6 +423,7 @@ class OpenAiCompatibleGatewayProviderTest {
         assertThat(snapshot.get().getProxyPassword()).isNull();
         assertThat(snapshot.get().getProxyUsername()).isNull();
         assertThat(snapshot.get().getProxyHost()).isNull();
+        assertThat(snapshot.get().getProxyPort()).isNull();
     }
 
     @Test
