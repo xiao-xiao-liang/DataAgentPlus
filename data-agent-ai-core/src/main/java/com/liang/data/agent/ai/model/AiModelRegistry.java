@@ -46,10 +46,14 @@ public class AiModelRegistry {
                 if (currentChatClient == null) {
                     Optional<ModelConfigEntity> config = queryService.getActiveConfig(ModelType.CHAT);
                     if (config.isPresent()) {
-                        ChatModel chatModel = modelFactory.createChatModel(config.get());
-                        currentChatClient = ChatClient.builder(chatModel).build();
-                        // 1. ChatClient 初始化成功后，同步记录与缓存客户端一致的脱敏配置快照。
-                        currentChatConfigSnapshot = copySafeChatConfig(config.get());
+                        ModelConfigEntity configEntity = config.get();
+                        ChatModel chatModel = modelFactory.createChatModel(configEntity);
+                        ChatClient chatClient = ChatClient.builder(chatModel).build();
+                        ModelConfigEntity snapshot = copySafeChatConfig(configEntity);
+                        // 1. 先发布快照，再发布客户端，避免其他线程看到客户端时快照为空。
+                        currentChatConfigSnapshot = snapshot;
+                        // 2. 最后发布 ChatClient，保证路由读取到客户端时已有对应快照。
+                        currentChatClient = chatClient;
                     }
                     if (currentChatClient == null) {
                         throw new ServiceException("未配置 CHAT 模型, 请在管理页面先配置对话模型", BaseErrorCode.SERVICE_ERROR);
