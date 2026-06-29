@@ -58,6 +58,28 @@ public class AiModelRegistry {
     }
 
     /**
+     * 获取当前激活的对话模型脱敏配置快照。
+     *
+     * <p>仅返回 provider、modelName、modelType、baseUrl 等路由展示字段，不返回 apiKey、proxyPassword 等敏感配置。</p>
+     *
+     * @return 当前激活对话模型的脱敏配置快照
+     */
+    public Optional<ModelConfigEntity> getActiveChatConfigSnapshot() {
+        return queryService.getActiveConfig(ModelType.CHAT).map(this::copySafeChatConfig);
+    }
+
+    private ModelConfigEntity copySafeChatConfig(ModelConfigEntity source) {
+        // 1. 仅复制路由展示需要的非敏感字段。
+        ModelConfigEntity snapshot = new ModelConfigEntity();
+        snapshot.setProvider(source.getProvider());
+        snapshot.setModelName(source.getModelName());
+        snapshot.setModelType(source.getModelType());
+        snapshot.setBaseUrl(source.getBaseUrl());
+        // 2. 不复制 apiKey、proxyPassword、代理地址等敏感或连接配置。
+        return snapshot;
+    }
+
+    /**
      * 获取 EmbeddingModel (懒加载 + DummyEmbeddingModel 兜底)
      */
     public EmbeddingModel getEmbeddingModel() {
