@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -441,6 +442,45 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
+    void callShouldBindRouteCapturedForCurrentInvocation() {
+        AtomicReference<ModelConfigEntity> routeReference = new AtomicReference<>(routeConfig("old-provider", "old-model"));
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> {
+                    routeReference.set(routeConfig("new-provider", "new-model"));
+                    return chatResponse("妯″瀷鍥炵瓟", 0, 0, 0);
+                },
+                messages -> Flux.empty(),
+                () -> Optional.of(routeReference.get())
+        );
+
+        GatewayResult result = provider.call("invocation-route-snapshot", request(ModelCallMode.BLOCK));
+
+        assertThat(result.route().provider()).isEqualTo("old-provider");
+        assertThat(result.route().model()).isEqualTo("old-model");
+    }
+
+    @Test
+    void streamShouldBindRouteCapturedForCurrentInvocation() {
+        AtomicReference<ModelConfigEntity> routeReference = new AtomicReference<>(routeConfig("old-provider", "old-model"));
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("涓嶄細璋冪敤", 0, 0, 0),
+                messages -> {
+                    routeReference.set(routeConfig("new-provider", "new-model"));
+                    return Flux.just(chatResponse("澧為噺", 1, 2, 3));
+                },
+                () -> Optional.of(routeReference.get())
+        );
+
+        List<GatewayChunk> chunks = provider.stream("invocation-stream-route-snapshot", request(ModelCallMode.STREAM))
+                .collectList()
+                .block();
+
+        GatewayChunk finishedChunk = chunks.get(1);
+        assertThat(finishedChunk.route().provider()).isEqualTo("old-provider");
+        assertThat(finishedChunk.route().model()).isEqualTo("old-model");
+    }
+
+    @Test
     void getActiveChatConfigSnapshotShouldReturnEmptyBeforeChatClientInitialized() {
         ModelConfigEntity activeConfig = new ModelConfigEntity();
         activeConfig.setProvider("openai");
@@ -523,6 +563,40 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
+    void getChatClientRouteSnapshotShouldPublishClientAndSafeRouteTogether() {
+        ModelConfigEntity oldConfig = routeConfig("old-provider", "old-model");
+        oldConfig.setModelType(ModelType.CHAT.getCode());
+        oldConfig.setBaseUrl("https://old.example.com");
+        oldConfig.setApiKey("sk-old-secret");
+        oldConfig.setProxyPassword("proxy-old-secret");
+        ModelConfigEntity newConfig = routeConfig("new-provider", "new-model");
+        newConfig.setModelType(ModelType.CHAT.getCode());
+        newConfig.setBaseUrl("https://new.example.com");
+        DynamicModelFactory modelFactory = mock(DynamicModelFactory.class);
+        ModelConfigQueryService queryService = mock(ModelConfigQueryService.class);
+        when(queryService.getActiveConfig(ModelType.CHAT))
+                .thenReturn(Optional.of(oldConfig))
+                .thenReturn(Optional.of(newConfig));
+        when(modelFactory.createChatModel(oldConfig)).thenReturn(mock(ChatModel.class));
+        when(modelFactory.createChatModel(newConfig)).thenReturn(mock(ChatModel.class));
+        AiModelRegistry registry = new AiModelRegistry(modelFactory, queryService);
+
+        AiModelRegistry.ChatClientRouteSnapshot oldSnapshot = registry.getChatClientRouteSnapshot();
+        registry.refreshChat();
+        Optional<ModelConfigEntity> clearedSnapshot = registry.getActiveChatConfigSnapshot();
+        AiModelRegistry.ChatClientRouteSnapshot newSnapshot = registry.getChatClientRouteSnapshot();
+
+        assertThat(oldSnapshot.chatClient()).isNotNull();
+        assertThat(oldSnapshot.routeConfig().getProvider()).isEqualTo("old-provider");
+        assertThat(oldSnapshot.routeConfig().getApiKey()).isNull();
+        assertThat(oldSnapshot.routeConfig().getProxyPassword()).isNull();
+        assertThat(clearedSnapshot).isEmpty();
+        assertThat(newSnapshot.chatClient()).isNotNull();
+        assertThat(newSnapshot.routeConfig().getProvider()).isEqualTo("new-provider");
+        assertThat(newSnapshot).isNotSameAs(oldSnapshot);
+    }
+
+    @Test
     void callShouldKeepModeMismatchIllegalArgumentException() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> chatResponse("模型回答", 0, 0, 0),
@@ -550,10 +624,15 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     private static Supplier<Optional<ModelConfigEntity>> safeRouteSupplier(String provider, String modelName) {
+        ModelConfigEntity config = routeConfig(provider, modelName);
+        return () -> Optional.of(config);
+    }
+
+    private static ModelConfigEntity routeConfig(String provider, String modelName) {
         ModelConfigEntity config = new ModelConfigEntity();
         config.setProvider(provider);
         config.setModelName(modelName);
-        return () -> Optional.of(config);
+        return config;
     }
 
     private static ModelGatewayRequest request(ModelCallMode mode) {
