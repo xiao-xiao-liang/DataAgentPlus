@@ -27,6 +27,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -114,19 +115,24 @@ public class OpenAiCompatibleGatewayProvider {
         request.requireMode(ModelCallMode.STREAM);
         try {
             AtomicReference<ModelUsage> latestUsage = new AtomicReference<>(new ModelUsage(0, 0, 0));
-            // 1. 获取上游流式响应，并过滤空白增量内容。
+            AtomicBoolean emittedText = new AtomicBoolean(false);
+            // 1. 获取上游流式响应，并校验每个增量响应必须包含有效文本。
             return invoker.stream(request.prompt().messages())
                     .handle((response, sink) -> {
+                        String text = extractRequiredText(response);
+                        emittedText.set(true);
                         latestUsage.set(extractUsage(response));
-                        String text = ChatResponseUtil.getText(response);
-                        if (text != null && !text.isBlank()) {
-                            sink.next(new GatewayChunk(invocationId, text, false, null, null, null));
-                        }
+                        sink.next(new GatewayChunk(invocationId, text, false, null, null, null));
                     })
-                    // 2. 在流完成时补充最终片段，携带最终用量、路由和结束原因。
+                    // 2. 在流完成时校验至少已输出一个有效文本，再补充最终片段。
                     .cast(GatewayChunk.class)
-                    .concatWith(Flux.defer(() -> Flux.just(new GatewayChunk(invocationId, "",
-                            true, latestUsage.get(), buildRoute(), DEFAULT_FINISH_REASON))))
+                    .concatWith(Flux.defer(() -> {
+                        if (!emittedText.get()) {
+                            return Flux.error(new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID));
+                        }
+                        return Flux.just(new GatewayChunk(invocationId, "",
+                                true, latestUsage.get(), buildRoute(), DEFAULT_FINISH_REASON));
+                    }))
                     // 3. 统一转换上游异常，不暴露 Prompt、响应原文或密钥信息。
                     .onErrorMap(this::convertException);
         } catch (ModelGatewayException exception) {

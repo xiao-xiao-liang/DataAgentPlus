@@ -106,7 +106,7 @@ class OpenAiCompatibleGatewayProviderTest {
     void callShouldMap401Or403MessageToAuthenticationFailed() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> {
-                    throw new IllegalStateException("HTTP 401 unauthorized");
+                    throw new IllegalStateException("HTTP 403 forbidden");
                 },
                 messages -> Flux.empty(),
                 safeRouteSupplier("openai", "gpt-4o-mini")
@@ -140,6 +140,138 @@ class OpenAiCompatibleGatewayProviderTest {
 
         assertGatewayException(() -> provider.call("invocation-empty", request(ModelCallMode.BLOCK)),
                 ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void streamShouldMapEmptyStreamToResponseInvalid() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-empty-stream", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void streamShouldMapBlankTextToResponseInvalid() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.just(chatResponse("   ", 0, 0, 0)),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-blank-stream", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void streamShouldMapNullResponseToResponseInvalid() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.from(subscriber -> subscriber.onSubscribe(new org.reactivestreams.Subscription() {
+
+                    private boolean emitted;
+
+                    @Override
+                    public void request(long n) {
+                        if (!emitted && n > 0) {
+                            emitted = true;
+                            subscriber.onNext(null);
+                            subscriber.onComplete();
+                        }
+                    }
+
+                    @Override
+                    public void cancel() {
+                        // 1. 测试发布器无需释放外部资源。
+                    }
+                })),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertGatewayException(() -> provider.stream("invocation-null-stream", request(ModelCallMode.STREAM))
+                .collectList()
+                .block(), ModelGatewayErrorCode.RESPONSE_INVALID);
+    }
+
+    @Test
+    void callShouldMapProviderUnavailableSignalsToProviderUnavailable() {
+        List<RuntimeException> exceptions = List.of(
+                new IllegalStateException("HTTP 500 internal server error"),
+                new IllegalStateException("connect refused"),
+                new IllegalStateException("service unavailable")
+        );
+
+        for (RuntimeException exception : exceptions) {
+            OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                    messages -> {
+                        throw exception;
+                    },
+                    messages -> Flux.empty(),
+                    safeRouteSupplier("openai", "gpt-4o-mini")
+            );
+
+            assertGatewayException(() -> provider.call("invocation-unavailable", request(ModelCallMode.BLOCK)),
+                    ModelGatewayErrorCode.PROVIDER_UNAVAILABLE);
+        }
+    }
+
+    @Test
+    void callShouldPropagateExistingModelGatewayException() {
+        ModelGatewayException expectedException = new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID);
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> {
+                    throw expectedException;
+                },
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertThatThrownBy(() -> provider.call("invocation-existing-exception", request(ModelCallMode.BLOCK)))
+                .isSameAs(expectedException);
+    }
+
+    @Test
+    void streamShouldKeepModeMismatchIllegalArgumentException() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("模型回答", 0, 0, 0),
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertThatThrownBy(() -> provider.stream("invocation-mode", request(ModelCallMode.BLOCK)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void callShouldFallbackZeroUsageWhenMetadataMissing() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> new ChatResponse(List.of(new Generation(new AssistantMessage("模型回答")))),
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        GatewayResult result = provider.call("invocation-missing-usage", request(ModelCallMode.BLOCK));
+
+        assertThat(result.usage()).isEqualTo(new ModelUsage(0, 0, 0));
+    }
+
+    @Test
+    void callShouldFallbackUnknownRouteWhenSnapshotMissing() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("模型回答", 0, 0, 0),
+                messages -> Flux.empty(),
+                Optional::empty
+        );
+
+        GatewayResult result = provider.call("invocation-missing-route", request(ModelCallMode.BLOCK));
+
+        assertThat(result.route().provider()).isEqualTo("unknown");
+        assertThat(result.route().model()).isEqualTo("unknown");
     }
 
     @Test
