@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import reactor.core.publisher.Flux;
@@ -33,6 +34,8 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -313,6 +316,26 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
+    void callShouldDropProviderExceptionCauseAndSensitiveMessage() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> {
+                    throw new IllegalStateException("HTTP 401 Authorization: Bearer sk-secret prompt=用户完整问题");
+                },
+                messages -> Flux.empty(),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        assertThatThrownBy(() -> provider.call("invocation-sensitive-exception", request(ModelCallMode.BLOCK)))
+                .isInstanceOfSatisfying(ModelGatewayException.class, exception -> {
+                    assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.AUTHENTICATION_FAILED);
+                    assertThat(exception.getMessage()).doesNotContain("Authorization");
+                    assertThat(exception.getMessage()).doesNotContain("sk-secret");
+                    assertThat(exception.getMessage()).doesNotContain("用户完整问题");
+                    assertThat(exception.getCause()).isNull();
+                });
+    }
+
+    @Test
     void streamShouldMap503UnavailableSignalToProviderUnavailable() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> chatResponse("不会调用", 0, 0, 0),
@@ -357,6 +380,28 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
+    void streamShouldFilterBlankChunkBeforeValidChunk() {
+        OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
+                messages -> chatResponse("不会调用", 0, 0, 0),
+                messages -> Flux.just(
+                        chatResponse("   ", 1, 2, 3),
+                        chatResponse("有效增量", 3, 5, 8)
+                ),
+                safeRouteSupplier("openai", "gpt-4o-mini")
+        );
+
+        List<GatewayChunk> chunks = provider.stream("invocation-blank-before-valid", request(ModelCallMode.STREAM))
+                .collectList()
+                .block();
+
+        assertThat(chunks).hasSize(2);
+        assertTextChunk(chunks.get(0), "invocation-blank-before-valid", "有效增量");
+        GatewayChunk finishedChunk = chunks.get(1);
+        assertThat(finishedChunk.finished()).isTrue();
+        assertThat(finishedChunk.usage()).isEqualTo(new ModelUsage(3, 5, 8));
+    }
+
+    @Test
     void streamShouldKeepModeMismatchIllegalArgumentException() {
         OpenAiCompatibleGatewayProvider provider = new OpenAiCompatibleGatewayProvider(
                 messages -> chatResponse("模型回答", 0, 0, 0),
@@ -396,7 +441,7 @@ class OpenAiCompatibleGatewayProviderTest {
     }
 
     @Test
-    void getActiveChatConfigSnapshotShouldNotExposeSensitiveFields() {
+    void getActiveChatConfigSnapshotShouldReturnEmptyBeforeChatClientInitialized() {
         ModelConfigEntity activeConfig = new ModelConfigEntity();
         activeConfig.setProvider("openai");
         activeConfig.setModelName("gpt-4o-mini");
@@ -414,16 +459,67 @@ class OpenAiCompatibleGatewayProviderTest {
 
         Optional<ModelConfigEntity> snapshot = registry.getActiveChatConfigSnapshot();
 
+        assertThat(snapshot).isEmpty();
+    }
+
+    @Test
+    void getActiveChatConfigSnapshotShouldFollowCachedChatClientAndAvoidExtraDbQuery() {
+        ModelConfigEntity oldConfig = new ModelConfigEntity();
+        oldConfig.setProvider("old-provider");
+        oldConfig.setModelName("old-model");
+        oldConfig.setModelType(ModelType.CHAT.getCode());
+        oldConfig.setBaseUrl("https://old.example.com");
+        oldConfig.setApiKey("sk-old-secret");
+        oldConfig.setProxyPassword("proxy-old-secret");
+        oldConfig.setProxyUsername("proxy-user");
+        oldConfig.setProxyHost("proxy.example.com");
+        oldConfig.setProxyPort(8080);
+        ModelConfigEntity newConfig = new ModelConfigEntity();
+        newConfig.setProvider("new-provider");
+        newConfig.setModelName("new-model");
+        newConfig.setModelType(ModelType.CHAT.getCode());
+        newConfig.setBaseUrl("https://new.example.com");
+        newConfig.setApiKey("sk-new-secret");
+        DynamicModelFactory modelFactory = mock(DynamicModelFactory.class);
+        ModelConfigQueryService queryService = mock(ModelConfigQueryService.class);
+        when(queryService.getActiveConfig(ModelType.CHAT))
+                .thenReturn(Optional.of(oldConfig))
+                .thenReturn(Optional.of(newConfig));
+        when(modelFactory.createChatModel(oldConfig)).thenReturn(mock(ChatModel.class));
+
+        AiModelRegistry registry = new AiModelRegistry(modelFactory, queryService);
+
+        registry.getChatClient();
+        Optional<ModelConfigEntity> snapshot = registry.getActiveChatConfigSnapshot();
+
         assertThat(snapshot).isPresent();
-        assertThat(snapshot.get().getProvider()).isEqualTo("openai");
-        assertThat(snapshot.get().getModelName()).isEqualTo("gpt-4o-mini");
+        assertThat(snapshot.get().getProvider()).isEqualTo("old-provider");
+        assertThat(snapshot.get().getModelName()).isEqualTo("old-model");
         assertThat(snapshot.get().getModelType()).isEqualTo(ModelType.CHAT.getCode());
-        assertThat(snapshot.get().getBaseUrl()).isEqualTo("https://api.example.com");
+        assertThat(snapshot.get().getBaseUrl()).isEqualTo("https://old.example.com");
         assertThat(snapshot.get().getApiKey()).isNull();
         assertThat(snapshot.get().getProxyPassword()).isNull();
         assertThat(snapshot.get().getProxyUsername()).isNull();
         assertThat(snapshot.get().getProxyHost()).isNull();
         assertThat(snapshot.get().getProxyPort()).isNull();
+        verify(queryService, times(1)).getActiveConfig(ModelType.CHAT);
+    }
+
+    @Test
+    void refreshChatShouldClearActiveChatConfigSnapshot() {
+        ModelConfigEntity activeConfig = new ModelConfigEntity();
+        activeConfig.setProvider("openai");
+        activeConfig.setModelName("gpt-4o-mini");
+        DynamicModelFactory modelFactory = mock(DynamicModelFactory.class);
+        ModelConfigQueryService queryService = mock(ModelConfigQueryService.class);
+        when(queryService.getActiveConfig(ModelType.CHAT)).thenReturn(Optional.of(activeConfig));
+        when(modelFactory.createChatModel(activeConfig)).thenReturn(mock(ChatModel.class));
+        AiModelRegistry registry = new AiModelRegistry(modelFactory, queryService);
+
+        registry.getChatClient();
+        registry.refreshChat();
+
+        assertThat(registry.getActiveChatConfigSnapshot()).isEmpty();
     }
 
     @Test

@@ -33,6 +33,7 @@ public class AiModelRegistry {
     private final ModelConfigQueryService queryService;
 
     private volatile ChatClient currentChatClient;
+    private volatile ModelConfigEntity currentChatConfigSnapshot;
     private volatile EmbeddingModel currentEmbeddingModel;
 
     /**
@@ -47,6 +48,8 @@ public class AiModelRegistry {
                     if (config.isPresent()) {
                         ChatModel chatModel = modelFactory.createChatModel(config.get());
                         currentChatClient = ChatClient.builder(chatModel).build();
+                        // 1. ChatClient 初始化成功后，同步记录与缓存客户端一致的脱敏配置快照。
+                        currentChatConfigSnapshot = copySafeChatConfig(config.get());
                     }
                     if (currentChatClient == null) {
                         throw new ServiceException("未配置 CHAT 模型, 请在管理页面先配置对话模型", BaseErrorCode.SERVICE_ERROR);
@@ -65,7 +68,8 @@ public class AiModelRegistry {
      * @return 当前激活对话模型的脱敏配置快照
      */
     public Optional<ModelConfigEntity> getActiveChatConfigSnapshot() {
-        return queryService.getActiveConfig(ModelType.CHAT).map(this::copySafeChatConfig);
+        // 1. 仅返回当前已加载 ChatClient 对应的快照，避免路由查询触发额外 DB 读取。
+        return Optional.ofNullable(currentChatConfigSnapshot).map(this::copySafeChatConfig);
     }
 
     private ModelConfigEntity copySafeChatConfig(ModelConfigEntity source) {
@@ -108,6 +112,7 @@ public class AiModelRegistry {
      */
     public void refreshChat() {
         this.currentChatClient = null;
+        this.currentChatConfigSnapshot = null;
         log.info("ChatClient 缓存已清除, 下次调用将重新初始化");
     }
 

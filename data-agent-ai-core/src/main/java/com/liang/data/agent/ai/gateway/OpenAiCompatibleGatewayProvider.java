@@ -119,7 +119,16 @@ public class OpenAiCompatibleGatewayProvider {
             // 1. 获取上游流式响应，并校验每个增量响应必须包含有效文本。
             return invoker.stream(request.prompt().messages())
                     .handle((response, sink) -> {
-                        String text = extractRequiredText(response);
+                        // 1. null 响应属于上游格式错误，需要立即终止流。
+                        if (response == null) {
+                            throw new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID);
+                        }
+                        // 2. 空白增量属于兼容性噪声，过滤后等待后续有效文本。
+                        String text = ChatResponseUtil.getText(response);
+                        if (text == null || text.isBlank()) {
+                            return;
+                        }
+                        // 3. 仅在有效文本片段出现后标记流有效，并记录最新用量。
                         emittedText.set(true);
                         latestUsage.set(extractUsage(response));
                         sink.next(new GatewayChunk(invocationId, text, false, null, null, null));
@@ -198,7 +207,7 @@ public class OpenAiCompatibleGatewayProvider {
         }
         // 2. 根据异常类型和脱敏后的错误摘要映射结构化错误码。
         ModelGatewayErrorCode errorCode = resolveErrorCode(throwable);
-        return new ModelGatewayException(errorCode, errorCode.message(), throwable);
+        return new ModelGatewayException(errorCode, errorCode.message());
     }
 
     private ModelGatewayErrorCode resolveErrorCode(Throwable throwable) {
