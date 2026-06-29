@@ -115,8 +115,10 @@ public class AiModelRegistry {
      * 清除 Chat 缓存, 下次调用将重新从 DB 加载
      */
     public void refreshChat() {
-        this.currentChatClient = null;
-        this.currentChatConfigSnapshot = null;
+        synchronized (this) {
+            this.currentChatClient = null;
+            this.currentChatConfigSnapshot = null;
+        }
         log.info("ChatClient 缓存已清除, 下次调用将重新初始化");
     }
 
