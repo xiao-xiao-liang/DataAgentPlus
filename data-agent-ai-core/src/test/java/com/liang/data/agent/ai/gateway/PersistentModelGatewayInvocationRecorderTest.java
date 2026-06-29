@@ -123,6 +123,42 @@ class PersistentModelGatewayInvocationRecorderTest {
     }
 
     @Test
+    void finishInvocationShouldNotSetDurationWhenStartInsertFailed() {
+        doThrow(new RuntimeException("数据库异常")).when(invocationMapper).insert(any(ModelGatewayInvocationEntity.class));
+        GatewayExecutionContext context = new GatewayExecutionContext(
+                "run-001", "trace-001", "session-001", 1001L, 2001, "tenant-001");
+        recorder.startInvocation("invocation-001", context, "chat", ModelCallMode.BLOCK);
+
+        recorder.finishInvocation(
+                "invocation-001",
+                ModelGatewayCallStatus.FAILED,
+                null,
+                null,
+                null,
+                null);
+
+        ArgumentCaptor<LambdaUpdateWrapper<ModelGatewayInvocationEntity>> captor = invocationUpdateCaptor();
+        verify(invocationMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).doesNotContain("duration_ms");
+    }
+
+    @Test
+    void finishInvocationShouldUseFailedWhenStatusIsNull() {
+        recorder.finishInvocation(
+                "invocation-001",
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        ArgumentCaptor<LambdaUpdateWrapper<ModelGatewayInvocationEntity>> captor = invocationUpdateCaptor();
+        verify(invocationMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getParamNameValuePairs())
+                .containsValue(ModelGatewayCallStatus.FAILED.name());
+    }
+
+    @Test
     void startAttemptShouldInsertRunningRecord() {
         recorder.startAttempt("invocation-001", "attempt-001", 1, "openai", "gpt-4.1");
 
@@ -156,6 +192,38 @@ class PersistentModelGatewayInvocationRecorderTest {
         assertThat(captor.getValue().getSqlSegment()).contains("attempt_id");
         assertThat(params).containsValue(ModelGatewayCallStatus.SUCCEEDED.name());
         assertThat(params).containsValue(200);
+    }
+
+    @Test
+    void finishAttemptShouldNotSetDurationWhenStartInsertFailed() {
+        doThrow(new RuntimeException("数据库异常")).when(attemptMapper).insert(any(ModelGatewayAttemptEntity.class));
+        recorder.startAttempt("invocation-001", "attempt-001", 1, "openai", "gpt-4.1");
+
+        recorder.finishAttempt(
+                "attempt-001",
+                ModelGatewayCallStatus.FAILED,
+                null,
+                null,
+                null);
+
+        ArgumentCaptor<LambdaUpdateWrapper<ModelGatewayAttemptEntity>> captor = attemptUpdateCaptor();
+        verify(attemptMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).doesNotContain("duration_ms");
+    }
+
+    @Test
+    void finishAttemptShouldUseFailedWhenStatusIsNull() {
+        recorder.finishAttempt(
+                "attempt-001",
+                null,
+                null,
+                null,
+                null);
+
+        ArgumentCaptor<LambdaUpdateWrapper<ModelGatewayAttemptEntity>> captor = attemptUpdateCaptor();
+        verify(attemptMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getParamNameValuePairs())
+                .containsValue(ModelGatewayCallStatus.FAILED.name());
     }
 
     @Test

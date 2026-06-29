@@ -50,9 +50,8 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
             return;
         }
         try {
-            // 1. 记录开始时间，供结束时计算耗时。
+            // 1. 生成开始时间，供数据库主记录和结束时耗时计算使用。
             LocalDateTime startTime = LocalDateTime.now();
-            invocationStartTimeMap.put(invocationId, startTime);
             // 2. 组装运行中主调用记录，Token 初始值置为 0。
             ModelGatewayInvocationEntity entity = ModelGatewayInvocationEntity.builder()
                     .invocationId(invocationId)
@@ -72,6 +71,8 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
                     .build();
             // 3. 插入数据库明细，失败仅记录告警。
             invocationMapper.insert(entity);
+            // 4. 数据库插入成功后再缓存开始时间，避免失败记录残留耗时。
+            invocationStartTimeMap.put(invocationId, startTime);
         } catch (RuntimeException exception) {
             log.warn("记录模型网关调用开始失败，调用标识：{}，异常类型：{}", invocationId, exception.getClass().getSimpleName());
         }
@@ -104,9 +105,8 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
             return;
         }
         try {
-            // 1. 记录尝试开始时间，供结束时计算耗时。
+            // 1. 生成尝试开始时间，供数据库尝试记录和结束时耗时计算使用。
             LocalDateTime startTime = LocalDateTime.now();
-            attemptStartTimeMap.put(attemptId, startTime);
             // 2. 组装运行中的尝试记录。
             ModelGatewayAttemptEntity entity = ModelGatewayAttemptEntity.builder()
                     .invocationId(invocationId)
@@ -119,6 +119,8 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
                     .build();
             // 3. 插入数据库明细，失败仅记录告警。
             attemptMapper.insert(entity);
+            // 4. 数据库插入成功后再缓存开始时间，避免失败记录残留耗时。
+            attemptStartTimeMap.put(attemptId, startTime);
         } catch (RuntimeException exception) {
             log.warn("记录模型网关尝试开始失败，尝试标识：{}，异常类型：{}", attemptId, exception.getClass().getSimpleName());
         }
@@ -155,10 +157,11 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
     private static LambdaUpdateWrapper<ModelGatewayInvocationEntity> buildFinishInvocationWrapper(
             String invocationId, ModelGatewayCallStatus status, ModelRoute route, ModelUsage usage,
             ModelGatewayErrorCode errorCode, String errorMessage, LocalDateTime endTime, Long durationMs) {
+        ModelGatewayCallStatus finalStatus = normalizeStatus(status);
         LambdaUpdateWrapper<ModelGatewayInvocationEntity> updateWrapper =
                 new LambdaUpdateWrapper<>(ModelGatewayInvocationEntity.class);
         updateWrapper.eq(ModelGatewayInvocationEntity::getInvocationId, invocationId)
-                .set(ModelGatewayInvocationEntity::getStatus, status.name())
+                .set(ModelGatewayInvocationEntity::getStatus, finalStatus.name())
                 .set(ModelGatewayInvocationEntity::getEndTime, endTime)
                 .set(durationMs != null, ModelGatewayInvocationEntity::getDurationMs, durationMs)
                 .set(errorMessage != null, ModelGatewayInvocationEntity::getErrorMessage, truncateErrorMessage(errorMessage));
@@ -180,10 +183,11 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
     private static LambdaUpdateWrapper<ModelGatewayAttemptEntity> buildFinishAttemptWrapper(
             String attemptId, ModelGatewayCallStatus status, Integer httpStatus,
             ModelGatewayErrorCode errorCode, String errorMessage, LocalDateTime endTime, Long durationMs) {
+        ModelGatewayCallStatus finalStatus = normalizeStatus(status);
         LambdaUpdateWrapper<ModelGatewayAttemptEntity> updateWrapper =
                 new LambdaUpdateWrapper<>(ModelGatewayAttemptEntity.class);
         updateWrapper.eq(ModelGatewayAttemptEntity::getAttemptId, attemptId)
-                .set(ModelGatewayAttemptEntity::getStatus, status.name())
+                .set(ModelGatewayAttemptEntity::getStatus, finalStatus.name())
                 .set(ModelGatewayAttemptEntity::getEndTime, endTime)
                 .set(durationMs != null, ModelGatewayAttemptEntity::getDurationMs, durationMs)
                 .set(httpStatus != null, ModelGatewayAttemptEntity::getHttpStatus, httpStatus)
@@ -192,6 +196,17 @@ public class PersistentModelGatewayInvocationRecorder implements ModelGatewayInv
             updateWrapper.set(ModelGatewayAttemptEntity::getErrorCode, errorCode.code());
         }
         return updateWrapper;
+    }
+
+    /**
+     * 归一化调用状态，保证旁路记录器不会因为空状态丢失更新。
+     *
+     * @param status 调用状态
+     * @return 非空调用状态
+     */
+    private static ModelGatewayCallStatus normalizeStatus(ModelGatewayCallStatus status) {
+        // 1. 空状态按失败处理，提升旁路记录器容错性。
+        return status == null ? ModelGatewayCallStatus.FAILED : status;
     }
 
     private static Long calculateDurationMs(LocalDateTime startTime, LocalDateTime endTime) {
