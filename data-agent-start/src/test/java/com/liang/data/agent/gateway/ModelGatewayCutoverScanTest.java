@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -34,10 +35,14 @@ class ModelGatewayCutoverScanTest {
             "AiModelRegistry.java",
             "BlockLlmService.java",
             "StreamLlmService.java");
+    private static final Set<String> LLM_SERVICE_INFRASTRUCTURE_FILES = Set.of(
+            "ResourceGatedLlmService.java");
     private static final Pattern DIRECT_MODEL_ACCESS_PATTERN = Pattern.compile(
             "\\.prompt\\s*\\(|ChatClient\\.builder\\s*\\(|\\bChatModel\\s+");
-    private static final Pattern LLM_SERVICE_CALL_PATTERN = Pattern.compile(
-            "llmService\\.(callUser|callSystem|call)\\s*\\(");
+    private static final Pattern LLM_SERVICE_VARIABLE_PATTERN = Pattern.compile(
+            "\\bLlmService\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\b");
+    private static final Pattern LLM_SERVICE_CALL_METHOD_PATTERN = Pattern.compile(
+            "(callUser|callSystem|call)\\s*\\(");
 
     @Test
     void shouldPreventBusinessCodeFromDirectlyUsingChatClient() throws IOException {
@@ -58,12 +63,48 @@ class ModelGatewayCutoverScanTest {
     void shouldRequireExplicitModelGatewaySceneForBusinessLlmServiceCalls() throws IOException {
         // 1. 扫描生产 Java 文件中的 LlmService 调用点。
         List<Violation> violations = scanProductionJavaFiles().stream()
+                .filter(path -> !LLM_SERVICE_INFRASTRUCTURE_FILES.contains(path.getFileName().toString()))
                 .flatMap(path -> findLlmServiceSceneViolations(path).stream())
                 .toList();
 
         // 2. 断言业务调用必须把 ModelGatewayScenes 常量作为第一个参数。
         assertThat(violations)
                 .as("业务生产代码调用 LlmService 时必须使用 ModelGatewayScenes.* 作为第一个参数：%s", violations)
+                .isEmpty();
+    }
+
+    @Test
+    void shouldDetectLlmServiceAliasAndWhitespaceCallWithoutScene() throws IOException {
+        // 1. 构造包含别名变量和换行链式调用的 LlmService 调用样本。
+        Path sourceFile = writeTemporaryJavaSource("""
+                class Demo {
+                    private final LlmService modelClient;
+                    void run(String prompt) {
+                        modelClient.callUser(prompt);
+                        llmService
+                                .callUser(prompt);
+                    }
+                }
+                """);
+
+        // 2. 断言两个未传入 ModelGatewayScenes 的调用都能被扫描出来。
+        assertThat(findLlmServiceSceneViolations(sourceFile))
+                .hasSize(2);
+    }
+
+    @Test
+    void shouldAllowLlmServiceAliasCallWithScene() throws IOException {
+        // 1. 构造使用 LlmService 别名变量且显式传入场景编码的调用样本。
+        Path sourceFile = writeTemporaryJavaSource("""
+                class Demo {
+                    void run(LlmService modelClient, String prompt) {
+                        modelClient.callUser(ModelGatewayScenes.REPORT_GENERATE, prompt);
+                    }
+                }
+                """);
+
+        // 2. 断言首个参数为 ModelGatewayScenes 常量时不记录违规。
+        assertThat(findLlmServiceSceneViolations(sourceFile))
                 .isEmpty();
     }
 
@@ -116,19 +157,46 @@ class ModelGatewayCutoverScanTest {
      * @return 违规位置列表
      */
     private static List<Violation> findLlmServiceSceneViolations(Path path) {
-        // 1. 读取文件内容并匹配 llmService 调用。
+        // 1. 读取文件内容并识别 LlmService 类型变量名。
         String content = readJavaFile(path);
-        Matcher matcher = LLM_SERVICE_CALL_PATTERN.matcher(content);
+        Set<String> variableNames = findLlmServiceVariableNames(content);
         List<Violation> violations = new ArrayList<>();
 
-        // 2. 检查每个调用的第一个实参是否为 ModelGatewayScenes 常量。
-        while (matcher.find()) {
-            String firstArgument = content.substring(matcher.end()).stripLeading();
-            if (!firstArgument.startsWith("ModelGatewayScenes.")) {
-                violations.add(new Violation(path, lineNumber(content, matcher.start()), matcher.group()));
+        // 2. 针对每个变量名匹配调用，并允许变量名、点和方法名之间存在空白或换行。
+        for (String variableName : variableNames) {
+            Pattern callPattern = Pattern.compile(Pattern.quote(variableName)
+                    + "\\s*\\.\\s*"
+                    + LLM_SERVICE_CALL_METHOD_PATTERN.pattern());
+            Matcher matcher = callPattern.matcher(content);
+
+            // 3. 检查每个调用的第一个实参是否为 ModelGatewayScenes 常量。
+            while (matcher.find()) {
+                String firstArgument = content.substring(matcher.end()).stripLeading();
+                if (!firstArgument.startsWith("ModelGatewayScenes.")) {
+                    violations.add(new Violation(path, lineNumber(content, matcher.start()), matcher.group()));
+                }
             }
         }
         return violations;
+    }
+
+    /**
+     * 提取 Java 源码中声明为 LlmService 类型的变量名。
+     *
+     * @param content Java 源码内容
+     * @return LlmService 变量名集合
+     */
+    private static Set<String> findLlmServiceVariableNames(String content) {
+        // 1. 默认纳入常见变量名，兼容 Lombok、父类继承等正则无法看到声明的场景。
+        Set<String> variableNames = new LinkedHashSet<>();
+        variableNames.add("llmService");
+
+        // 2. 识别字段、局部变量和构造参数中的 LlmService 类型变量名。
+        Matcher matcher = LLM_SERVICE_VARIABLE_PATTERN.matcher(content);
+        while (matcher.find()) {
+            variableNames.add(matcher.group(1));
+        }
+        return variableNames;
     }
 
     /**
@@ -163,6 +231,22 @@ class ModelGatewayCutoverScanTest {
         } catch (IOException e) {
             throw new IllegalStateException("读取 Java 文件失败：" + path, e);
         }
+    }
+
+    /**
+     * 写入用于扫描自测的临时 Java 源码。
+     *
+     * @param content Java 源码内容
+     * @return 临时 Java 源码文件路径
+     * @throws IOException 写入临时文件失败时抛出
+     */
+    private static Path writeTemporaryJavaSource(String content) throws IOException {
+        // 1. 创建临时 Java 文件承载扫描样本。
+        Path sourceFile = Files.createTempFile("model-gateway-cutover-scan-", ".java");
+
+        // 2. 写入 UTF-8 源码内容，保证扫描逻辑读取一致。
+        Files.writeString(sourceFile, content, StandardCharsets.UTF_8);
+        return sourceFile;
     }
 
     /**
