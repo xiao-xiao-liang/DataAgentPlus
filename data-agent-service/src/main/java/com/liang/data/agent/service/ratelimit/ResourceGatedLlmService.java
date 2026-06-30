@@ -1,8 +1,9 @@
 package com.liang.data.agent.service.ratelimit;
 
 import com.liang.data.agent.ai.llm.LlmService;
-import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.ratelimit.ResourceType;
+import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
+import com.liang.data.agent.gateway.error.ModelGatewayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -58,11 +59,11 @@ public class ResourceGatedLlmService implements LlmService {
     }
 
     private Flux<ChatResponse> callWithPermit(String ownerId, Supplier<Flux<ChatResponse>> supplier) {
-        // 1. 先申请 LLM 资源许可，资源不足时直接返回明确提示
+        // 1. 先申请 LLM 资源许可，资源不足时直接返回结构化限流错误
         ResourcePermit permit = resourceGate.tryAcquire(ResourceType.LLM_CALL, ownerId, Duration.ZERO);
         if (!permit.acquired()) {
             log.warn("LLM 资源繁忙，跳过本次调用，占用方：{}", ownerId);
-            return Flux.just(ChatResponseUtil.createResponse("大模型资源繁忙，请稍后重试。"));
+            return Flux.error(new ModelGatewayException(ModelGatewayErrorCode.RATE_LIMITED, "大模型资源繁忙，请稍后重试"));
         }
 
         // 2. 执行真实 LLM 流，并在完成、异常或取消时释放许可

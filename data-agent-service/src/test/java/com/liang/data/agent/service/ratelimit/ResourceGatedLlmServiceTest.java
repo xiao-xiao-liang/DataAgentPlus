@@ -4,6 +4,8 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
+import com.liang.data.agent.gateway.error.ModelGatewayException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -37,10 +39,11 @@ class ResourceGatedLlmServiceTest {
                 .thenReturn(ResourcePermit.rejected(ResourceType.LLM_CALL, "llm-call-user"));
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
-        List<ChatResponse> responses = service.callUser("hello").collectList().block();
-
-        assertThat(responses).hasSize(1);
-        assertThat(ChatResponseUtil.getText(responses.getFirst())).contains("大模型资源繁忙");
+        assertThatThrownBy(() -> service.callUser("hello").collectList().block())
+                .isInstanceOfSatisfying(ModelGatewayException.class, exception -> {
+                    assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.RATE_LIMITED);
+                    assertThat(exception.getMessage()).isEqualTo("大模型资源繁忙，请稍后重试");
+                });
         verify(delegate, never()).callUser(anyString());
     }
 
@@ -73,12 +76,11 @@ class ResourceGatedLlmServiceTest {
                 .thenReturn(ResourcePermit.rejected(ResourceType.LLM_CALL, "llm-call-user"));
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
-        List<ChatResponse> responses = service.callUser(ModelGatewayScenes.SQL_GENERATION, "hello")
-                .collectList()
-                .block();
-
-        assertThat(responses).hasSize(1);
-        assertThat(ChatResponseUtil.getText(responses.getFirst())).contains("大模型资源繁忙");
+        assertThatThrownBy(() -> service.callUser(ModelGatewayScenes.SQL_GENERATION, "hello").collectList().block())
+                .isInstanceOfSatisfying(ModelGatewayException.class, exception -> {
+                    assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.RATE_LIMITED);
+                    assertThat(exception.getMessage()).isEqualTo("大模型资源繁忙，请稍后重试");
+                });
         verify(delegate, never()).callUser(anyString(), anyString());
         verify(delegate, never()).callUser(anyString());
     }
