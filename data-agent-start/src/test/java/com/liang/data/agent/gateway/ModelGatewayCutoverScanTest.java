@@ -26,7 +26,8 @@ class ModelGatewayCutoverScanTest {
     private static final List<String> PRODUCTION_SOURCE_ROOTS = List.of(
             "data-agent-ai-core/src/main/java",
             "data-agent-workflow/src/main/java",
-            "data-agent-service/src/main/java");
+            "data-agent-service/src/main/java",
+            "data-agent-start/src/main/java");
     private static final Set<String> DIRECT_MODEL_INFRASTRUCTURE_FILES = Set.of(
             "OpenAiCompatibleGatewayProvider.java",
             "DynamicModelFactory.java",
