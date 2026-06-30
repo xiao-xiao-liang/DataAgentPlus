@@ -8,6 +8,7 @@ public final class ModelGatewayScenes {
     public static final String LEGACY_SYSTEM_USER = "legacy.system_user";
     public static final String LEGACY_SYSTEM_ONLY = "legacy.system_only";
     public static final String LEGACY_USER_ONLY = "legacy.user_only";
+    public static final String DIAGNOSTIC_CHAT = "diagnostic.chat";
     public static final String INTENT_RECOGNITION = "workflow.intent_recognition";
     public static final String EVIDENCE_RECALL = "workflow.evidence_recall";
     public static final String QUERY_ENHANCE = "workflow.query_enhance";

@@ -51,7 +51,7 @@ public class Phase3TestController {
      */
     @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public Flux<String> testChat() {
-        return llmService.callUser(ModelGatewayScenes.FEASIBILITY_ASSESSMENT, "你好，请做个详细的自我介绍。")
+        return llmService.callUser(ModelGatewayScenes.DIAGNOSTIC_CHAT, "你好，请做个详细的自我介绍。")
                 .map(ChatResponseUtil::getText)
                 .filter(StringUtils::hasLength)
                 .doOnNext(text -> log.info("【Chat接口】输出数据片段: [{}]", text));
