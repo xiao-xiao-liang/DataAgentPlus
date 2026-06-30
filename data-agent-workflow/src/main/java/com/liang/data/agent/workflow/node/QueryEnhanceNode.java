@@ -8,6 +8,7 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.exception.ServiceException;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -85,7 +86,7 @@ public class QueryEnhanceNode implements NodeAction {
      * @return 包含有效正文的模型响应流
      */
     private Flux<ChatResponse> callQueryEnhance(String prompt, int retryCount) {
-        return Flux.defer(() -> llmService.callUser(prompt))
+        return Flux.defer(() -> llmService.callUser(ModelGatewayScenes.QUERY_ENHANCE, prompt))
                 .filter(response -> StringUtils.hasText(ChatResponseUtil.getText(response)))
                 .switchIfEmpty(Flux.defer(() -> {
                     if (retryCount < MAX_EMPTY_RESPONSE_RETRY_COUNT) {

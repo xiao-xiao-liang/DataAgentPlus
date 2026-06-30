@@ -5,6 +5,7 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.schema.SchemaDTO;
 import com.liang.data.agent.dal.connector.bo.DbConfigBO;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.SemanticConsistencyDTO;
 import com.liang.data.agent.workflow.dto.node.SqlGenerationDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
@@ -39,7 +40,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
         log.info("开始生成 SQL - 问题: {}, 数据库方言: {}", dto.getQuery(), dto.getDialect());
         String prompt = PromptHelper.buildNewSqlGeneratorPrompt(dto);
         log.debug("SQL 生成 Prompt: \n{}", prompt);
-        return llmService.callUser(prompt);
+        return llmService.callUser(ModelGatewayScenes.SQL_GENERATION, prompt);
     }
 
     @Override
@@ -47,7 +48,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
         log.info("开始修复 SQL - 异常信息: {}", dto.getExceptionMessage());
         String prompt = PromptHelper.buildSqlErrorFixerPrompt(dto);
         log.debug("SQL 修复 Prompt: \n{}", prompt);
-        return llmService.callUser(prompt);
+        return llmService.callUser(ModelGatewayScenes.SQL_REPAIR, prompt);
     }
 
     @Override
@@ -62,7 +63,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
         StringBuilder textAccumulator = new StringBuilder();
 
         // 2. 调用大模型并流式累加文本
-        return llmService.callUser(prompt)
+        return llmService.callUser(ModelGatewayScenes.SCHEMA_MIX_SELECT, prompt)
                 .doOnNext(chatResponse -> {
                     String piece = ChatResponseUtil.getText(chatResponse);
                     textAccumulator.append(piece);
@@ -94,7 +95,7 @@ public class Nl2SqlServiceImpl implements Nl2SqlService {
         log.info("开始语义一致性检查");
         String prompt = PromptHelper.buildSemanticConsistencyPrompt(dto);
         log.debug("语义一致性检查 Prompt: \n{}", prompt);
-        return llmService.callUser(prompt);
+        return llmService.callUser(ModelGatewayScenes.SEMANTIC_CONSISTENCY, prompt);
     }
 
     /**

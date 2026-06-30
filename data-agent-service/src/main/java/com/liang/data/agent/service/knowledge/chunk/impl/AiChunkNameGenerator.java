@@ -1,6 +1,7 @@
 package com.liang.data.agent.service.knowledge.chunk.impl;
 
 import com.liang.data.agent.ai.llm.LlmService;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.service.knowledge.chunk.ChunkNameGenerator;
 import com.liang.data.agent.service.knowledge.chunk.KnowledgeChunkProperties;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,7 @@ public class AiChunkNameGenerator implements ChunkNameGenerator {
     public String generate(String content, Integer chunkOrder) {
         try {
             String prompt = "请为以下知识分块生成一个不超过20个汉字的名称，只返回名称，不要解释：\n" + content;
-            String generated = llmService.toStringFlux(llmService.callUser(prompt))
+            String generated = llmService.toStringFlux(llmService.callUser(ModelGatewayScenes.KNOWLEDGE_CHUNK_NAME, prompt))
                     .collectList()
                     .map(parts -> String.join("", parts))
                     .block(properties.getAiNameTimeout());

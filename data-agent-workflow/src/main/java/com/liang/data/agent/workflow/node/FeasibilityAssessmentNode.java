@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.common.enums.FeasibilityRequestType;
 import com.liang.data.agent.common.schema.SchemaDTO;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.FeasibilityAssessmentOutputDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -44,7 +45,7 @@ public class FeasibilityAssessmentNode implements NodeAction {
         String prompt = PromptHelper.buildFeasibilityAssessmentPrompt(canonicalQuery, recalledSchema, evidence, multiTurn);
         log.debug("可行性评估 Prompt:\n{}", prompt);
 
-        Flux<ChatResponse> responseFlux = llmService.callUser(prompt);
+        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayScenes.FEASIBILITY_ASSESSMENT, prompt);
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
                 this.getClass(),
                 state,

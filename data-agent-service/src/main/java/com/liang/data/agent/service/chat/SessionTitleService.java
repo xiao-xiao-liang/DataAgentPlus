@@ -1,6 +1,7 @@
 package com.liang.data.agent.service.chat;
 
 import com.liang.data.agent.ai.llm.LlmService;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.service.chat.vo.ChatSessionVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -103,7 +104,7 @@ public class SessionTitleService {
             String userPrompt = "用户输入：" + userMessage;
             
             // 引入超时机制保护，防止大模型接口响应过慢
-            return llmService.toStringFlux(llmService.call(systemPrompt, userPrompt))
+            return llmService.toStringFlux(llmService.call(ModelGatewayScenes.SESSION_TITLE, systemPrompt, userPrompt))
                     .collect(StringBuilder::new, StringBuilder::append)
                     .map(StringBuilder::toString)
                     .timeout(Duration.ofSeconds(10))
