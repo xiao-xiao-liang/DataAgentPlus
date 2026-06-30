@@ -15,6 +15,7 @@ import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 import com.liang.data.agent.gateway.error.ModelGatewayException;
 import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -42,6 +43,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -197,6 +201,92 @@ class DefaultModelGatewayTest {
                 isNull(), eq(ModelGatewayErrorCode.PROVIDER_TIMEOUT), anyString());
         verify(recorder).finishInvocation(anyString(), eq(ModelGatewayCallStatus.FAILED),
                 isNull(), isNull(), eq(ModelGatewayErrorCode.PROVIDER_TIMEOUT), anyString());
+    }
+
+    @Test
+    void streamTimeoutShouldMapProviderTimeoutAndRecordFailedTerminalState() {
+        OpenAiCompatibleGatewayProvider provider = mock(OpenAiCompatibleGatewayProvider.class);
+        ModelGatewayInvocationRecorder recorder = mock(ModelGatewayInvocationRecorder.class);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        doReturn(Flux.never()).when(provider).stream(anyString(), any(ModelGatewayRequest.class));
+        DefaultModelGateway gateway = new DefaultModelGateway(provider, recorder, Duration.ofMillis(30), meterRegistry);
+
+        assertThatThrownBy(() -> gateway.stream(request(ModelCallMode.STREAM)).collectList()
+                .block(Duration.ofMillis(500)))
+                .isInstanceOfSatisfying(ModelGatewayException.class, exception ->
+                        assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.PROVIDER_TIMEOUT));
+        verify(recorder).finishAttempt(anyString(), eq(ModelGatewayCallStatus.FAILED),
+                isNull(), eq(ModelGatewayErrorCode.PROVIDER_TIMEOUT), anyString());
+        verify(recorder).finishInvocation(anyString(), eq(ModelGatewayCallStatus.FAILED),
+                isNull(), isNull(), eq(ModelGatewayErrorCode.PROVIDER_TIMEOUT), anyString());
+        assertThat(meterRegistry.find("model_gateway_errors_total").counter())
+                .isNotNull()
+                .extracting(counter -> counter.count())
+                .isEqualTo(1.0D);
+    }
+
+    @Test
+    void callCancelShouldFinishCancelledOnlyOnce() throws InterruptedException {
+        OpenAiCompatibleGatewayProvider provider = mock(OpenAiCompatibleGatewayProvider.class);
+        ModelGatewayInvocationRecorder recorder = mock(ModelGatewayInvocationRecorder.class);
+        CountDownLatch providerStartedLatch = new CountDownLatch(1);
+        CountDownLatch releaseProviderLatch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            providerStartedLatch.countDown();
+            try {
+                releaseProviderLatch.await(1, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            return successResult(invocation.getArgument(0));
+        }).when(provider).call(anyString(), any(ModelGatewayRequest.class));
+        DefaultModelGateway gateway = gateway(provider, recorder, null);
+
+        Disposable disposable = gateway.call(request(ModelCallMode.BLOCK)).subscribe();
+        assertThat(providerStartedLatch.await(1, TimeUnit.SECONDS)).isTrue();
+        disposable.dispose();
+
+        try {
+            verify(recorder, timeout(500)).finishAttempt(anyString(), eq(ModelGatewayCallStatus.CANCELLED),
+                    isNull(), eq(ModelGatewayErrorCode.CALL_CANCELLED), anyString());
+            verify(recorder, timeout(500)).finishInvocation(anyString(), eq(ModelGatewayCallStatus.CANCELLED),
+                    isNull(), isNull(), eq(ModelGatewayErrorCode.CALL_CANCELLED), anyString());
+            verify(recorder, never()).finishInvocation(anyString(), eq(ModelGatewayCallStatus.SUCCEEDED),
+                    any(), any(), any(), any());
+            verify(recorder, never()).finishInvocation(anyString(), eq(ModelGatewayCallStatus.FAILED),
+                    any(), any(), any(), any());
+            verify(recorder, times(1)).finishAttempt(anyString(), any(ModelGatewayCallStatus.class),
+                    any(), any(), any());
+            verify(recorder, times(1)).finishInvocation(anyString(), any(ModelGatewayCallStatus.class),
+                    any(), any(), any(), any());
+        } finally {
+            releaseProviderLatch.countDown();
+        }
+    }
+
+    @Test
+    void metricsFailureShouldNotAffectProviderResultOrRecordFailure() {
+        OpenAiCompatibleGatewayProvider provider = mock(OpenAiCompatibleGatewayProvider.class);
+        ModelGatewayInvocationRecorder recorder = mock(ModelGatewayInvocationRecorder.class);
+        MeterRegistry meterRegistry = mock(MeterRegistry.class);
+        doAnswer(invocation -> successResult(invocation.getArgument(0))).when(provider)
+                .call(anyString(), any(ModelGatewayRequest.class));
+        doThrow(new IllegalStateException("指标注册失败")).when(meterRegistry)
+                .counter(eq("model_gateway_invocations_total"), any(String[].class));
+        DefaultModelGateway gateway = new DefaultModelGateway(provider, recorder, Duration.ofSeconds(1), meterRegistry);
+
+        GatewayResult result = gateway.call(request(ModelCallMode.BLOCK)).block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.content()).isEqualTo("模型回答");
+        verify(recorder).finishAttempt(anyString(), eq(ModelGatewayCallStatus.SUCCEEDED),
+                isNull(), isNull(), isNull());
+        verify(recorder).finishInvocation(anyString(), eq(ModelGatewayCallStatus.SUCCEEDED),
+                eq(ROUTE), eq(USAGE), isNull(), isNull());
+        verify(recorder, never()).finishAttempt(anyString(), eq(ModelGatewayCallStatus.FAILED),
+                any(), any(), any());
+        verify(recorder, never()).finishInvocation(anyString(), eq(ModelGatewayCallStatus.FAILED),
+                any(), any(), any(), any());
     }
 
     @Test

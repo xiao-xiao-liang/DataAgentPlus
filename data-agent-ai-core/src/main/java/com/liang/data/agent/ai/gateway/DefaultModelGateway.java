@@ -78,15 +78,22 @@ public class DefaultModelGateway implements ModelGateway {
                     .defaultIfEmpty(fallbackContext())
                     .block();
             InvocationState state = new InvocationState(request, context, ModelCallMode.BLOCK);
+            AtomicBoolean finished = new AtomicBoolean(false);
             long startNanos = System.nanoTime();
             startLifecycle(state);
             return Mono.fromCallable(() -> provider.call(state.invocationId(), request))
                     .subscribeOn(Schedulers.boundedElastic())
                     .timeout(defaultTimeout)
-                    .map(result -> finishCallSucceeded(state, result, startNanos))
+                    .map(result -> finishCallSucceeded(state, result, startNanos, finished))
                     .onErrorMap(this::convertException)
                     .doOnError(ModelGatewayException.class,
-                            exception -> finishFailed(state, exception, startNanos));
+                            exception -> finishFailedWhenNeeded(state, exception, startNanos, finished))
+                    .doFinally(signalType -> {
+                        if (signalType == reactor.core.publisher.SignalType.CANCEL
+                                && finished.compareAndSet(false, true)) {
+                            finishCancelled(state, startNanos);
+                        }
+                    });
         });
     }
 
@@ -103,6 +110,7 @@ public class DefaultModelGateway implements ModelGateway {
             long startNanos = System.nanoTime();
             startLifecycle(state);
             return Flux.defer(() -> provider.stream(state.invocationId(), request))
+                    .timeout(defaultTimeout)
                     .onErrorMap(this::convertException)
                     .doOnNext(chunk -> finishStreamSucceededWhenNeeded(state, chunk, startNanos, finished))
                     .doOnError(ModelGatewayException.class,
@@ -116,16 +124,31 @@ public class DefaultModelGateway implements ModelGateway {
         });
     }
 
-    private GatewayResult finishCallSucceeded(InvocationState state, GatewayResult result, long startNanos) {
-        // 1. Provider 成功返回后记录尝试与主调用成功状态。
+    private GatewayResult finishCallSucceeded(InvocationState state, GatewayResult result, long startNanos,
+                                              AtomicBoolean finished) {
+        // 1. 成功、失败、取消路径统一通过 CAS 收口，避免重复记录终态。
+        if (!finished.compareAndSet(false, true)) {
+            return result;
+        }
+        // 2. Provider 成功返回后记录尝试与主调用成功状态。
         safeRecord("结束模型调用尝试", () -> recorder.finishAttempt(state.attemptId(),
                 ModelGatewayCallStatus.SUCCEEDED, null, null, null));
         safeRecord("结束模型网关调用", () -> recorder.finishInvocation(state.invocationId(),
                 ModelGatewayCallStatus.SUCCEEDED, result.route(), result.usage(), null, null));
-        // 2. 使用脱敏后的场景、路由和状态记录基础指标。
+        // 3. 使用脱敏后的场景、路由和状态记录基础指标。
         recordMetrics(state.request().sceneCode(), result.route(), ModelGatewayCallStatus.SUCCEEDED,
                 null, result.usage(), startNanos);
         return result;
+    }
+
+    private void finishFailedWhenNeeded(InvocationState state, ModelGatewayException exception, long startNanos,
+                                        AtomicBoolean finished) {
+        // 1. 失败路径仅在尚未被成功或取消收口时记录终态。
+        if (!finished.compareAndSet(false, true)) {
+            return;
+        }
+        // 2. 复用统一失败收口，保持错误码、生命周期和指标记录一致。
+        finishFailed(state, exception, startNanos);
     }
 
     private void finishStreamSucceededWhenNeeded(InvocationState state, GatewayChunk chunk, long startNanos,
@@ -235,18 +258,24 @@ public class DefaultModelGateway implements ModelGateway {
                 "status", statusTag,
                 "error_code", errorCodeTag
         };
-        // 1. 记录调用次数、耗时与错误次数，标签中不携带任何运行或调用标识。
-        meterRegistry.counter("model_gateway_invocations_total", tags).increment();
-        Timer.builder("model_gateway_invocation_duration_seconds")
-                .tags(tags)
-                .register(meterRegistry)
-                .record(Duration.ofNanos(System.nanoTime() - startNanos));
-        if (errorCode != null) {
-            meterRegistry.counter("model_gateway_errors_total", tags).increment();
-        }
-        // 2. 成功且存在用量时记录总 Token 数。
-        if (usage != null) {
-            meterRegistry.counter("model_gateway_tokens_total", tags).increment(usage.totalTokens());
+        try {
+            // 1. 记录调用次数、耗时与错误次数，标签中不携带任何运行或调用标识。
+            meterRegistry.counter("model_gateway_invocations_total", tags).increment();
+            Timer.builder("model_gateway_invocation_duration_seconds")
+                    .tags(tags)
+                    .register(meterRegistry)
+                    .record(Duration.ofNanos(System.nanoTime() - startNanos));
+            if (errorCode != null) {
+                meterRegistry.counter("model_gateway_errors_total", tags).increment();
+            }
+            // 2. 成功且存在用量时记录总 Token 数。
+            if (usage != null) {
+                meterRegistry.counter("model_gateway_tokens_total", tags).increment(usage.totalTokens());
+            }
+        } catch (RuntimeException exception) {
+            // 3. 指标系统异常不得影响主链路，日志不记录 Prompt、响应正文或调用标识。
+            LOGGER.warn("模型网关指标记录失败，阶段：记录调用指标，异常类型：{}",
+                    exception.getClass().getName());
         }
     }
 
