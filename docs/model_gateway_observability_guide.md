@@ -67,6 +67,17 @@ http://localhost:3200/api/traces/{traceId}
 
 如果 Tempo 查不到 Trace，先确认应用已产生请求、`OBSERVABILITY_TRACING_ENABLED=true`、采样率大于 `0`、应用 OTLP endpoint 指向 Collector 的 `http://localhost:4318/v1/traces`，再查看 Collector 和 Tempo 容器日志。
 
+## 阶段 2 单模型切流观测补充
+
+阶段 2 单模型切流后，生产模型调用应从业务/节点进入 `LlmService` 显式 `sceneCode` 入口，再经 `GatewayBackedLlmService`、`ModelGateway`、OpenAI 兼容 Provider 和 `AiModelRegistry/ChatClient` 发起真实调用。链路排查入口如下：
+
+1. 通过 `runId` 定位工作流运行记录，确认失败节点、运行状态和业务上下文。
+2. 通过 `traceId` 在 Grafana Tempo Explore 或 `http://localhost:3200/api/traces/{traceId}` 查询完整 Span 树。
+3. 通过 `invocationId` 查询 `model_gateway_invocation`，再用同一 `invocation_id` 查询 `model_gateway_attempt`，确认 `scene_code`、Provider、模型、状态、耗时、Token 用量和结构化错误码。
+4. 通过 Prometheus 查询 `model_gateway_invocations_total`、`model_gateway_invocation_duration_seconds`、`model_gateway_tokens_total`、`model_gateway_errors_total`，按 `scene_code`、`provider`、`model`、`status`、`error_code` 聚合观察调用量、延迟、用量和错误。
+
+阶段 2 的指标标签不得加入 `runId`、`traceId`、`invocationId` 等高基数字段。日志、Span、Metric、Invocation / Attempt 明细只允许记录排障所需的低敏字段和脱敏摘要，禁止记录或泄露完整 Prompt、完整响应、`apiKey`、`proxyPassword`、访问 Token 等凭证。更完整的单模型切流说明见 `docs/model_gateway_phase2_cutover_guide.md`。
+
 ## 关闭追踪与降低采样率
 
 - 关闭追踪：启动应用前设置 `OBSERVABILITY_TRACING_ENABLED=false`。
