@@ -1,10 +1,10 @@
 # 模型网关观测指南
 
-本文面向阶段 1 的本地开发、联调和回归验证，说明模型网关、工作流运行身份、OpenTelemetry 链路追踪、Prometheus 指标与本地可观测栈的使用方式。
+本文覆盖模型网关阶段 1 与阶段 2 的本地开发、联调和回归验证。前半部分说明阶段 1 交付的工作流运行身份、OpenTelemetry 链路追踪、Prometheus 指标与本地可观测栈；阶段 2 在此基础上补充单模型真实调用链、Invocation / Attempt 明细和模型网关指标排查方式。
 
 ## 模块职责
 
-- `data-agent-model-gateway`：定义与模型供应商无关的调用协议、错误语义、Prompt Registry 契约、执行上下文和 Reactor Context 传播工具。本阶段只交付协议和上下文基础，不接入真实模型调用。
+- `data-agent-model-gateway`：定义与模型供应商无关的调用协议、错误语义、Prompt Registry 契约、执行上下文和 Reactor Context 传播工具。阶段 1 交付协议和上下文基础；阶段 2 由 `data-agent-ai-core` 的网关实现接入单模型真实调用链。
 - `data-agent-workflow`：在图执行过程中读取并传播 `GatewayExecutionContext`，使用 `runId` 定位工作流运行记录，写入节点完成、中断、失败和完成状态。
 - `data-agent-start`：作为应用启动模块，创建或恢复运行上下文，接入 Micrometer Tracing、OTLP Trace 导出和 Prometheus 指标暴露，并提供 `/actuator/health`、`/actuator/prometheus` 等端点。
 - `docker/observability`：提供本地 OpenTelemetry Collector、Tempo、Prometheus、Grafana 编排、数据源、默认仪表盘和冒烟检查脚本。
@@ -67,6 +67,17 @@ http://localhost:3200/api/traces/{traceId}
 
 如果 Tempo 查不到 Trace，先确认应用已产生请求、`OBSERVABILITY_TRACING_ENABLED=true`、采样率大于 `0`、应用 OTLP endpoint 指向 Collector 的 `http://localhost:4318/v1/traces`，再查看 Collector 和 Tempo 容器日志。
 
+## 阶段 2 单模型切流观测补充
+
+阶段 2 单模型切流后，生产模型调用应从业务/节点进入 `LlmService` 显式 `sceneCode` 入口，再经 `GatewayBackedLlmService`、`ModelGateway`、OpenAI 兼容 Provider 和 `AiModelRegistry/ChatClient` 发起真实调用。链路排查入口如下：
+
+1. 通过 `runId` 定位工作流运行记录，确认失败节点、运行状态和业务上下文。
+2. 通过 `traceId` 在 Grafana Tempo Explore 或 `http://localhost:3200/api/traces/{traceId}` 查询完整 Span 树。
+3. 通过 `invocationId` 查询 `model_gateway_invocation`，再用同一 `invocation_id` 查询 `model_gateway_attempt`。Invocation 用于确认 `scene_code`、状态、耗时、Token 用量、结构化错误码，以及成功调用的实际 Provider/模型；Attempt 用于确认单次尝试生命周期、状态、耗时和错误码。阶段 2 当前 Attempt 的 `provider`、`model` 为 `unknown` 占位，`http_status` 为预留字段且暂未填充。
+4. 通过 Prometheus 查询 `model_gateway_invocations_total`、`model_gateway_invocation_duration_seconds`、`model_gateway_tokens_total`、`model_gateway_errors_total`，按 `scene_code`、`provider`、`model`、`status`、`error_code` 聚合观察调用量、延迟、用量和错误。Prometheus `error_code` 标签使用错误枚举名；数据库明细表的 `error_code` 使用错误码值。
+
+阶段 2 的指标标签不得加入 `runId`、`traceId`、`invocationId` 等高基数字段。日志、Span、Metric、Invocation / Attempt 明细只允许记录排障所需的低敏字段和脱敏摘要，禁止记录或泄露完整 Prompt、完整响应、`apiKey`、`proxyPassword`、访问 Token 等凭证。更完整的单模型切流说明见 `docs/model_gateway_phase2_cutover_guide.md`。
+
 ## 关闭追踪与降低采样率
 
 - 关闭追踪：启动应用前设置 `OBSERVABILITY_TRACING_ENABLED=false`。
@@ -121,6 +132,8 @@ data-agent-start/src/main/resources/sql/migration/V20260623_01__workflow_run_tra
 - OTLP 不可达：Collector 停止或网络异常时，应用不应阻断请求；先验证 `/actuator/health` 是否仍为 `UP`，再查看应用日志和 Collector 连接配置。
 - Grafana 默认账号：`admin/admin` 只限本机开发使用，不要暴露到公网；如需共享环境，请修改 `GF_SECURITY_ADMIN_USER` 和 `GF_SECURITY_ADMIN_PASSWORD` 并增加网络访问控制。
 
-## 本阶段边界
+## 阶段边界
 
-阶段 1 只交付模型网关协议、工作流运行身份传播、基础追踪与本地观测栈。本阶段未接入真实模型调用，未实现动态路由，未接入 Langfuse，也未完成完整节点埋点。上述能力应在后续阶段按独立计划实施和验收。
+阶段 1 交付模型网关协议、工作流运行身份传播、基础追踪与本地观测栈；阶段 1 不接入真实模型调用。
+
+阶段 2 在阶段 1 基础上接入单模型真实调用链，补充 Invocation / Attempt 明细与基础 Micrometer 指标。阶段 2 仍不支持动态路由、多模型候选、自动降级、预算控制、熔断、Langfuse、Nacos Prompt 热更新、管理 UI 或完整节点埋点；上述能力应在后续阶段按独立计划实施和验收。

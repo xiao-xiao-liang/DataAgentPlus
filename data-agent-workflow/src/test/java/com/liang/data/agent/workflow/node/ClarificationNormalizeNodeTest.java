@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.ClarificationNormalizedDTO;
 import com.liang.data.agent.workflow.dto.node.ClarificationRequestDTO;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
@@ -38,7 +39,7 @@ class ClarificationNormalizeNodeTest {
     void shouldNotOverwriteRouteAfterConfirmation() {
         LlmService llmService = mock(LlmService.class);
         JsonParseUtil jsonParseUtil = mock(JsonParseUtil.class);
-        when(llmService.callUser(anyString()))
+        when(llmService.callUser(eq(ModelGatewayScenes.CLARIFICATION_NORMALIZE), anyString()))
                 .thenReturn(Flux.just(ChatResponseUtil.createResponse("{}")));
 
         ClarificationNormalizedDTO normalized = new ClarificationNormalizedDTO();

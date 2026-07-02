@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +25,7 @@ import static com.liang.data.agent.common.constant.NodeOutputKey.SQL_EXECUTE_NOD
 import static com.liang.data.agent.common.constant.StateKey.RESULT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +34,7 @@ class ReportGeneratorNodeTest {
     @Test
     void shouldUseExecutingStepWhenReadingReportSummary() throws Exception {
         LlmService llmService = mock(LlmService.class);
-        when(llmService.callUser(anyString()))
+        when(llmService.callUser(eq(ModelGatewayScenes.REPORT_GENERATION), anyString()))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("report")));
 
         QueryEnhanceOutputDTO queryEnhanceOutputDTO = new QueryEnhanceOutputDTO();
@@ -71,14 +73,14 @@ class ReportGeneratorNodeTest {
         new ReportGeneratorNode(llmService).apply(state);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(llmService).callUser(promptCaptor.capture());
+        org.mockito.Mockito.verify(llmService).callUser(eq(ModelGatewayScenes.REPORT_GENERATION), promptCaptor.capture());
         assertThat(promptCaptor.getValue()).contains(expectedSummary);
     }
 
     @Test
     void shouldRemoveOuterMarkdownFenceWhenStreamingReport() throws Exception {
         LlmService llmService = mock(LlmService.class);
-        when(llmService.callUser(anyString()))
+        when(llmService.callUser(eq(ModelGatewayScenes.REPORT_GENERATION), anyString()))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("""
                         ```markdown
                         # 系统会话全景分析报告
@@ -115,7 +117,7 @@ class ReportGeneratorNodeTest {
     @Test
     void shouldStreamReportChunkBeforeModelResponseCompletes() throws Exception {
         LlmService llmService = mock(LlmService.class);
-        when(llmService.callUser(anyString()))
+        when(llmService.callUser(eq(ModelGatewayScenes.REPORT_GENERATION), anyString()))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("第一段"))
                         .concatWith(Mono.delay(Duration.ofSeconds(5))
                                 .map(ignored -> ChatResponseUtil.createPureResponse("第二段"))));

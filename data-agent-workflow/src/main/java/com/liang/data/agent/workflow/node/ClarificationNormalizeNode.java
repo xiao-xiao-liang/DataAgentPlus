@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.constant.SseEventKey;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.ClarificationNormalizedDTO;
 import com.liang.data.agent.workflow.dto.node.ClarificationRequestDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
@@ -56,7 +57,7 @@ public class ClarificationNormalizeNode implements NodeAction {
                 evidence
         );
 
-        String llmOutput = llmService.callUser(prompt)
+        String llmOutput = llmService.callUser(ModelGatewayScenes.CLARIFICATION_NORMALIZE, prompt)
                 .map(ChatResponseUtil::getText)
                 .collect(StringBuilder::new, StringBuilder::append)
                 .map(StringBuilder::toString)

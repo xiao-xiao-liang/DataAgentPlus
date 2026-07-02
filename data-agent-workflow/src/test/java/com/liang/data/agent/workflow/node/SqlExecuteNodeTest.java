@@ -17,6 +17,7 @@ import com.liang.data.agent.dal.mapper.AgentMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.service.agentdatasource.AgentDatasourceColumnService;
 import com.liang.data.agent.service.ratelimit.ResourceGate;
 import com.liang.data.agent.service.ratelimit.ResourcePermit;
@@ -56,7 +57,7 @@ class SqlExecuteNodeTest {
         properties.setEnrichSqlResultTimeout(1L);
 
         LlmService llmService = mock(LlmService.class, CALLS_REAL_METHODS);
-        when(llmService.call(anyString(), anyString())).thenReturn(Flux.never());
+        when(llmService.call(eq(ModelGatewayScenes.DATA_VIEW_ANALYZE), anyString(), anyString())).thenReturn(Flux.never());
 
         SqlExecuteNode node = new SqlExecuteNode(
                 null,

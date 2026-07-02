@@ -8,6 +8,7 @@ import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.schema.SchemaDTO;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.planner.Plan;
 import com.liang.data.agent.workflow.prompt.PromptConstant;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
@@ -111,7 +112,7 @@ public class PlannerNode implements NodeAction {
         log.debug("Planner 提示词装配完成:\n{}", prompt);
 
         // 5. 触发流式 LLM 调用并推送图形响应
-        Flux<ChatResponse> responseFlux = llmService.callUser(prompt);
+        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayScenes.PLANNER, prompt);
 
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGenerator(
                 this.getClass(), state, responseFlux,

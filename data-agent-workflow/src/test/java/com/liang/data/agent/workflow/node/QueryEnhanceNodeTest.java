@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
+import com.liang.data.agent.gateway.api.ModelGatewayScenes;
 import com.liang.data.agent.workflow.dto.node.QueryEnhanceOutputDTO;
 import com.liang.data.agent.workflow.util.JsonParseUtil;
 import org.junit.jupiter.api.Test;
@@ -80,7 +81,7 @@ class QueryEnhanceNodeTest {
         when(state.value(INPUT_KEY)).thenReturn(Optional.of("列车准时到达的比例是多少"));
         when(state.value(EVIDENCE_OUTPUT)).thenReturn(Optional.of("准点率为准时记录数占总记录数的比例"));
         when(state.value(MULTI_TURN_CONTEXT)).thenReturn(Optional.of("(无)"));
-        when(llmService.callUser(anyString()))
+        when(llmService.callUser(eq(ModelGatewayScenes.QUERY_ENHANCE), anyString()))
                 .thenReturn(
                         Flux.just(ChatResponseUtil.createPureResponse("")),
                         Flux.just(ChatResponseUtil.createPureResponse(
@@ -95,7 +96,7 @@ class QueryEnhanceNodeTest {
 
         generator.blockLast();
 
-        verify(llmService, times(2)).callUser(anyString());
+        verify(llmService, times(2)).callUser(eq(ModelGatewayScenes.QUERY_ENHANCE), anyString());
         verify(jsonParseUtil).tryConvertToObject(anyString(), eq(QueryEnhanceOutputDTO.class));
     }
 }

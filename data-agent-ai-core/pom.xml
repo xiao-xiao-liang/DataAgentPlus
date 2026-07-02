@@ -20,6 +20,11 @@
 
         <dependency>
             <groupId>com.liang.data.agent</groupId>
+            <artifactId>data-agent-model-gateway</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.liang.data.agent</groupId>
             <artifactId>data-agent-dal</artifactId>
         </dependency>
 
