@@ -1,6 +1,6 @@
 package com.liang.data.agent.ai.llm;
 
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatResponse;
 import reactor.core.publisher.Flux;
@@ -19,7 +19,7 @@ class LlmServiceSceneMethodTest {
     void callUserWithSceneCodeShouldFallbackToLegacyCallUser() {
         RecordingLlmService service = new RecordingLlmService();
 
-        service.callUser(ModelGatewayScenes.SQL_GENERATION, "生成SQL").collectList().block();
+        service.callUser(ModelGatewayConstant.SQL_GENERATION, "生成SQL").collectList().block();
 
         assertThat(service.calls()).containsExactly("callUser:生成SQL");
     }
@@ -28,7 +28,7 @@ class LlmServiceSceneMethodTest {
     void callSystemWithSceneCodeShouldFallbackToLegacyCallSystem() {
         RecordingLlmService service = new RecordingLlmService();
 
-        service.callSystem(ModelGatewayScenes.INTENT_RECOGNITION, "系统提示").collectList().block();
+        service.callSystem(ModelGatewayConstant.INTENT_RECOGNITION, "系统提示").collectList().block();
 
         assertThat(service.calls()).containsExactly("callSystem:系统提示");
     }
@@ -37,7 +37,7 @@ class LlmServiceSceneMethodTest {
     void callWithSceneCodeShouldFallbackToLegacyCall() {
         RecordingLlmService service = new RecordingLlmService();
 
-        service.call(ModelGatewayScenes.PLANNER, "系统提示", "用户提示").collectList().block();
+        service.call(ModelGatewayConstant.PLANNER, "系统提示", "用户提示").collectList().block();
 
         assertThat(service.calls()).containsExactly("call:系统提示:用户提示");
     }

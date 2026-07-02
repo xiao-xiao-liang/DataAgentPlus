@@ -1,4 +1,4 @@
-package com.liang.data.agent.gateway.api;
+package com.liang.data.agent.gateway.response;
 
 /**
  * 模型 Token 使用量，记录输入、输出及总 Token 数。

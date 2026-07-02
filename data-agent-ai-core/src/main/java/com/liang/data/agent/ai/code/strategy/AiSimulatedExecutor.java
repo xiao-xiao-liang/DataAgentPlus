@@ -3,7 +3,7 @@ package com.liang.data.agent.ai.code.strategy;
 import com.liang.data.agent.ai.code.PythonExecutionStrategy;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.code.model.TaskResponse;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -54,7 +54,7 @@ public class AiSimulatedExecutor implements PythonExecutionStrategy {
                     """, code, inputJson);
 
             // 用大模型模拟计算
-            String stdout = llmService.toStringFlux(llmService.call(ModelGatewayScenes.AI_SIMULATED_EXECUTION,
+            String stdout = llmService.toStringFlux(llmService.call(ModelGatewayConstant.AI_SIMULATED_EXECUTION,
                             systemPrompt, userPrompt))
                     .collect(StringBuilder::new, StringBuilder::append)
                     .map(StringBuilder::toString)

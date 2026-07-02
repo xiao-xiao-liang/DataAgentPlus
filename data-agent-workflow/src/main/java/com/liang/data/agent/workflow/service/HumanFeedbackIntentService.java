@@ -9,7 +9,7 @@ import static com.liang.data.agent.workflow.constants.HumanFeedbackConstants.MOD
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntent;
 import com.liang.data.agent.workflow.dto.humanfeedback.HumanFeedbackIntentResult;
 import com.liang.data.agent.workflow.util.MarkdownParserUtil;
@@ -103,7 +103,7 @@ public class HumanFeedbackIntentService {
     }
 
     private Flux<ChatResponse> callModel(String feedbackContent) {
-        return llmService.call(ModelGatewayScenes.HUMAN_FEEDBACK_INTENT, buildSystemPrompt(), "用户反馈内容：\n" + feedbackContent);
+        return llmService.call(ModelGatewayConstant.HUMAN_FEEDBACK_INTENT, buildSystemPrompt(), "用户反馈内容：\n" + feedbackContent);
     }
 
     private HumanFeedbackIntentResult normalizeModelResult(HumanFeedbackIntentModelResponse response) {

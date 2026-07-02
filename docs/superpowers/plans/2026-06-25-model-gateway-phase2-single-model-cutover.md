@@ -397,7 +397,7 @@ git commit -m "feat(model-gateway): 增加调用明细持久化结构"
 package com.liang.data.agent.ai.llm;
 
 import com.liang.data.agent.ai.util.ChatResponseUtil;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatResponse;
 import reactor.core.publisher.Flux;
@@ -708,9 +708,9 @@ public enum ModelGatewayCallStatus {
 ```java
 package com.liang.data.agent.ai.gateway;
 
-import com.liang.data.agent.gateway.api.ModelCallMode;
-import com.liang.data.agent.gateway.api.ModelRoute;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.request.ModelCallMode;
+import com.liang.data.agent.gateway.respnose.ModelRoute;
+import com.liang.data.agent.gateway.respnose.ModelUsage;
 import com.liang.data.agent.gateway.context.GatewayExecutionContext;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 

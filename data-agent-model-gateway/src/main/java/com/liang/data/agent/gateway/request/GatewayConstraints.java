@@ -1,4 +1,4 @@
-package com.liang.data.agent.gateway.api;
+package com.liang.data.agent.gateway.request;
 
 import java.math.BigDecimal;
 import java.time.Duration;

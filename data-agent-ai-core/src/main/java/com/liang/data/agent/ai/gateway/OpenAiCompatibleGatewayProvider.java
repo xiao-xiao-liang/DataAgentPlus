@@ -3,22 +3,22 @@ package com.liang.data.agent.ai.gateway;
 import com.liang.data.agent.ai.model.AiModelRegistry;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.dal.entity.ModelConfigEntity;
-import com.liang.data.agent.gateway.api.GatewayChunk;
-import com.liang.data.agent.gateway.api.GatewayResult;
-import com.liang.data.agent.gateway.api.ModelCallMode;
-import com.liang.data.agent.gateway.api.ModelGatewayRequest;
-import com.liang.data.agent.gateway.api.ModelMessage;
-import com.liang.data.agent.gateway.api.ModelMessageRole;
-import com.liang.data.agent.gateway.api.ModelRoute;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.response.GatewayChunk;
+import com.liang.data.agent.gateway.response.GatewayResult;
+import com.liang.data.agent.gateway.request.ModelCallMode;
+import com.liang.data.agent.gateway.request.ModelGatewayRequest;
+import com.liang.data.agent.gateway.prompt.ModelMessage;
+import com.liang.data.agent.gateway.prompt.ModelMessageRole;
+import com.liang.data.agent.gateway.response.ModelRoute;
+import com.liang.data.agent.gateway.response.ModelUsage;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 import com.liang.data.agent.gateway.error.ModelGatewayException;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -51,6 +51,7 @@ public class OpenAiCompatibleGatewayProvider {
      *
      * @param registry AI 模型注册中心
      */
+    @Autowired
     public OpenAiCompatibleGatewayProvider(AiModelRegistry registry) {
         this(new DefaultChatClientInvoker(registry));
     }
@@ -115,11 +116,12 @@ public class OpenAiCompatibleGatewayProvider {
                     .handle((response, sink) -> {
                         // 1. null 响应属于上游格式错误，需要立即终止流。
                         if (response == null) {
-                            throw new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID);
+                            sink.error(new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID));
+                            return;
                         }
                         // 2. 空白增量属于兼容性噪声，过滤后等待后续有效文本。
                         String text = ChatResponseUtil.getText(response);
-                        if (text == null || text.isBlank()) {
+                        if (text.isBlank()) {
                             return;
                         }
                         // 3. 仅在有效文本片段出现后标记流有效，并记录最新用量。
@@ -152,19 +154,18 @@ public class OpenAiCompatibleGatewayProvider {
         }
         // 2. 检查响应文本是否为空白。
         String content = ChatResponseUtil.getText(response);
-        if (content == null || content.isBlank()) {
+        if (content.isBlank()) {
             throw new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID);
         }
         return content;
     }
 
     private ModelRoute buildRoute(Optional<ModelConfigEntity> configOptional) {
-        Optional<ModelConfigEntity> safeConfigOptional = configOptional == null ? Optional.empty() : configOptional;
         // 1. 使用本次调用捕获的脱敏配置快照，缺失时使用 unknown 保持路由字段可追踪。
-        String provider = safeConfigOptional.map(ModelConfigEntity::getProvider)
+        String provider = configOptional.map(ModelConfigEntity::getProvider)
                 .filter(value -> !value.isBlank())
                 .orElse(UNKNOWN_ROUTE_VALUE);
-        String modelName = safeConfigOptional.map(ModelConfigEntity::getModelName)
+        String modelName = configOptional.map(ModelConfigEntity::getModelName)
                 .filter(value -> !value.isBlank())
                 .orElse(UNKNOWN_ROUTE_VALUE);
         // 2. 单模型切换阶段没有降级链路，因此尝试次数固定为 1，degraded 固定为 false。
@@ -174,7 +175,7 @@ public class OpenAiCompatibleGatewayProvider {
     private ModelUsage extractUsage(ChatResponse response) {
         try {
             // 1. 优先读取 Spring AI 元数据中的 usage。
-            if (response == null || response.getMetadata() == null || response.getMetadata().getUsage() == null) {
+            if (response == null || response.getMetadata().getUsage() == null) {
                 return new ModelUsage(0, 0, 0);
             }
             Usage usage = response.getMetadata().getUsage();
@@ -206,7 +207,7 @@ public class OpenAiCompatibleGatewayProvider {
 
     private ModelGatewayErrorCode resolveErrorCode(Throwable throwable) {
         String message = normalizeMessage(throwable);
-        if (hasCause(throwable, TimeoutException.class)
+        if (hasCause(throwable)
                 || message.contains("timeout")
                 || message.contains("timed out")
                 || message.contains("超时")) {
@@ -241,11 +242,11 @@ public class OpenAiCompatibleGatewayProvider {
         return messageBuilder.toString().toLowerCase(Locale.ROOT);
     }
 
-    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+    private boolean hasCause(Throwable throwable) {
         // 1. 沿异常链查找指定原因类型。
         Throwable current = throwable;
         while (current != null) {
-            if (causeType.isInstance(current)) {
+            if (current instanceof TimeoutException) {
                 return true;
             }
             current = current.getCause();
@@ -295,48 +296,46 @@ public class OpenAiCompatibleGatewayProvider {
     }
 
     /**
-     * 默认 Spring AI ChatClient 调用器。
-     */
-    private static class DefaultChatClientInvoker implements ChatClientInvoker {
+         * 默认 Spring AI ChatClient 调用器。
+         */
+        private record DefaultChatClientInvoker(AiModelRegistry registry) implements ChatClientInvoker {
 
-        private final AiModelRegistry registry;
+            private DefaultChatClientInvoker(AiModelRegistry registry) {
+                this.registry = Objects.requireNonNull(registry, "AI 模型注册中心不能为空");
+            }
 
-        DefaultChatClientInvoker(AiModelRegistry registry) {
-            this.registry = Objects.requireNonNull(registry, "AI 模型注册中心不能为空");
+            @Override
+            public ChatClientCallResult call(List<ModelMessage> messages) {
+                // 1. 在调用开始时获取 ChatClient 与路由的同一个快照。
+                AiModelRegistry.ChatClientRouteSnapshot snapshot = registry.getChatClientRouteSnapshot();
+                // 2. 构造 Spring AI 消息列表。
+                List<Message> springMessages = convertMessages(messages);
+                // 3. 使用快照中的 ChatClient 发起调用，并返回同一快照中的路由。
+                ChatResponse response = snapshot.chatClient().prompt().messages(springMessages).call().chatResponse();
+                return new ChatClientCallResult(response, Optional.of(snapshot.routeConfig()));
+            }
+
+            @Override
+            public ChatClientStreamResult stream(List<ModelMessage> messages) {
+                // 1. 在调用开始时获取 ChatClient 与路由的同一个快照。
+                AiModelRegistry.ChatClientRouteSnapshot snapshot = registry.getChatClientRouteSnapshot();
+                // 2. 构造 Spring AI 消息列表。
+                List<Message> springMessages = convertMessages(messages);
+                // 3. 使用快照中的 ChatClient 创建响应流，并返回同一快照中的路由。
+                Flux<ChatResponse> responses = snapshot.chatClient().prompt().messages(springMessages).stream().chatResponse();
+                return new ChatClientStreamResult(responses, Optional.of(snapshot.routeConfig()));
+            }
+
+            private List<Message> convertMessages(List<ModelMessage> messages) {
+                // 1. 阶段 2 主要使用 system/user，assistant/tool 暂按 user 传递，避免直接消息调用失败。
+                return messages.stream()
+                        .map(message -> message.role() == ModelMessageRole.SYSTEM
+                                ? new SystemMessage(message.content())
+                                : new UserMessage(message.content()))
+                        .map(Message.class::cast)
+                        .toList();
+            }
         }
-
-        @Override
-        public ChatClientCallResult call(List<ModelMessage> messages) {
-            // 1. 在调用开始时获取 ChatClient 与路由的同一个快照。
-            AiModelRegistry.ChatClientRouteSnapshot snapshot = registry.getChatClientRouteSnapshot();
-            // 2. 构造 Spring AI 消息列表。
-            List<Message> springMessages = convertMessages(messages);
-            // 3. 使用快照中的 ChatClient 发起调用，并返回同一快照中的路由。
-            ChatResponse response = snapshot.chatClient().prompt().messages(springMessages).call().chatResponse();
-            return new ChatClientCallResult(response, Optional.of(snapshot.routeConfig()));
-        }
-
-        @Override
-        public ChatClientStreamResult stream(List<ModelMessage> messages) {
-            // 1. 在调用开始时获取 ChatClient 与路由的同一个快照。
-            AiModelRegistry.ChatClientRouteSnapshot snapshot = registry.getChatClientRouteSnapshot();
-            // 2. 构造 Spring AI 消息列表。
-            List<Message> springMessages = convertMessages(messages);
-            // 3. 使用快照中的 ChatClient 创建响应流，并返回同一快照中的路由。
-            Flux<ChatResponse> responses = snapshot.chatClient().prompt().messages(springMessages).stream().chatResponse();
-            return new ChatClientStreamResult(responses, Optional.of(snapshot.routeConfig()));
-        }
-
-        private List<Message> convertMessages(List<ModelMessage> messages) {
-            // 1. 阶段 2 主要使用 system/user，assistant/tool 暂按 user 传递，避免直接消息调用失败。
-            return messages.stream()
-                    .map(message -> message.role() == ModelMessageRole.SYSTEM
-                            ? new SystemMessage(message.content())
-                            : new UserMessage(message.content()))
-                    .map(Message.class::cast)
-                    .toList();
-        }
-    }
 }
 
 /**
@@ -368,13 +367,6 @@ interface ChatClientInvoker {
  * @param routeConfig 本次调用使用的脱敏路由配置
  */
 record ChatClientCallResult(ChatResponse response, Optional<ModelConfigEntity> routeConfig) {
-
-    /**
-     * 归一化空路由，避免调用方处理 null。
-     */
-    ChatClientCallResult {
-        routeConfig = routeConfig == null ? Optional.empty() : routeConfig;
-    }
 }
 
 /**
@@ -390,6 +382,5 @@ record ChatClientStreamResult(Flux<ChatResponse> responses, Optional<ModelConfig
      */
     ChatClientStreamResult {
         Objects.requireNonNull(responses, "对话响应流不能为空");
-        routeConfig = routeConfig == null ? Optional.empty() : routeConfig;
     }
 }

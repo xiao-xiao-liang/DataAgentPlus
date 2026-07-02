@@ -8,18 +8,20 @@ import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.LlmServiceMode;
 import com.liang.data.agent.dal.mapper.ModelGatewayAttemptMapper;
 import com.liang.data.agent.dal.mapper.ModelGatewayInvocationMapper;
-import com.liang.data.agent.gateway.api.GatewayChunk;
-import com.liang.data.agent.gateway.api.GatewayConstraints;
-import com.liang.data.agent.gateway.api.GatewayResult;
-import com.liang.data.agent.gateway.api.ModelCallMode;
+import com.liang.data.agent.gateway.response.GatewayChunk;
+import com.liang.data.agent.gateway.request.GatewayConstraints;
+import com.liang.data.agent.gateway.response.GatewayResult;
+import com.liang.data.agent.gateway.request.ModelCallMode;
 import com.liang.data.agent.gateway.api.ModelGateway;
-import com.liang.data.agent.gateway.api.ModelGatewayRequest;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
-import com.liang.data.agent.gateway.api.ModelMessage;
-import com.liang.data.agent.gateway.api.ModelMessageRole;
-import com.liang.data.agent.gateway.api.ModelRoute;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.request.ModelGatewayRequest;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
+import com.liang.data.agent.gateway.prompt.ModelMessage;
+import com.liang.data.agent.gateway.prompt.ModelMessageRole;
+import com.liang.data.agent.gateway.response.ModelRoute;
+import com.liang.data.agent.gateway.response.ModelUsage;
 import com.liang.data.agent.gateway.context.GatewayExecutionContext;
+import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
+import com.liang.data.agent.gateway.error.ModelGatewayException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -59,7 +61,7 @@ class GatewayBackedLlmServiceTest {
                 .thenReturn(Mono.just(new GatewayResult("invocation-001", "ok", USAGE, ROUTE, "stop")));
         GatewayBackedLlmService service = new GatewayBackedLlmService(modelGateway, properties);
 
-        List<ChatResponse> responses = service.callUser(ModelGatewayScenes.SQL_GENERATION, "生成SQL")
+        List<ChatResponse> responses = service.callUser(ModelGatewayConstant.SQL_GENERATION, "生成SQL")
                 .collectList()
                 .block();
 
@@ -67,7 +69,7 @@ class GatewayBackedLlmServiceTest {
         verify(modelGateway).call(requestCaptor.capture());
         verify(modelGateway, never()).stream(any(ModelGatewayRequest.class));
         ModelGatewayRequest request = requestCaptor.getValue();
-        assertThat(request.sceneCode()).isEqualTo(ModelGatewayScenes.SQL_GENERATION);
+        assertThat(request.sceneCode()).isEqualTo(ModelGatewayConstant.SQL_GENERATION);
         assertThat(request.mode()).isEqualTo(ModelCallMode.BLOCK);
         assertThat(request.prompt().messages()).containsExactly(new ModelMessage(ModelMessageRole.USER, "生成SQL"));
         assertThat(request.constraints()).isEqualTo(GatewayConstraints.defaults());
@@ -86,13 +88,13 @@ class GatewayBackedLlmServiceTest {
         GatewayBackedLlmService service = new GatewayBackedLlmService(modelGateway, properties);
 
         // 2. 通过显式场景码的 system/user 入口发起调用。
-        service.call(ModelGatewayScenes.SQL_GENERATION, "系统提示", "用户提示").collectList().block();
+        service.call(ModelGatewayConstant.SQL_GENERATION, "系统提示", "用户提示").collectList().block();
 
         // 3. 验证请求场景、模式、消息顺序、默认约束与空业务标签。
         ArgumentCaptor<ModelGatewayRequest> requestCaptor = ArgumentCaptor.forClass(ModelGatewayRequest.class);
         verify(modelGateway).call(requestCaptor.capture());
         verify(modelGateway, never()).stream(any(ModelGatewayRequest.class));
-        assertGatewayRequest(requestCaptor.getValue(), ModelGatewayScenes.SQL_GENERATION, ModelCallMode.BLOCK,
+        assertGatewayRequest(requestCaptor.getValue(), ModelGatewayConstant.SQL_GENERATION, ModelCallMode.BLOCK,
                 new ModelMessage(ModelMessageRole.SYSTEM, "系统提示"),
                 new ModelMessage(ModelMessageRole.USER, "用户提示"));
     }
@@ -108,13 +110,13 @@ class GatewayBackedLlmServiceTest {
         GatewayBackedLlmService service = new GatewayBackedLlmService(modelGateway, properties);
 
         // 2. 通过显式场景码的 system 入口发起调用。
-        service.callSystem(ModelGatewayScenes.SQL_GENERATION, "系统提示").collectList().block();
+        service.callSystem(ModelGatewayConstant.SQL_GENERATION, "系统提示").collectList().block();
 
         // 3. 验证请求场景、模式、SYSTEM 消息、默认约束与空业务标签。
         ArgumentCaptor<ModelGatewayRequest> requestCaptor = ArgumentCaptor.forClass(ModelGatewayRequest.class);
         verify(modelGateway).call(requestCaptor.capture());
         verify(modelGateway, never()).stream(any(ModelGatewayRequest.class));
-        assertGatewayRequest(requestCaptor.getValue(), ModelGatewayScenes.SQL_GENERATION, ModelCallMode.BLOCK,
+        assertGatewayRequest(requestCaptor.getValue(), ModelGatewayConstant.SQL_GENERATION, ModelCallMode.BLOCK,
                 new ModelMessage(ModelMessageRole.SYSTEM, "系统提示"));
     }
 
@@ -132,7 +134,7 @@ class GatewayBackedLlmServiceTest {
         ArgumentCaptor<ModelGatewayRequest> requestCaptor = ArgumentCaptor.forClass(ModelGatewayRequest.class);
         verify(modelGateway).call(requestCaptor.capture());
         ModelGatewayRequest request = requestCaptor.getValue();
-        assertThat(request.sceneCode()).isEqualTo(ModelGatewayScenes.LEGACY_SYSTEM_USER);
+        assertThat(request.sceneCode()).isEqualTo(ModelGatewayConstant.LEGACY_SYSTEM_USER);
         assertThat(request.prompt().messages()).containsExactly(
                 new ModelMessage(ModelMessageRole.SYSTEM, "系统提示"),
                 new ModelMessage(ModelMessageRole.USER, "用户提示"));
@@ -152,7 +154,7 @@ class GatewayBackedLlmServiceTest {
         ArgumentCaptor<ModelGatewayRequest> requestCaptor = ArgumentCaptor.forClass(ModelGatewayRequest.class);
         verify(modelGateway).call(requestCaptor.capture());
         ModelGatewayRequest request = requestCaptor.getValue();
-        assertThat(request.sceneCode()).isEqualTo(ModelGatewayScenes.LEGACY_SYSTEM_ONLY);
+        assertThat(request.sceneCode()).isEqualTo(ModelGatewayConstant.LEGACY_SYSTEM_ONLY);
         assertThat(request.prompt().messages()).containsExactly(new ModelMessage(ModelMessageRole.SYSTEM, "系统提示"));
     }
 
@@ -175,9 +177,28 @@ class GatewayBackedLlmServiceTest {
         ArgumentCaptor<ModelGatewayRequest> requestCaptor = ArgumentCaptor.forClass(ModelGatewayRequest.class);
         verify(modelGateway).stream(requestCaptor.capture());
         verify(modelGateway, never()).call(any(ModelGatewayRequest.class));
-        assertThat(requestCaptor.getValue().sceneCode()).isEqualTo(ModelGatewayScenes.LEGACY_USER_ONLY);
+        assertThat(requestCaptor.getValue().sceneCode()).isEqualTo(ModelGatewayConstant.LEGACY_USER_ONLY);
         assertThat(requestCaptor.getValue().mode()).isEqualTo(ModelCallMode.STREAM);
         assertThat(responses).containsExactly("你", "好");
+    }
+
+    @Test
+    void streamModeShouldExposeInvalidResponseAsEmptyFluxForNodeRetry() {
+        // 1. 准备流式网关响应无有效内容时抛出的结构化异常。
+        ModelGateway modelGateway = mock(ModelGateway.class);
+        DataAgentProperties properties = new DataAgentProperties();
+        when(modelGateway.stream(any(ModelGatewayRequest.class)))
+                .thenReturn(Flux.error(new ModelGatewayException(ModelGatewayErrorCode.RESPONSE_INVALID)));
+        GatewayBackedLlmService service = new GatewayBackedLlmService(modelGateway, properties);
+
+        // 2. 验证适配层将空响应类错误转换为空流，交给上层节点的空响应重试逻辑处理。
+        List<ChatResponse> responses = service.callUser(ModelGatewayConstant.QUERY_ENHANCE, "增强查询")
+                .collectList()
+                .block();
+
+        assertThat(responses).isEmpty();
+        verify(modelGateway).stream(any(ModelGatewayRequest.class));
+        verify(modelGateway, never()).call(any(ModelGatewayRequest.class));
     }
 
     @Test
@@ -243,7 +264,7 @@ class GatewayBackedLlmServiceTest {
         GatewayExecutionContext context =
                 new GatewayExecutionContext("run-001", "trace-001", "session-001", null, null, null);
         assertThatCode(() -> {
-            recorder.startInvocation("invocation-001", context, ModelGatewayScenes.SQL_GENERATION, ModelCallMode.BLOCK);
+            recorder.startInvocation("invocation-001", context, ModelGatewayConstant.SQL_GENERATION, ModelCallMode.BLOCK);
             recorder.finishInvocation("invocation-001", ModelGatewayCallStatus.SUCCEEDED, null, null, null, null);
             recorder.startAttempt("invocation-001", "attempt-001", 1, "openai", "gpt-4o-mini");
             recorder.finishAttempt("attempt-001", ModelGatewayCallStatus.SUCCEEDED, 200, null, null);

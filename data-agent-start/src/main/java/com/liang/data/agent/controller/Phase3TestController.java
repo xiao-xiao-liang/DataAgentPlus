@@ -9,7 +9,7 @@ import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.ai.vectorstore.AgentVectorStoreService;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.enums.VectorType;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.node.EvidenceQueryRewriteDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -51,7 +51,7 @@ public class Phase3TestController {
      */
     @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public Flux<String> testChat() {
-        return llmService.callUser(ModelGatewayScenes.DIAGNOSTIC_CHAT, "你好，请做个详细的自我介绍。")
+        return llmService.callUser(ModelGatewayConstant.DIAGNOSTIC_CHAT, "你好，请做个详细的自我介绍。")
                 .map(ChatResponseUtil::getText)
                 .filter(StringUtils::hasLength)
                 .doOnNext(text -> log.info("【Chat接口】输出数据片段: [{}]", text));
@@ -66,7 +66,7 @@ public class Phase3TestController {
         String query = request.getQuery();
         String multiTurn = StringUtils.hasText(request.getMultiTurn()) ? request.getMultiTurn() : "(无)";
 
-        Flux<String> intentSource = llmService.callUser(ModelGatewayScenes.INTENT_RECOGNITION,
+        Flux<String> intentSource = llmService.callUser(ModelGatewayConstant.INTENT_RECOGNITION,
                         PromptHelper.buildIntentRecognitionPrompt(multiTurn, query))
                 .map(ChatResponseUtil::getText)
                 .filter(StringUtils::hasLength);
@@ -146,7 +146,7 @@ public class Phase3TestController {
 
     private Flux<String> buildEvidenceRecallFlux(StreamThreeNodesRequest request, String multiTurn, String query,
                                                  String intentOutput) {
-        Flux<String> evidenceSource = llmService.callUser(ModelGatewayScenes.EVIDENCE_RECALL,
+        Flux<String> evidenceSource = llmService.callUser(ModelGatewayConstant.EVIDENCE_RECALL,
                         PromptHelper.buildEvidenceQueryRewritePrompt(multiTurn, query))
                 .map(ChatResponseUtil::getText)
                 .filter(StringUtils::hasLength);
@@ -162,7 +162,7 @@ public class Phase3TestController {
     }
 
     private Flux<String> buildQueryEnhanceFlux(String multiTurn, String query, String evidence) {
-        Flux<String> queryEnhanceSource = llmService.callUser(ModelGatewayScenes.QUERY_ENHANCE,
+        Flux<String> queryEnhanceSource = llmService.callUser(ModelGatewayConstant.QUERY_ENHANCE,
                         PromptHelper.buildQueryEnhancePrompt(multiTurn, query, evidence))
                 .map(ChatResponseUtil::getText)
                 .filter(StringUtils::hasLength);

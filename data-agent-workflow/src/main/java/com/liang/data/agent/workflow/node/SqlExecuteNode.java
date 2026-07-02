@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
-import com.liang.data.agent.common.constant.SqlQueryLimitConstant;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.ratelimit.ResourceType;
 import com.liang.data.agent.dal.connector.DatabaseAccessor;
@@ -26,7 +25,7 @@ import com.liang.data.agent.dal.mapper.AgentMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceMapper;
 import com.liang.data.agent.dal.mapper.AgentDatasourceTablesMapper;
 import com.liang.data.agent.dal.mapper.DatasourceMapper;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.service.ratelimit.ResourceGate;
 import com.liang.data.agent.service.ratelimit.ResourcePermit;
 import com.liang.data.agent.workflow.dto.SqlRetryDTO;
@@ -274,7 +273,7 @@ public class SqlExecuteNode implements NodeAction {
             log.debug("UserPrompt:\n{}", userPrompt);
 
             // 5. 同步阻塞请求 LLM 并在超时保护下拦截
-            String chartConfigJson = llmService.toStringFlux(llmService.call(ModelGatewayScenes.DATA_VIEW_ANALYZE,
+            String chartConfigJson = llmService.toStringFlux(llmService.call(ModelGatewayConstant.DATA_VIEW_ANALYZE,
                             systemPrompt, userPrompt))
                     .collect(StringBuilder::new, StringBuilder::append)
                     .map(StringBuilder::toString)

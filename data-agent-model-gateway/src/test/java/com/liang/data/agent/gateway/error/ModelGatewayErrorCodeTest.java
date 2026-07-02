@@ -1,7 +1,7 @@
 package com.liang.data.agent.gateway.error;
 
-import com.liang.data.agent.gateway.api.ModelMessage;
-import com.liang.data.agent.gateway.api.ModelMessageRole;
+import com.liang.data.agent.gateway.prompt.ModelMessage;
+import com.liang.data.agent.gateway.prompt.ModelMessageRole;
 import com.liang.data.agent.gateway.prompt.ResolvedPrompt;
 import org.junit.jupiter.api.Test;
 

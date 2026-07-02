@@ -1,9 +1,9 @@
-package com.liang.data.agent.gateway.api;
+package com.liang.data.agent.gateway.constants;
 
 /**
  * 阶段 2 模型网关场景编码常量，不含动态路由策略。
  */
-public final class ModelGatewayScenes {
+public final class ModelGatewayConstant {
 
     public static final String LEGACY_SYSTEM_USER = "legacy.system_user";
     public static final String LEGACY_SYSTEM_ONLY = "legacy.system_only";
@@ -29,7 +29,7 @@ public final class ModelGatewayScenes {
     public static final String KNOWLEDGE_CHUNK_NAME = "service.knowledge_chunk_name";
     public static final String AI_SIMULATED_EXECUTION = "ai_core.ai_simulated_execution";
 
-    private ModelGatewayScenes() {
+    private ModelGatewayConstant() {
         throw new UnsupportedOperationException("工具类不允许实例化");
     }
 }

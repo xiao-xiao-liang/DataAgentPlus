@@ -1,15 +1,15 @@
 package com.liang.data.agent.ai.gateway;
 
-import com.liang.data.agent.gateway.api.GatewayChunk;
-import com.liang.data.agent.gateway.api.GatewayConstraints;
-import com.liang.data.agent.gateway.api.GatewayResult;
-import com.liang.data.agent.gateway.api.ModelCallMode;
-import com.liang.data.agent.gateway.api.ModelGatewayRequest;
-import com.liang.data.agent.gateway.api.ModelMessage;
-import com.liang.data.agent.gateway.api.ModelMessageRole;
-import com.liang.data.agent.gateway.api.ModelPrompt;
-import com.liang.data.agent.gateway.api.ModelRoute;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.response.GatewayChunk;
+import com.liang.data.agent.gateway.request.GatewayConstraints;
+import com.liang.data.agent.gateway.response.GatewayResult;
+import com.liang.data.agent.gateway.request.ModelCallMode;
+import com.liang.data.agent.gateway.request.ModelGatewayRequest;
+import com.liang.data.agent.gateway.prompt.ModelMessage;
+import com.liang.data.agent.gateway.prompt.ModelMessageRole;
+import com.liang.data.agent.gateway.prompt.ModelPrompt;
+import com.liang.data.agent.gateway.response.ModelRoute;
+import com.liang.data.agent.gateway.response.ModelUsage;
 import com.liang.data.agent.gateway.context.GatewayExecutionContext;
 import com.liang.data.agent.gateway.context.GatewayReactorContext;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
@@ -29,7 +29,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

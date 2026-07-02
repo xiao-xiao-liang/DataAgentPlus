@@ -7,7 +7,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.node.IntentRecognitionOutputDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -52,7 +52,7 @@ public class IntentRecognitionNode implements NodeAction {
         // 2. 构建 Prompt 并调用 LLM
         String prompt = PromptHelper.buildIntentRecognitionPrompt(multiTurn, userInput);
 //        log.debug("意图识别 Prompt:\n{}", prompt);
-        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayScenes.INTENT_RECOGNITION, prompt);
+        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayConstant.INTENT_RECOGNITION, prompt);
 
         // 3. 包装为流式响应 (前后加 JSON 标记 + 状态消息)
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGenerator(

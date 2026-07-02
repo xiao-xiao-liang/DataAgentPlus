@@ -7,7 +7,7 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.enums.TextType;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.planner.ExecutionStep;
 import com.liang.data.agent.workflow.dto.planner.Plan;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
@@ -90,7 +90,7 @@ public class ReportGeneratorNode implements NodeAction {
         String reportPrompt = PromptHelper.buildReportGeneratorPrompt(
                 userRequirementsAndPlan, analysisStepsAndData, summaryAndRecommendations);
         
-        Flux<ChatResponse> reportFlux = llmService.callUser(ModelGatewayScenes.REPORT_GENERATION, reportPrompt);
+        Flux<ChatResponse> reportFlux = llmService.callUser(ModelGatewayConstant.REPORT_GENERATION, reportPrompt);
         TextType reportType = TextType.MARK_DOWN;
         Flux<ChatResponse> cleanedReportFlux = createCleanedReportFlux(reportFlux);
 

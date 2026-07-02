@@ -1,8 +1,8 @@
 package com.liang.data.agent.ai.gateway;
 
-import com.liang.data.agent.gateway.api.ModelCallMode;
-import com.liang.data.agent.gateway.api.ModelRoute;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.request.ModelCallMode;
+import com.liang.data.agent.gateway.response.ModelRoute;
+import com.liang.data.agent.gateway.response.ModelUsage;
 import com.liang.data.agent.gateway.context.GatewayExecutionContext;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 

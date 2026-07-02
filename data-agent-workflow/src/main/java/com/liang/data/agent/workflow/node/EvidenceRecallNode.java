@@ -14,7 +14,7 @@ import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.enums.VectorType;
 import com.liang.data.agent.dal.entity.AgentKnowledgeEntity;
 import com.liang.data.agent.dal.mapper.AgentKnowledgeMapper;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.node.EvidenceQueryRewriteDTO;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -71,7 +71,7 @@ public class EvidenceRecallNode implements NodeAction {
 
         // 1. LLM 查询重写
         String prompt = PromptHelper.buildEvidenceQueryRewritePrompt(multiTurn, userInput);
-        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayScenes.EVIDENCE_RECALL, prompt);
+        Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayConstant.EVIDENCE_RECALL, prompt);
         Sinks.Many<String> evidenceDisplaySink = Sinks.many().multicast().onBackpressureBuffer();
         Map<String, Object> resultMap = new HashMap<>();
 

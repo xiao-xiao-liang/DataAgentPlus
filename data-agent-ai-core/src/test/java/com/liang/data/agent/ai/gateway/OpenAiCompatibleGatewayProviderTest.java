@@ -5,15 +5,15 @@ import com.liang.data.agent.ai.model.DynamicModelFactory;
 import com.liang.data.agent.ai.model.ModelConfigQueryService;
 import com.liang.data.agent.common.enums.ModelType;
 import com.liang.data.agent.dal.entity.ModelConfigEntity;
-import com.liang.data.agent.gateway.api.GatewayChunk;
-import com.liang.data.agent.gateway.api.GatewayConstraints;
-import com.liang.data.agent.gateway.api.GatewayResult;
-import com.liang.data.agent.gateway.api.ModelCallMode;
-import com.liang.data.agent.gateway.api.ModelGatewayRequest;
-import com.liang.data.agent.gateway.api.ModelMessage;
-import com.liang.data.agent.gateway.api.ModelMessageRole;
-import com.liang.data.agent.gateway.api.ModelPrompt;
-import com.liang.data.agent.gateway.api.ModelUsage;
+import com.liang.data.agent.gateway.response.GatewayChunk;
+import com.liang.data.agent.gateway.request.GatewayConstraints;
+import com.liang.data.agent.gateway.response.GatewayResult;
+import com.liang.data.agent.gateway.request.ModelCallMode;
+import com.liang.data.agent.gateway.request.ModelGatewayRequest;
+import com.liang.data.agent.gateway.prompt.ModelMessage;
+import com.liang.data.agent.gateway.prompt.ModelMessageRole;
+import com.liang.data.agent.gateway.prompt.ModelPrompt;
+import com.liang.data.agent.gateway.response.ModelUsage;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 import com.liang.data.agent.gateway.error.ModelGatewayException;
 import org.junit.jupiter.api.Test;
@@ -23,8 +23,10 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.beans.factory.annotation.Autowired;
 import reactor.core.publisher.Flux;
 
+import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +45,16 @@ import static org.mockito.Mockito.when;
  * OpenAI 兼容模型供应商适配器测试。
  */
 class OpenAiCompatibleGatewayProviderTest {
+
+    @Test
+    void productionConstructorShouldDeclareAutowiredConstructor() throws NoSuchMethodException {
+        // 1. 获取生产环境用于注入 AiModelRegistry 的构造器。
+        Constructor<OpenAiCompatibleGatewayProvider> constructor =
+                OpenAiCompatibleGatewayProvider.class.getConstructor(AiModelRegistry.class);
+
+        // 2. 验证多构造器场景下显式声明 Spring 自动装配入口。
+        assertThat(constructor.isAnnotationPresent(Autowired.class)).isTrue();
+    }
 
     @Test
     void callShouldReturnGatewayResultWithContentUsageRouteAndInvocationId() {

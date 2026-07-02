@@ -10,7 +10,7 @@ import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.config.DataAgentProperties;
 import com.liang.data.agent.common.enums.TextType;
 import com.liang.data.agent.common.schema.SchemaDTO;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.dto.planner.ExecutionStep;
 import com.liang.data.agent.workflow.prompt.PromptConstant;
 import com.liang.data.agent.workflow.util.FluxUtil;
@@ -83,7 +83,7 @@ public class PythonGenerateNode implements NodeAction {
                 "plan_description", OBJECT_MAPPER.writeValueAsString(step.getToolParameters())
         ));
 
-        Flux<ChatResponse> pythonFlux = llmService.call(ModelGatewayScenes.PYTHON_GENERATION, systemPrompt, userQuery);
+        Flux<ChatResponse> pythonFlux = llmService.call(ModelGatewayConstant.PYTHON_GENERATION, systemPrompt, userQuery);
 
         Flux<GraphResponse<StreamingOutput<ChatResponse>>> generator = FluxUtil.createStreamingGeneratorWithMessages(
                 this.getClass(), state,

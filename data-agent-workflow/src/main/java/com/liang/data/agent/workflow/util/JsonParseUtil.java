@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.exception.ServiceException;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.prompt.PromptConstant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,6 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * JSON parser with deterministic cleanup before falling back to LLM repair.
@@ -74,7 +73,7 @@ public class JsonParseUtil {
         try {
             String prompt = PromptConstant.getJsonFixPromptTemplate()
                     .render(Map.of("json_string", json, "error_message", errorMessage));
-            Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayScenes.JSON_REPAIR, prompt);
+            Flux<ChatResponse> responseFlux = llmService.callUser(ModelGatewayConstant.JSON_REPAIR, prompt);
             String fixedJson = responseFlux
                     .map(ChatResponseUtil::getText)
                     .collect(StringBuilder::new, StringBuilder::append)

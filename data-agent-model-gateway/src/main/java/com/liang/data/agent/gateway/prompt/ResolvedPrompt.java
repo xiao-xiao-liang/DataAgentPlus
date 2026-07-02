@@ -1,7 +1,5 @@
 package com.liang.data.agent.gateway.prompt;
 
-import com.liang.data.agent.gateway.api.ModelMessage;
-
 import java.util.List;
 import java.util.Objects;
 

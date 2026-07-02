@@ -6,7 +6,7 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.workflow.prompt.PromptHelper;
 import com.liang.data.agent.workflow.util.FluxUtil;
 import com.liang.data.agent.workflow.util.PlanProcessUtil;
@@ -70,7 +70,7 @@ public class PythonAnalyzeNode implements NodeAction {
 
         // 3. 渲染分析 Prompt 并调用大模型
         String systemPrompt = PromptHelper.buildPythonAnalyzePrompt(userQuery, pythonOutput);
-        Flux<ChatResponse> pythonAnalyzeFlux = llmService.callSystem(ModelGatewayScenes.PYTHON_ANALYZE, systemPrompt);
+        Flux<ChatResponse> pythonAnalyzeFlux = llmService.callSystem(ModelGatewayConstant.PYTHON_ANALYZE, systemPrompt);
 
         // 4. 定义更新的状态映射
         Map<String, Object> finalResultMap = new HashMap<>();

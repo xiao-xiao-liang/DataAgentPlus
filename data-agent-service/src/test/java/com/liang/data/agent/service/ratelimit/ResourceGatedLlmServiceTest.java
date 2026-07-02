@@ -3,7 +3,7 @@ package com.liang.data.agent.service.ratelimit;
 import com.liang.data.agent.ai.llm.LlmService;
 import com.liang.data.agent.ai.util.ChatResponseUtil;
 import com.liang.data.agent.common.ratelimit.ResourceType;
-import com.liang.data.agent.gateway.api.ModelGatewayScenes;
+import com.liang.data.agent.gateway.constants.ModelGatewayConstant;
 import com.liang.data.agent.gateway.error.ModelGatewayErrorCode;
 import com.liang.data.agent.gateway.error.ModelGatewayException;
 import org.junit.jupiter.api.Test;
@@ -50,7 +50,7 @@ class ResourceGatedLlmServiceTest {
     @Test
     void callUserWithSceneCodeShouldInvokeDelegateSceneCodeMethodWhenPermitAcquired() {
         LlmService delegate = mock(LlmService.class, CALLS_REAL_METHODS);
-        when(delegate.callUser(eq(ModelGatewayScenes.SQL_GENERATION), eq("hello")))
+        when(delegate.callUser(eq(ModelGatewayConstant.SQL_GENERATION), eq("hello")))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("ok")));
         ResourceGate resourceGate = mock(ResourceGate.class);
         when(resourceGate.tryAcquire(eq(ResourceType.LLM_CALL), anyString(), any(Duration.class)))
@@ -58,13 +58,13 @@ class ResourceGatedLlmServiceTest {
                 }));
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
-        List<ChatResponse> responses = service.callUser(ModelGatewayScenes.SQL_GENERATION, "hello")
+        List<ChatResponse> responses = service.callUser(ModelGatewayConstant.SQL_GENERATION, "hello")
                 .collectList()
                 .block();
 
         assertThat(responses).hasSize(1);
         assertThat(ChatResponseUtil.getText(responses.getFirst())).isEqualTo("ok");
-        verify(delegate).callUser(ModelGatewayScenes.SQL_GENERATION, "hello");
+        verify(delegate).callUser(ModelGatewayConstant.SQL_GENERATION, "hello");
         verify(delegate, never()).callUser("hello");
     }
 
@@ -76,7 +76,7 @@ class ResourceGatedLlmServiceTest {
                 .thenReturn(ResourcePermit.rejected(ResourceType.LLM_CALL, "llm-call-user"));
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
-        assertThatThrownBy(() -> service.callUser(ModelGatewayScenes.SQL_GENERATION, "hello").collectList().block())
+        assertThatThrownBy(() -> service.callUser(ModelGatewayConstant.SQL_GENERATION, "hello").collectList().block())
                 .isInstanceOfSatisfying(ModelGatewayException.class, exception -> {
                     assertThat(exception.getGatewayErrorCode()).isEqualTo(ModelGatewayErrorCode.RATE_LIMITED);
                     assertThat(exception.getMessage()).isEqualTo("大模型资源繁忙，请稍后重试");
@@ -88,7 +88,7 @@ class ResourceGatedLlmServiceTest {
     @Test
     void callWithSceneCodeShouldInvokeDelegateSceneCodeMethodWhenPermitAcquired() {
         LlmService delegate = mock(LlmService.class, CALLS_REAL_METHODS);
-        when(delegate.call(eq(ModelGatewayScenes.SQL_GENERATION), eq("system"), eq("user")))
+        when(delegate.call(eq(ModelGatewayConstant.SQL_GENERATION), eq("system"), eq("user")))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("ok")));
         ResourceGate resourceGate = mock(ResourceGate.class);
         when(resourceGate.tryAcquire(eq(ResourceType.LLM_CALL), anyString(), any(Duration.class)))
@@ -97,21 +97,21 @@ class ResourceGatedLlmServiceTest {
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
         // 1. 调用携带场景编码的显式重载
-        List<ChatResponse> responses = service.call(ModelGatewayScenes.SQL_GENERATION, "system", "user")
+        List<ChatResponse> responses = service.call(ModelGatewayConstant.SQL_GENERATION, "system", "user")
                 .collectList()
                 .block();
 
         // 2. 校验委托到显式重载，且不会回退到旧重载
         assertThat(responses).hasSize(1);
         assertThat(ChatResponseUtil.getText(responses.getFirst())).isEqualTo("ok");
-        verify(delegate).call(ModelGatewayScenes.SQL_GENERATION, "system", "user");
+        verify(delegate).call(ModelGatewayConstant.SQL_GENERATION, "system", "user");
         verify(delegate, never()).call("system", "user");
     }
 
     @Test
     void callSystemWithSceneCodeShouldInvokeDelegateSceneCodeMethodWhenPermitAcquired() {
         LlmService delegate = mock(LlmService.class, CALLS_REAL_METHODS);
-        when(delegate.callSystem(eq(ModelGatewayScenes.SQL_GENERATION), eq("system")))
+        when(delegate.callSystem(eq(ModelGatewayConstant.SQL_GENERATION), eq("system")))
                 .thenReturn(Flux.just(ChatResponseUtil.createPureResponse("ok")));
         ResourceGate resourceGate = mock(ResourceGate.class);
         when(resourceGate.tryAcquire(eq(ResourceType.LLM_CALL), anyString(), any(Duration.class)))
@@ -120,14 +120,14 @@ class ResourceGatedLlmServiceTest {
         ResourceGatedLlmService service = new ResourceGatedLlmService(delegate, resourceGate);
 
         // 1. 调用携带场景编码的系统消息显式重载
-        List<ChatResponse> responses = service.callSystem(ModelGatewayScenes.SQL_GENERATION, "system")
+        List<ChatResponse> responses = service.callSystem(ModelGatewayConstant.SQL_GENERATION, "system")
                 .collectList()
                 .block();
 
         // 2. 校验委托到显式重载，且不会回退到旧重载
         assertThat(responses).hasSize(1);
         assertThat(ChatResponseUtil.getText(responses.getFirst())).isEqualTo("ok");
-        verify(delegate).callSystem(ModelGatewayScenes.SQL_GENERATION, "system");
+        verify(delegate).callSystem(ModelGatewayConstant.SQL_GENERATION, "system");
         verify(delegate, never()).callSystem("system");
     }
 

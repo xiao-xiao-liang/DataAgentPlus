@@ -1,4 +1,4 @@
-package com.liang.data.agent.gateway.api;
+package com.liang.data.agent.gateway.response;
 
 /**
  * 模型最终路由信息，记录供应商、模型与降级结果。

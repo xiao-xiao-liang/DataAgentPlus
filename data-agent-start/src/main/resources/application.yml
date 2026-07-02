@@ -57,14 +57,6 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-spring.ai:
-  openai:
-    api-key: ${OPENAI_API_KEY:sk-placeholder}
-    base-url: ${OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-    chat:
-      options:
-        model: ${OPENAI_MODEL:qwen-plus}
-
 # ==================== Milvus 向量库 ====================
 spring.ai.vectorstore.milvus:
   client:
@@ -85,9 +77,11 @@ spring.elasticsearch:
 data-agent:
   llm-service-mode: STREAM
   execution-timeout:
-    workflow-seconds: 120
+    workflow-seconds: 240
     sql-seconds: 30
     python-seconds: 30
+  model-gateway:
+    default-timeout-seconds: 90
   vector-store:
     default-similarity-threshold: 0.5
     default-topk-limit: 5

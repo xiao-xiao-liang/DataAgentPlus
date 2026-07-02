@@ -1,4 +1,6 @@
-package com.liang.data.agent.gateway.api;
+package com.liang.data.agent.gateway.request;
+
+import com.liang.data.agent.gateway.prompt.ModelPrompt;
 
 import java.util.Map;
 import java.util.Objects;
